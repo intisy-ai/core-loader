@@ -247,7 +247,10 @@ export function fetchCatalogsAsync() {
             for (var i = 0; i < json.items.length; i++) {
               var it = json.items[i];
               var cleanName = it.name.replace(/^claude-|^opencode-/, "");
-              var exists = catalog.find(function(m) { return m.name === (catalog === S.MARKETPLACE_CATALOG ? cleanName : it.name); });
+              // Match plugins by full_name (owner/repo), never by the stripped display
+              // name — two different repos can strip to the same name, and matching by
+              // name let a community repo overwrite an official entry's star count.
+              var exists = catalog.find(function(m) { return catalog === S.MARKETPLACE_CATALOG ? (!!m.full_name && m.full_name === it.full_name) : (m.name === it.name); });
               if (!exists) {
                 var newItem = {
                   name: catalog === S.MARKETPLACE_CATALOG ? cleanName : it.name,

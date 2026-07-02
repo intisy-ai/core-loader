@@ -92,7 +92,7 @@ export function loadNpmPlugins() {
       return updater.getNpmPlugins(CONFIG_DIR);
     } catch(e) {}
   }
-  var ocPath = join(CONFIG_DIR, "opencode.json");
+  var ocPath = existsSync(join(CONFIG_DIR, "opencode.json")) ? join(CONFIG_DIR, "opencode.json") : join(CONFIG_DIR, "opencode.jsonc");
   if (!existsSync(ocPath)) return [];
   try {
     var raw = readFileSync(ocPath, "utf-8");
