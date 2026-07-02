@@ -3,6 +3,7 @@
 // on-disk catalog cache, list building, and one-shot plugin install via git.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
+import { join } from "path";
 import { exec } from "child_process";
 import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, APP_NAME, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
@@ -420,12 +421,22 @@ export function buildMarketplaceList() {
     var isInstalled = installedNames.indexOf(m.name) !== -1 || installedNames.indexOf(repoName) !== -1;
     return Object.assign({}, m, { installed: isInstalled });
   });
+  // The plugin-updater is the engine itself, not a git plugin managed BY the updater,
+  // so it never comes from the remote catalog. Inject a synthetic entry (unless the
+  // catalog already carries one) so it's installable from the marketplace even with
+  // no updater present; it's marked installed/available from S.hasUpdater.
+  if (!res.some(function(m) { return m.isUpdater || m.name === "plugin-updater"; })) {
+    res.unshift({ name: "plugin-updater", desc: "Plugin engine — install to manage git plugins", isUpdater: true, official: true, installed: !!S.hasUpdater });
+  }
   if (S.inputBuf) {
     var q = S.inputBuf.toLowerCase();
     res = res.filter(function(m) { return (m.name||'').toLowerCase().indexOf(q) !== -1 || (m.desc||'').toLowerCase().indexOf(q) !== -1; });
   }
-  // official entries always appear first; within each group sort by stars desc then name asc
+  // the engine sorts first of all; then official entries; within each group by stars desc then name asc
   res.sort(function(a, b) {
+    var aUpd = a.isUpdater ? 1 : 0;
+    var bUpd = b.isUpdater ? 1 : 0;
+    if (bUpd !== aUpd) return bUpd - aUpd;
     var aOff = a.official ? 1 : 0;
     var bOff = b.official ? 1 : 0;
     if (bOff !== aOff) return bOff - aOff;
@@ -444,24 +455,16 @@ export function selectInstallMethod(entry, hasUpdater) {
   return "npm";
 }
 
-// Delegates to plugin-updater instead of doing the clone ourselves — the loader
-// stops duplicating the updater's job. When the module is already loaded, call
-// its API directly; otherwise fall back to a transient npx invocation (the one
-// sanctioned direct npx call) so install still works before the updater is set up.
-// Async so it runs off the main thread (the event loop stays free to animate the
-// spinner and render). Every caller passes a `done(err)` callback: err is null on
-// success, or an error string.
+// Git install runs entirely in a CHILD PROCESS via plugin-updater's `add`, which
+// registers the plugin in plugins.json AND clones/builds/deploys it — so the loader
+// never writes plugins.json itself and the git clone + npm install + build (all
+// execSync inside the updater) block that child, not our main event loop (the TUI
+// keeps rendering and animating). Every caller passes a `done(err)` callback: err
+// is null on success, or an error string.
 export function installMarketplacePlugin(entry, done) {
-  var repoName = entry.repoName || entry.name;
   var url = entry.url;
-  var updater = getUpdater();
-  if (updater && typeof updater.updatePluginPublic === "function") {
-    Promise.resolve(updater.updatePluginPublic(repoName, url)).then(function() { done(null); })
-      .catch(function(e) { done("Install failed: " + ((e && e.message) || e)); });
-    return;
-  }
   var app = APP_NAME === "Claude Code" ? "claude" : "opencode";
-  exec("npx -y plugin-updater@latest add " + url + " --app " + app, { timeout: 120000 }, function(err) {
+  exec("npx -y plugin-updater@latest add " + url + " --app " + app, { timeout: 180000 }, function(err) {
     done(err ? ("Install failed: " + ((err && err.message) || err)) : null);
   });
 }
@@ -478,7 +481,22 @@ export function installViaNpm(entry, done) {
     return;
   }
   exec("npm install -g " + name, { timeout: 120000 }, function(err) {
-    done(err ? ("npm install failed: " + ((err && err.message) || err)) : null);
+    if (err) { done("npm install failed: " + ((err && err.message) || err)); return; }
+    // OpenCode won't load an npm plugin unless it's listed in opencode.json — mirror
+    // the OpenCode branch of the tui.ts updater_install handler (best-effort).
+    if (APP_NAME !== "Claude Code") {
+      try {
+        var ocPath = join(CONFIG_DIR, "opencode.json");
+        var ocData = {};
+        if (existsSync(ocPath)) {
+          try { ocData = JSON.parse(readFileSync(ocPath, "utf-8").replace(/^\s*\/\/[^\n]*/gm, "")); } catch {}
+        }
+        if (!Array.isArray(ocData.plugin)) ocData.plugin = [];
+        if (ocData.plugin.indexOf(name) === -1) ocData.plugin.push(name);
+        writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");
+      } catch {}
+    }
+    done(null);
   });
 }
 

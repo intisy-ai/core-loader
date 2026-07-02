@@ -10,7 +10,7 @@ import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH } f
 import { S } from "./state.js";
 import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
-import { getUpdater, setupPlugin } from "./updater.js";
+import { getUpdater, setupPlugin, installUpdater } from "./updater.js";
 import { openProject, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
 import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
@@ -56,6 +56,39 @@ function runUpdateSequence(toUpdate, onDone) {
     });
   };
   updateNext(0);
+}
+
+// Cycle the plugins sub-tab (Installed -> Marketplace -> custom tabs -> Installed).
+// Exported so the "updater missing" gate handler in tui.ts can move the user off
+// the gated Installed tab onto the Marketplace with the same mechanics as Tab here.
+export function switchPluginSubPage() {
+  S.inputBuf = "";
+  if (S.pluginSubPage === "installed") { S.pluginSubPage = "marketplace"; S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0; }
+  else if (S.pluginSubPage === "marketplace" && S.customTabs.length > 0) { S.pluginSubPage = S.customTabs[0].id; }
+  else if (S.pluginSubPage === "marketplace") { S.pluginSubPage = "installed"; }
+  else {
+    var cIdx = S.customTabs.findIndex(function(t) { return t.id === S.pluginSubPage; });
+    if (cIdx >= 0 && cIdx < S.customTabs.length - 1) {
+      S.pluginSubPage = S.customTabs[cIdx + 1].id;
+    } else {
+      S.pluginSubPage = "installed";
+    }
+  }
+}
+
+// Route a marketplace entry to the right installer: the engine itself (isUpdater)
+// goes through the app-aware installUpdater; everything else through the git/npm
+// path selectInstallMethod chooses. Calls done(errOrNull, methodLabel).
+function marketplaceInstall(item, done) {
+  if (item.isUpdater) {
+    var uerr = installUpdater(CONFIG_DIR, APP_NAME);
+    S.hasUpdater = false;   // re-detect on next render now the engine is set up
+    done(uerr || null, "updater");
+    return;
+  }
+  var method = selectInstallMethod(item, S.hasUpdater);
+  var install = method === "git" ? installMarketplacePlugin : installViaNpm;
+  install(item, function(err) { done(err, method); });
 }
 
 export function handleKey(key) {
@@ -129,18 +162,7 @@ export function handlePluginKey(key) {
     if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
     
     if (key === "tab") {
-      S.inputBuf = "";
-      if (S.pluginSubPage === "installed") { S.pluginSubPage = "marketplace"; S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0; }
-      else if (S.pluginSubPage === "marketplace" && S.customTabs.length > 0) { S.pluginSubPage = S.customTabs[0].id; }
-      else if (S.pluginSubPage === "marketplace") { S.pluginSubPage = "installed"; }
-      else {
-        var cIdx = S.customTabs.findIndex(function(t) { return t.id === S.pluginSubPage; });
-        if (cIdx >= 0 && cIdx < S.customTabs.length - 1) {
-          S.pluginSubPage = S.customTabs[cIdx + 1].id;
-        } else {
-          S.pluginSubPage = "installed";
-        }
-      }
+      switchPluginSubPage();
       return;
     }
 
@@ -170,12 +192,10 @@ export function handlePluginKey(key) {
           var action = mkActs[S.mkAcursor].key;
           if (action === "install") {
             S.mkMode = "browse";
-            var method = selectInstallMethod(mitem, S.hasUpdater);
-            var install = method === "git" ? installMarketplacePlugin : installViaNpm;
             S.busy = true;
-            setBusyMessage("Installing " + (mitem.name || mitem.repoName) + " (" + method + ")...");
+            setBusyMessage("Installing " + (mitem.name || mitem.repoName) + "...");
             render();
-            install(mitem, function(merr) {
+            marketplaceInstall(mitem, function(merr, method) {
               S.busy = false;
               if (merr) flash(merr);
               else { flash("Installed (" + method + ")! Restart to activate."); S.pluginItems = buildCombinedPluginList(); }
@@ -255,12 +275,10 @@ export function handlePluginKey(key) {
         } else if (S.marketplaceItems.length > 0) {
           var quickItem = S.marketplaceItems[S.mkCursor];
           if (quickItem.installed) { flash(quickItem.name + " is already installed."); return; }
-          var quickMethod = selectInstallMethod(quickItem, S.hasUpdater);
-          var quickInstall = quickMethod === "git" ? installMarketplacePlugin : installViaNpm;
           S.busy = true;
-          setBusyMessage("Installing " + (quickItem.name || quickItem.repoName) + " (" + quickMethod + ")...");
+          setBusyMessage("Installing " + (quickItem.name || quickItem.repoName) + "...");
           render();
-          quickInstall(quickItem, function(quickErr) {
+          marketplaceInstall(quickItem, function(quickErr, quickMethod) {
             S.busy = false;
             if (quickErr) flash(quickErr);
             else { flash("Installed (" + quickMethod + ")! Restart to activate."); S.pluginItems = buildCombinedPluginList(); }
