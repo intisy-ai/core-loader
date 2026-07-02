@@ -6,7 +6,7 @@ import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL,
 import { selectionKey } from "../selection.js";
 import { S } from "../state.js";
 import { loadPlugins } from "../config.js";
-import { loadNpmPlugins, getUpdater, getUpdaterVersion } from "../updater.js";
+import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath } from "../updater.js";
 import { getPluginActions } from "../plugins.js";
 import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
 import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR } from "../env.js";
@@ -347,12 +347,17 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       (npmCount > 0 ? ", " + GRAY + npmCount + " npm" + GRAY : "") +
       ")" + RST, false);
 
-  // updater engine version + self-update hint, and where plugins are installed.
-  var uv = getUpdaterVersion();
-  pushBody("  " + DIM + "updater " + (uv ? "v" + uv : "(resolving)") + RST + GRAY + "  ·  press " + WHITE + "E" + GRAY + " to update it" + RST, false);
+  // where plugins live; under Claude the engine's version/update/location live here too
+  // (no npm section), under OpenCode the engine is its own npm row so it's omitted here.
   var abbr = function(pth) { return (pth && HOME && String(pth).indexOf(HOME) === 0) ? "~" + String(pth).slice(HOME.length) : pth; };
-  pushBody("  " + DIM + "git: " + abbr(PLUGINS_DIR) + GRAY + "  clones: " + abbr(REPOS_DIR) +
-    (IS_CLAUDE ? "" : GRAY + "  npm: " + abbr(HOME + "/.cache/opencode/packages")) + RST, false);
+  if (IS_CLAUDE) {
+    var uv = getUpdaterVersion();
+    var upath = getUpdaterPath();
+    pushBody("  " + DIM + "updater " + (uv ? "v" + uv : "(resolving)") + GRAY + " · press " + WHITE + "E" + GRAY + " to update" + (upath ? " · " + abbr(upath) : "") + RST, false);
+    pushBody("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + RST, false);
+  } else {
+    pushBody("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + " · npm " + abbr(HOME + "/.cache/opencode/packages") + RST, false);
+  }
 
   if (!S.pluginFetched) {
     pushBody("  " + DIM + "Press F to check for updates" + RST, false);

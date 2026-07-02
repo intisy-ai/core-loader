@@ -12,9 +12,13 @@ import { buildMcp } from "./mcp.js";
 import { buildSettings } from "./settings.js";
 
 export function render() {
-  var cols = process.stderr.columns || 80;
-  var totalRows = (process.stderr.rows || 24) - 1;
-  var barW = Math.min(56, cols - 4);
+  // Prefer the stream we draw to (stderr), but fall back to stdout — depending on how
+  // the wrapper launches bun, only one of them reports a TTY size. Re-read every frame
+  // so the UI tracks live terminal resizes.
+  var cols = process.stderr.columns || process.stdout.columns || 80;
+  var totalRows = (process.stderr.rows || process.stdout.rows || 24) - 1;
+  // rules/dividers span the full width so the frame scales with the console.
+  var barW = Math.max(20, cols - 4);
 
   var headLines = [];
   var bodyLines = [];

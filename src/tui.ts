@@ -174,6 +174,7 @@ process.on("exit", function() { showCur(); });
 process.on("SIGINT", function() { cleanup(); process.exit(1); });
 process.on("SIGTERM", function() { cleanup(); process.exit(1); });
 try { process.stderr.on("resize", function() { render(); }); } catch(e) {}
+try { process.stdout.on("resize", function() { render(); }); } catch(e) {}
 
 
 
