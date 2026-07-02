@@ -343,14 +343,23 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     pushBody("  " + DIM + "Press F to check for updates" + RST, false);
   }
 
-  var lastWasGit = false;
+  var hadNpm = false;
   for (var i = 0; i < S.pluginItems.length; i++) {
     var pitem = S.pluginItems[i];
     if (pitem.type === "npm" && (i === 0 || S.pluginItems[i - 1].type !== "npm")) {
+      hadNpm = true;
       pushBody("", false);
       pushBody("  " + BOLD + WHITE + "npm plugins" + RST, false);
     }
     buildPluginItem(pushBody, i, pitem, nameW, cols, i === S.pcursor);
+  }
+
+  // Always surface the npm section so it never looks "gone"; when empty, point to
+  // the Marketplace. (plugin-updater is excluded — it's the engine, shown there.)
+  if (!hadNpm) {
+    pushBody("", false);
+    pushBody("  " + BOLD + WHITE + "npm plugins" + RST, false);
+    pushBody("  " + DIM + "none installed — add from the Marketplace" + RST, false);
   }
 
   pushBody("", false);

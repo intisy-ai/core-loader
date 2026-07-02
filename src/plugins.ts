@@ -103,7 +103,10 @@ export function fetchPluginRemotes(pluginItems, done) {
 export function buildCombinedPluginList() {
   var git = buildPluginList();
   var savedPlugins = loadPlugins();
-  var npm = loadNpmPlugins().map(function(np) {
+  // plugin-updater is the engine, not a user-managed npm plugin — it's shown in the
+  // Marketplace / gate, never as an npm row (it's transient, so it has no version and
+  // would misleadingly read "not installed").
+  var npm = loadNpmPlugins().filter(function(np) { return np.name !== "plugin-updater"; }).map(function(np) {
     return {
       type: "npm",
       name: np.name,
