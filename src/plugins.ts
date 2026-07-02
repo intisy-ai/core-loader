@@ -7,7 +7,7 @@ import { join } from "path";
 import { execSync, exec } from "child_process";
 import { REPOS_DIR, PLUGINS_DIR } from "./env.js";
 import { loadPlugins } from "./config.js";
-import { getFolderName, loadNpmPlugins } from "./updater.js";
+import { getFolderName, loadNpmPlugins, getUpdaterVersion } from "./updater.js";
 
 export function gitText(args, cwd) {
   try {
@@ -113,7 +113,9 @@ export function buildCombinedPluginList() {
       type: "npm",
       engine: isEngine,
       name: np.name,
-      version: np.version,
+      // the engine is transient (no package-cache version) — read its real version
+      // from the resolved updater bundle instead of leaving it blank.
+      version: isEngine ? (getUpdaterVersion() || np.version) : np.version,
       raw: np.raw,
       // npm plugins have no disable state — the app loads whatever opencode.jsonc lists
       enabled: true,

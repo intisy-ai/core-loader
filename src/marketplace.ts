@@ -424,16 +424,9 @@ export function buildMarketplaceList() {
     var isInstalled = installedNames.indexOf(m.name) !== -1 || installedNames.indexOf(repoName) !== -1;
     return Object.assign({}, m, { installed: isInstalled });
   });
-  // The plugin-updater is the engine itself, not a git plugin managed BY the updater,
-  // so it never comes from the remote catalog. Inject a synthetic entry (unless the
-  // catalog already carries one) so it's installable from the marketplace even with
-  // no updater present; it's marked installed/available from S.hasUpdater.
-  if (!res.some(function(m) { return m.isUpdater || m.name === "plugin-updater"; })) {
-    var updaterDesc = S.hasUpdater
-      ? "Plugin engine — manages git plugins (installed)"
-      : "Plugin engine — install to manage git plugins";
-    res.unshift({ name: "plugin-updater", desc: updaterDesc, isUpdater: true, official: true, installed: !!S.hasUpdater });
-  }
+  // plugin-updater (the engine) is installed only via the gate, never from the
+  // marketplace, so it is not injected here — the marketplace only appears once the
+  // engine already exists.
   if (S.inputBuf) {
     var q = S.inputBuf.toLowerCase();
     res = res.filter(function(m) { return (m.name||'').toLowerCase().indexOf(q) !== -1 || (m.desc||'').toLowerCase().indexOf(q) !== -1; });
@@ -468,8 +461,6 @@ export function getMarketplaceActions(item, hasUpdater) {
   var acts = [];
   if (item.installed) {
     // already installed — no install action
-  } else if (item.isUpdater) {
-    acts.push({ key: "install", label: "Install updater" });
   } else if (IS_CLAUDE) {
     // Claude has no npm-plugin mechanism — every plugin installs git-via-updater.
     acts.push({ key: "install-git", label: "Install" });

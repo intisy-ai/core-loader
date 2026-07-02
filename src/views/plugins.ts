@@ -20,7 +20,9 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
 
   // NPM plugins: simpler read-only row
   if (pitem.type === "npm") {
-    var nvstr = pitem.engine ? (GREEN + "active" + RST) : pitem.version ? (GRAY + "v" + pitem.version + RST) : (GRAY + "not installed" + RST);
+    var nvstr = pitem.engine
+      ? (pitem.version ? (GRAY + "v" + pitem.version + RST + " " + GREEN + "active" + RST) : (GREEN + "active" + RST))
+      : pitem.version ? (GRAY + "v" + pitem.version + RST) : (GRAY + "not installed" + RST);
     var typeLabel = pitem.engine ? (DIM + "engine" + RST) : (GRAY + "npm" + RST);
     pushBody("  " + bg + arrow + nameStyle + pad(trunc(pitem.name, nameW), nameW) + RST + bg + " " + typeLabel + "  " + nvstr + RST, isSelected);
     if (sel) {
@@ -78,17 +80,18 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
   }
   var hasUpdater = S.hasUpdater;
 
-  // Gate ONLY the Installed sub-tab when the updater is missing: the Installed view
-  // has nothing to manage without the engine. The Marketplace (and Providers) stay
-  // reachable so the user can Tab over and install the updater from there.
-  if (!hasUpdater && S.pluginSubPage === "installed") {
+  // The updater is the foundation: every plugin (git AND npm) is installed through it.
+  // Without it there is nothing to manage or install, so BOTH the Installed and
+  // Marketplace surfaces are gated to a single install-updater action. (Providers/auth
+  // is unrelated and stays reachable via Tab.)
+  if (!hasUpdater && (S.pluginSubPage === "installed" || S.pluginSubPage === "marketplace")) {
     pushBody("  " + BOLD + BAD + "Updater Plugin Missing" + RST, false);
-    pushBody("  The hub requires an updater plugin to manage installations.", false);
+    pushBody("  The hub installs and manages every plugin through the updater engine.", false);
     pushBody("", false);
-    pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install it, or " + BOLD + WHITE + "Tab" + RST + " to browse the Marketplace.", false);
+    pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install it. Nothing else is available until it is.", false);
     pushBody("", false);
     pushFoot("  " + rule(barW));
-    pushFoot(hints([["enter", "install"], ["tab", "switch"], ["q", "quit"]]));
+    pushFoot(hints([["enter", "install"], ["tab", "providers"], ["q", "quit"]]));
     S.globalKeyHandler = "updater_install";
     return;
   } else {
@@ -265,14 +268,12 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       var starRaw = mitem.stars != null ? " ★" + mitem.stars : "";
       var starVis = starRaw.length;
       var mkNameW = Math.min(30, nameW);
-      // official badge "◆ " occupies 2 chars; non-official gets 2 spaces to keep columns aligned
-      // Official/community is already conveyed by the group headers, so no per-row
-      // official badge. Under OpenCode a 4-col install-method badge shows the default
-      // (git=green via updater, npm=cyan); under Claude everything is git, so no badge.
+      // Official/community is conveyed by the group headers (no per-row badge). Under
+      // OpenCode a 4-col method badge shows the default (git=green, npm=cyan); under
+      // Claude everything is git-via-updater, so no badge.
       var methodW = IS_CLAUDE ? 0 : 4;
       var methodBadge = IS_CLAUDE ? ""
         : mitem.installed ? "    "
-        : mitem.isUpdater ? (DIM + "eng " + RST)
         : (selectInstallMethod(mitem, S.hasUpdater) === "git" ? (GREEN + "git " + RST) : (CYAN + "npm " + RST));
       // single status circle combines install + selection state (one circle, not two):
       //   installed = dim ●, selected = accent ◉, selectable-unselected = ○
@@ -282,9 +283,9 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       var usedW = 2 + 3 + circleW + 1 + methodW + mkNameW + 2 + starVis;
       var descW = Math.max(10, cols - usedW - 2);
       var descText = trunc((mitem.desc || "").replace(/\r?\n/g, " "), descW);
-      var descVis = stringWidth(descText);
-      var gapW = Math.max(1, cols - usedW - descVis);
-      var starStr = starRaw ? (YELLOW + " ".repeat(gapW) + "★" + mitem.stars + RST) : "";
+      // stars sit right after the description (a small fixed gap) instead of being
+      // pushed to the far right edge, which left an ugly whitespace expanse.
+      var starStr = starRaw ? (YELLOW + "  ★" + mitem.stars + RST) : "";
       pushBody("  " + mbg + marrow + circle + " " + methodBadge + mns + pad(trunc(mitem.name, mkNameW), mkNameW) + RST + mbg + "  " + GRAY + descText + RST + starStr + RST, msel);
       if (msel && mitem.url) {
         // indent to align under the name column: 2 + 3(cursor) + 1(circle) + 1(space) + method

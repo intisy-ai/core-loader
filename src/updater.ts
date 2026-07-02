@@ -139,8 +139,17 @@ export function loadNpmPlugins() {
 // the loader manage git plugins). Claude registers a SessionStart hook that runs
 // the transient `npx plugin-updater@latest`; OpenCode installs it globally and
 // lists it in opencode.json. Idempotent. Returns "" on success or an error string.
+// Force getUpdater() to re-resolve on next call (after installing the engine, so the
+// gate lifts without an app restart).
+export function clearUpdaterCache() {
+  S.UPDATER_MODULE = undefined;
+  S.UPDATER_PATH = undefined;
+  S.hasUpdater = false;
+}
+
 export function installUpdater(configDir, appName) {
   try {
+    var appFlag = appName === "Claude Code" ? "claude" : "opencode";
     if (appName === "Claude Code") {
       var settingsPath = join(configDir, "settings.json");
       var settings = {};
@@ -162,6 +171,9 @@ export function installUpdater(configDir, appName) {
       if (ocData.plugin.indexOf("plugin-updater") === -1) ocData.plugin.unshift("plugin-updater");
       writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");
     }
+    // Run the engine now so it's fetched + resolvable immediately (populates the npx
+    // cache getUpdater() looks in) — installing shouldn't require an app restart.
+    try { execSync("npx -y plugin-updater@latest run --app " + appFlag, { timeout: 180000, stdio: "ignore" }); } catch { /* best effort; getUpdater re-checks */ }
     return "";
   } catch (e) {
     return "Failed to install updater: " + ((e && e.message) || e);

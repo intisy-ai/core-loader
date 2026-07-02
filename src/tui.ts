@@ -9,7 +9,7 @@ import { homedir } from "os";
 import { S } from "./state.js";
 import { APP_NAME, CLI_CMD, NPM_PKG, CONFIG_DIR, CACHE_DIR, UPDATE_CHECK_PATH, REPOS_DIR, PLUGINS_DIR, tuiLog } from "./env.js";
 import { hideCur, showCur, cleanup } from "./out.js";
-import { getFolderName, installUpdater } from "./updater.js";
+import { getFolderName, installUpdater, clearUpdaterCache } from "./updater.js";
 import { loadConfig, saveConfig, migrateConfigs, loadPlugins, autoUpdateCheck, updateCheckDelayMs, updateCheckIntervalHours, defaultTab } from "./config.js";
 import { flash } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
@@ -280,13 +280,13 @@ function onData(buf) {
       return;
     }
     if (key === "enter" || key === "space") {
-      process.stdout.write("\x1b[?25h\n\x1b[36mInstalling updater plugin...\x1b[0m\n");
+      process.stdout.write("\x1b[?25h\n\x1b[36mInstalling updater plugin (fetching + running)...\x1b[0m\n");
       var installErr = installUpdater(CONFIG_DIR, APP_NAME);
       if (installErr) { tuiLog(installErr); flash(installErr); }
+      clearUpdaterCache();   // installUpdater ran the engine; re-resolve it now so the gate lifts
       S.globalKeyHandler = null;
-      S.hasUpdater = false;   // re-detect on next render (Claude: only real after next launch populates npx cache)
       S.pluginItems = buildCombinedPluginList();
-      render();
+      render();   // buildPlugins re-detects the engine; if it still can't resolve, the gate simply re-shows
     }
     if (key === "escape" || key === "q" || buf[0] === 3) process.exit(0);
     return;
