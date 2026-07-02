@@ -35,10 +35,6 @@ export function getUpdater() {
       tuiLog("Failed to load updater plugin from " + updaterPath + ": " + e);
     }
   }
-  try {
-    S.UPDATER_MODULE = require("plugin-updater");
-    return S.UPDATER_MODULE;
-  } catch {}
   S.UPDATER_MODULE = null;
   return null;
 }
