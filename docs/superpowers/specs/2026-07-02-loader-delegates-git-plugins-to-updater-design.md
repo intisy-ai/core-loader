@@ -36,8 +36,11 @@ The loader partly does plugin-updater's job and detects the updater unreliably:
   the updater to even know they exist.
 - R3 No phantom updater row; the updater's availability gates the git section.
 - R4 Marketplace: plugin-updater has priority; every entry installable via the
-  updater (git) or as an npm plugin; the default of the two is dynamic (per-plugin
-  and/or based on whether the updater is available).
+  updater (git) or as an npm plugin; the default is git-via-updater (preferred),
+  overridable per-plugin. The updater itself is installed only by explicit user
+  action (marketplace entry or the Installed-tab gate), never automatically.
+- R5 npm plugins get management parity with git plugins (uninstall, update,
+  configure where applicable), not just a bare row.
 
 ## Design
 
@@ -95,14 +98,27 @@ The updater module is the single source of truth for git plugins.
   - **git via updater** (register + updater sets it up), and
   - **npm** (`updater.installNpmPlugin` when loaded, else `npm`/opencode.json).
 - **Default method**, in priority order:
-  1. per-entry hint `install: "git" | "npm"` on the catalog/official entry, else
-  2. **git via updater** when the updater is available, else
-  3. **npm**.
+  1. **git via updater** when the updater is available (preferred), else
+  2. per-entry hint `install: "npm"` forcing npm, else
+  3. **npm** when the updater is unavailable.
   The non-default method is a secondary action in the entry's action menu. When the
-  updater is unavailable, only npm is offered.
-- **plugin-updater priority:** it sorts first in the marketplace as the engine;
-  when unavailable, installing it is the highlighted first step (this is the same
-  action the gate's Enter triggers) and unlocks the git section afterward.
+  updater is unavailable, only npm is offered (plus installing the updater).
+- **plugin-updater priority:** it sorts first in the marketplace as the engine.
+  Installing it is user-initiated only — via its marketplace entry or the
+  Installed-tab gate's Enter (same app-aware action). Never auto-installed.
+
+### E. npm plugin management parity (`plugins.ts` `getPluginActions`, `input.ts`)
+
+npm plugins get an action menu comparable to git plugins, limited to what npm
+supports:
+
+- **Uninstall** (exists: `uninstall-npm` → `updater.uninstallNpmPlugin`).
+- **Update** (exists: `update-npm`).
+- **Configure** — probe the deployed npm bundle with `config schema`
+  (`probeConfigSchema` already works on any deployed bundle); show the Configure
+  action when the plugin answers.
+- Omit git-only actions (downgrade-to-commit, force-rebuild, auto-update toggle),
+  which have no npm equivalent.
 
 ## Files touched
 
@@ -130,8 +146,11 @@ Both loaders pick this up via the core-loader submodule bump + rebuild.
   registers the SessionStart hook. After a run populates the npx cache →
   `getUpdater()` resolves the npx candidate, version shows, git list appears.
 - OpenCode: unchanged gate behavior; after installing the updater the list appears.
-- Marketplace: an entry installs via git (updater) and via npm; default method
-  follows the priority rule; plugin-updater sorts first.
+- Marketplace: an entry installs via git (updater, the default) and via npm (the
+  secondary action / when the updater is absent); plugin-updater sorts first and
+  installs only on explicit selection.
+- npm plugin row: uninstall, update, and configure (when the bundle answers
+  `config schema`) all work.
 - Regression: `bun` context with no nearby `node_modules` no longer yields a false
   positive (the bug that started this).
 
@@ -143,7 +162,10 @@ Both loaders pick this up via the core-loader submodule bump + rebuild.
 
 ## Resolved defaults (were open questions)
 
-- "Updater available" = `getUpdater()` resolves via a real path (Design A).
-- Direct npx is used only to install/add when the module can't be loaded yet.
-- Per-plugin default method comes from an optional `install` field; absent → the
-  Design D fallback.
+- "Updater available" = `getUpdater()` resolves via a real path (Design A);
+  confirmed — drop the bare require, no auto-install rescue.
+- Marketplace default = **git via updater when available** (preferred); a per-entry
+  `install: "npm"` hint forces npm; npx-only fallback when the module isn't loaded.
+- The updater is installed only by explicit user action (marketplace entry or the
+  Installed-tab gate) — never automatically.
+- npm plugins gain uninstall/update/configure (Design E).
