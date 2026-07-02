@@ -7,7 +7,7 @@ import { join } from "path";
 import { execSync, exec } from "child_process";
 import { REPOS_DIR, PLUGINS_DIR } from "./env.js";
 import { loadPlugins } from "./config.js";
-import { getFolderName, loadNpmPlugins, getUpdater, getUpdaterVersion } from "./updater.js";
+import { getFolderName, loadNpmPlugins } from "./updater.js";
 
 export function gitText(args, cwd) {
   try {
@@ -130,13 +130,6 @@ export function buildCombinedPluginList() {
 
 export function getPluginActions(pitem) {
   var a = [];
-  if (pitem.engine) {
-    a.push({ key: "updater-update", label: "Update plugin-updater" });
-    a.push({ key: "updater-run", label: "Update all plugins (early launch)" });
-    a.push({ key: "updater-add", label: "Add plugin from git URL" });
-    a.push({ key: "cancel", label: "Cancel" });
-    return a;
-  }
   if (pitem.type === "npm") {
     // managed via opencode.json — no disable state, only update/uninstall (+ Configure
     // when the deployed bundle answers `config schema`, same probe as git plugins)

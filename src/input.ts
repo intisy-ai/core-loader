@@ -366,43 +366,7 @@ export function handlePluginKey(key) {
     else if (key === "down" || key === "s") { S.pacursor = Math.min(acts.length - 1, S.pacursor + 1); }
     else if (key === "enter" || key === "space") {
       var action = acts[S.pacursor].key;
-      if (action === "updater-update") {
-        S.mode = "list";
-        if (APP_NAME === "Claude Code") {
-          // the SessionStart hook runs npx plugin-updater@latest, so the engine
-          // already refreshes every session — npm -g would be a no-op here
-          flash("plugin-updater is managed via npx @latest; it updates each session.");
-        } else {
-          flash("Updating plugin-updater...");
-          render();
-          var engineModule = getUpdater();
-          var engineErr = engineModule && typeof engineModule.updateNpmPlugin === "function"
-            ? (engineModule.updateNpmPlugin("plugin-updater", CONFIG_DIR, 0) || "")
-            : "updater not available";
-          S.pluginItems = buildCombinedPluginList();
-          flash(engineErr ? "plugin-updater: " + engineErr : "plugin-updater updated.");
-        }
-      }
-      else if (action === "updater-run") {
-        flash("Updating all plugins...");
-        S.mode = "list";
-        render();
-        var runModule = getUpdater();
-        if (runModule && typeof runModule.earlyLaunch === "function") {
-          Promise.resolve(runModule.earlyLaunch(CONFIG_DIR, loadPlugins())).then(function() {
-            S.pluginItems = buildCombinedPluginList();
-            flash("All plugins updated. Restart " + APP_NAME + " to apply.");
-            render();
-          }).catch(function(e) { flash("Update failed: " + e); render(); });
-        } else {
-          flash("updater not available");
-        }
-      }
-      else if (action === "updater-add") {
-        S.inputBuf = "";
-        S.mode = "pinput";
-      }
-      else if (action === "update") {
+      if (action === "update") {
         S.mode = "list";
         runUpdateSequence([pitem], function() {
           if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
