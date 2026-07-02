@@ -2,10 +2,33 @@
 // Shared view helpers: status message, spinner, hint bar, and the confirm/help
 // overlays. flash/scheduleRender drive redraws via render().
 
-import { RST, BOLD, DIM, GRAY, WHITE, GREEN, trunc, pad, ACCENT, rule } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, GREEN, YELLOW, BG_SEL, stringWidth, trunc, pad, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
 import { HELP_BINDINGS, SPINNER_FRAMES } from "../env.js";
 import { render } from "./render.js";
+
+// One marketplace row, shared by the plugins AND MCP marketplaces — they differ only
+// in the badge (curated ✦ vs git/npm) and the selected sub-line, never the layout.
+// The star count is right-aligned to the edge and the description scales with `cols`.
+// opts: { selected, name, nameW, desc, stars, statusIcon (colored 1-char), badge, badgeW }
+export function marketplaceRow(cols, opts) {
+  var sel = opts.selected;
+  var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
+  var bg = sel ? BG_SEL : "";
+  var nameStyle = sel ? (BOLD + WHITE) : DIM;
+  var nameW = opts.nameW;
+  var badge = opts.badge || "";
+  var badgeW = opts.badgeW || 0;
+  var starRaw = opts.stars != null ? " ★" + opts.stars : "";
+  var starVis = starRaw.length;
+  var usedW = 2 + 3 + 1 + 1 + badgeW + nameW + 2 + starVis;
+  var descW = Math.max(10, cols - usedW - 2);
+  var descText = trunc(String(opts.desc || "").replace(/\r?\n/g, " "), descW);
+  var descVis = stringWidth(descText);
+  var gapW = Math.max(1, cols - usedW - descVis);
+  var starStr = starRaw ? (YELLOW + " ".repeat(gapW) + "★" + opts.stars + RST) : "";
+  return "  " + bg + arrow + opts.statusIcon + " " + badge + nameStyle + pad(trunc(opts.name, nameW), nameW) + RST + bg + "  " + GRAY + descText + RST + starStr + RST;
+}
 
 export function flash(msg) {
   S.message = msg;

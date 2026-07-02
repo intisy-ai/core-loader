@@ -10,7 +10,7 @@ import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath } from ".
 import { getPluginActions } from "../plugins.js";
 import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
 import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR } from "../env.js";
-import { hints, messageLine, spinnerFrame } from "./common.js";
+import { hints, messageLine, spinnerFrame, marketplaceRow } from "./common.js";
 
 export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
   var sel = i === S.pcursor;
@@ -262,31 +262,17 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       }
 
       var msel = mi === S.mkCursor;
-      var marrow = msel ? (ACCENT + " ❯ " + RST) : "   ";
-      var mbg = msel ? BG_SEL : "";
-      var mns = msel ? (BOLD + WHITE) : DIM;
-      var starRaw = mitem.stars != null ? " ★" + mitem.stars : "";
-      var starVis = starRaw.length;
       var mkNameW = Math.min(30, nameW);
-      // Official/community is conveyed by the group headers (no per-row badge). Under
-      // OpenCode a 4-col method badge shows the default (git=green, npm=cyan); under
-      // Claude everything is git-via-updater, so no badge.
       var methodW = IS_CLAUDE ? 0 : 4;
+      // Official/community is conveyed by the group headers (no per-row badge). Under
+      // OpenCode a 4-col method badge shows the default install method; Claude is git-only.
       var methodBadge = IS_CLAUDE ? ""
         : mitem.installed ? "    "
         : (selectInstallMethod(mitem, S.hasUpdater) === "git" ? (OK + "git " + RST) : (INFO + "npm " + RST));
-      // single status circle combines install + selection state (one circle, not two):
-      //   installed = dim ●, selected = accent ◉, selectable-unselected = ○
+      // status circle: installed = dim ●, selected = accent ◉, selectable = ○
       var circle = mitem.installed ? (DIM + "●" + RST)
         : (S.mkSelected[selectionKey(mitem)] ? (ACCENT + "◉" + RST) : (GRAY + "○" + RST));
-      var circleW = 1;
-      var usedW = 2 + 3 + circleW + 1 + methodW + mkNameW + 2 + starVis;
-      var descW = Math.max(10, cols - usedW - 2);
-      var descText = trunc((mitem.desc || "").replace(/\r?\n/g, " "), descW);
-      // stars sit right after the description (a small fixed gap) instead of being
-      // pushed to the far right edge, which left an ugly whitespace expanse.
-      var starStr = starRaw ? (YELLOW + "  ★" + mitem.stars + RST) : "";
-      pushBody("  " + mbg + marrow + circle + " " + methodBadge + mns + pad(trunc(mitem.name, mkNameW), mkNameW) + RST + mbg + "  " + GRAY + descText + RST + starStr + RST, msel);
+      pushBody(marketplaceRow(cols, { selected: msel, name: mitem.name, nameW: mkNameW, desc: mitem.desc, stars: mitem.stars, statusIcon: circle, badge: methodBadge, badgeW: methodW }), msel);
       if (msel && mitem.url) {
         // indent to align under the name column: 2 + 3(cursor) + 1(circle) + 1(space) + method
         var urlIndent = 7 + methodW;

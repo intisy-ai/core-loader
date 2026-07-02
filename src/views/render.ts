@@ -102,6 +102,9 @@ export function render() {
     visibleBody.unshift(hiddenAbove > 0 ? "  " + GRAY + "     ↑ " + hiddenAbove + " more" + RST : "");
     visibleBody.push(hiddenBelow > 0 ? "  " + GRAY + "     ↓ " + hiddenBelow + " more" + RST : "");
     bodyLines = visibleBody;
+  } else {
+    // content fits — pad with blank rows so the footer always sits at the bottom
+    while (bodyLines.length < maxBody) bodyLines.push("");
   }
 
   // no newline after the last row: writing into the bottom-right corner would
