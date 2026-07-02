@@ -139,7 +139,7 @@ export const HELP_BINDINGS = {
   plugins: [
     ["^v / WS", "Move"], ["Enter", "Plugin actions"], ["Tab", "Installed / Marketplace / Providers"],
     ["F", "Check for updates"], ["R", "Refresh list / catalog"], ["U", "Update selected"],
-    ["A", "Update all"], ["D", "Disable selected"], ["I", "Quick install (marketplace)"],
+    ["A", "Update all"], ["E", "Update updater engine"], ["D", "Disable selected"], ["I", "Quick install (marketplace)"],
     ["/", "Search (marketplace)"], ["<- ->", "Switch page"], ["Q / Esc", "Quit"],
   ],
   mcp: [

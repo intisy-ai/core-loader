@@ -10,7 +10,7 @@ import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH } f
 import { S } from "./state.js";
 import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
-import { getUpdater, setupPlugin, installUpdater } from "./updater.js";
+import { getUpdater, setupPlugin, installUpdater, updateUpdater } from "./updater.js";
 import { openProject, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
 import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
@@ -306,6 +306,15 @@ export function handlePluginKey(key) {
       else if (key === "r") {
         S.pluginItems = buildCombinedPluginList();
         flash("Refreshed.");
+      }
+      else if (key === "e") {
+        S.busy = true;
+        setBusyMessage("Updating the updater engine...");
+        render();
+        var ue = updateUpdater();
+        S.busy = false;
+        S.pluginItems = buildCombinedPluginList();
+        flash(ue ? ue : "Updater engine updated.");
       }
       else if (key === "f") {
         S.busy = true;

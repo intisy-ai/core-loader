@@ -26,8 +26,9 @@ var ACCENT_OPENCODE = E + "38;5;73m";    // teal
 export const ACCENT = String(CLI_CMD || "").indexOf("claude") !== -1 ? ACCENT_CLAUDE : ACCENT_OPENCODE;
 
 // Muted status tones that harmonize with the accent (softer than raw ANSI 31/32/33).
-export const OK = E + "38;5;108m";       // sage green — positive (auto, enabled, true)
+export const OK = E + "38;5;108m";       // sage green — positive (auto, enabled, true, git/active)
 export const BAD = E + "38;5;174m";      // dusty rose — problem (disabled, missing)
+export const INFO = E + "38;5;110m";     // soft blue — secondary/info (npm method)
 
 // Solid box-drawing divider, dim gray. Used for every full-width rule.
 export function rule(width) {

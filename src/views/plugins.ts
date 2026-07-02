@@ -2,14 +2,14 @@
 // Plugins page rendering: plugin rows (git + npm + engine), the installed /
 // marketplace / custom sub-pages, and the action/commit menus.
 
-import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL, stringWidth, pad, trunc, ACCENT, OK, BAD, rule } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL, stringWidth, pad, trunc, ACCENT, OK, BAD, INFO, rule } from "../format.js";
 import { selectionKey } from "../selection.js";
 import { S } from "../state.js";
 import { loadPlugins } from "../config.js";
-import { loadNpmPlugins, getUpdater } from "../updater.js";
+import { loadNpmPlugins, getUpdater, getUpdaterVersion } from "../updater.js";
 import { getPluginActions } from "../plugins.js";
 import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
-import { IS_CLAUDE } from "../env.js";
+import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR } from "../env.js";
 import { hints, messageLine, spinnerFrame } from "./common.js";
 
 export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
@@ -21,7 +21,7 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
   // NPM plugins: simpler read-only row
   if (pitem.type === "npm") {
     var nvstr = pitem.engine
-      ? (pitem.version ? (GRAY + "v" + pitem.version + RST + " " + GREEN + "active" + RST) : (GREEN + "active" + RST))
+      ? (pitem.version ? (GRAY + "v" + pitem.version + RST + " " + OK + "active" + RST) : (OK + "active" + RST))
       : pitem.version ? (GRAY + "v" + pitem.version + RST) : (GRAY + "not installed" + RST);
     var typeLabel = pitem.engine ? (DIM + "engine" + RST) : (GRAY + "npm" + RST);
     pushBody("  " + bg + arrow + nameStyle + pad(trunc(pitem.name, nameW), nameW) + RST + bg + " " + typeLabel + "  " + nvstr + RST, isSelected);
@@ -274,7 +274,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       var methodW = IS_CLAUDE ? 0 : 4;
       var methodBadge = IS_CLAUDE ? ""
         : mitem.installed ? "    "
-        : (selectInstallMethod(mitem, S.hasUpdater) === "git" ? (GREEN + "git " + RST) : (CYAN + "npm " + RST));
+        : (selectInstallMethod(mitem, S.hasUpdater) === "git" ? (OK + "git " + RST) : (INFO + "npm " + RST));
       // single status circle combines install + selection state (one circle, not two):
       //   installed = dim ●, selected = accent ◉, selectable-unselected = ○
       var circle = mitem.installed ? (DIM + "●" + RST)
@@ -346,6 +346,13 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       (updateCount > 0 ? ", " + ACCENT + updateCount + " updates" + GRAY : "") +
       (npmCount > 0 ? ", " + GRAY + npmCount + " npm" + GRAY : "") +
       ")" + RST, false);
+
+  // updater engine version + self-update hint, and where plugins are installed.
+  var uv = getUpdaterVersion();
+  pushBody("  " + DIM + "updater " + (uv ? "v" + uv : "(resolving)") + RST + GRAY + "  ·  press " + WHITE + "E" + GRAY + " to update it" + RST, false);
+  var abbr = function(pth) { return (pth && HOME && String(pth).indexOf(HOME) === 0) ? "~" + String(pth).slice(HOME.length) : pth; };
+  pushBody("  " + DIM + "git: " + abbr(PLUGINS_DIR) + GRAY + "  clones: " + abbr(REPOS_DIR) +
+    (IS_CLAUDE ? "" : GRAY + "  npm: " + abbr(HOME + "/.cache/opencode/packages")) + RST, false);
 
   if (!S.pluginFetched) {
     pushBody("  " + DIM + "Press F to check for updates" + RST, false);

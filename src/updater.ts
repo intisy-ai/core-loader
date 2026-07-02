@@ -1,11 +1,11 @@
 // @ts-nocheck
 // plugin-updater engine discovery and the npm-plugin / repo helpers that wrap it.
 
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, readdirSync, rmSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
-import { PLUGINS_DIR, CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, tuiLog } from "./env.js";
+import { PLUGINS_DIR, CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, IS_CLAUDE, tuiLog } from "./env.js";
 import { S } from "./state.js";
 
 export function getUpdater() {
@@ -145,6 +145,32 @@ export function clearUpdaterCache() {
   S.UPDATER_MODULE = undefined;
   S.UPDATER_PATH = undefined;
   S.hasUpdater = false;
+}
+
+// Self-update the engine — the one plugin permitted to use npm/npx. Claude: drop the
+// cached npx copy (npx pins @latest) and re-fetch+run the newest published version.
+// OpenCode: update the opencode.jsonc npm plugin via the engine's own API. Returns
+// "" on success or an error string.
+export function updateUpdater() {
+  try {
+    if (IS_CLAUDE) {
+      try {
+        var npxRoot = join(homedir(), ".npm", "_npx");
+        for (var entry of readdirSync(npxRoot)) {
+          if (existsSync(join(npxRoot, entry, "node_modules", "plugin-updater"))) rmSync(join(npxRoot, entry), { recursive: true, force: true });
+        }
+      } catch { /* no cache to clear */ }
+      execSync("npx -y plugin-updater@latest run --app claude", { timeout: 180000, stdio: "ignore" });
+    } else {
+      var upd = getUpdater();
+      if (upd && typeof upd.updateNpmPlugin === "function") upd.updateNpmPlugin("plugin-updater", CONFIG_DIR, 0);
+      else execSync("npm update -g plugin-updater", { timeout: 180000, stdio: "ignore" });
+    }
+    clearUpdaterCache();
+    return "";
+  } catch (e) {
+    return "updater self-update failed: " + ((e && e.message) || e);
+  }
 }
 
 export function installUpdater(configDir, appName) {
