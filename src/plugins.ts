@@ -138,9 +138,13 @@ export function getPluginActions(pitem) {
     return a;
   }
   if (pitem.type === "npm") {
-    // managed via opencode.json — no disable state, only update or uninstall
-    a.push({ key: "update-npm", label: "Update npm plugin" });
-    a.push({ key: "uninstall-npm", label: "Uninstall npm plugin (removes from opencode.json)" });
+    // managed via opencode.json — no disable state, only update/uninstall (+ Configure
+    // when the deployed bundle answers `config schema`, same probe as git plugins)
+    if (pitem._cfg && pitem._cfg.items && pitem._cfg.items.length) {
+      a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + pitem._cfg.items.length + ")" });
+    }
+    a.push({ cat: "Update", key: "update-npm", label: "Update npm plugin" });
+    a.push({ cat: "Manage", key: "uninstall-npm", label: "Uninstall npm plugin (removes from opencode.json)" });
     a.push({ key: "cancel", label: "Cancel" });
     return a;
   }
@@ -175,9 +179,11 @@ export function getPluginActions(pitem) {
 
 // Probe a deployed plugin bundle for its config schema. A plugin built on our core
 // answers `node <bundle> config schema` with {name, defaults, current}; anything else
-// (non-core plugins, npm engine row, parse error) yields null -> no Configure action.
+// (non-core plugins, undeployed items, parse error) yields null -> no Configure action.
+// Runs for git AND npm plugins alike — an npm plugin built on our core is just as
+// probeable via its deployed bundle file.
 export function probeConfigSchema(pitem) {
-  if (!pitem || pitem.type === "npm" || !pitem.deployed) return null;
+  if (!pitem || !pitem.deployed) return null;
   var bundle = join(PLUGINS_DIR, (pitem.pluginFile || pitem.name + ".js"));
   if (!existsSync(bundle)) return null;
   try {
