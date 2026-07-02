@@ -107,7 +107,7 @@ export function createAccountMenu() {
     h.pushBody("", false);
     menu.items.forEach(function (it, i) {
       if (it.separator) { h.pushBody("", false); return; }
-      if (it.kind === "heading") { h.pushBody("  " + h.BOLD + h.WHITE + "" + it.label + h.RST, false); return; }
+      if (it.kind === "heading") { h.pushBody("  " + h.BOLD + h.WHITE + it.label + h.RST + (it.hint ? h.DIM + "  " + it.hint + h.RST : ""), false); return; }
       if (it.kind === "note") { h.pushBody("     " + h.DIM + it.label + h.RST, false); return; }   // dim summary (availability)
       if (it.kind === "bar") { pushBar(h, it); return; }
       const sel = i === nav.cur;
