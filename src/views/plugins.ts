@@ -63,17 +63,16 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
 export function buildPlugins(pushBody, pushFoot, cols, barW) {
   var nameW = Math.min(32, Math.max(20, cols - 44));
 
-  // The hasUpdater check reads disk (loadPlugins/loadNpmPlugins) and can shell out
-  // (npm root -g) — far too costly to run on every render, which is what made cursor
-  // navigation lag. Cache it: recompute only while it isn't yet true (i.e. on the
-  // "updater missing" prompt, which has no list to navigate). Once the updater is
-  // present it can't vanish mid-session, so the true result is cached permanently and
-  // no navigation render touches the disk.
+  // "hasUpdater" must mean the updater is actually INSTALLED AND LOADABLE — not
+  // merely listed in plugins.json. Basing it on the listing (name.includes("updater"))
+  // made the git-plugins tab look usable when the updater was listed-but-not-installed:
+  // every action then hit getUpdater()===null and silently no-op'd ("looked like it was
+  // updating"). getUpdater() resolves + loads the deployed bundle, so it's the true
+  // functional test. Cache it: recompute only while not yet loaded (the "updater
+  // missing" prompt has no list to navigate); once loaded it can't vanish mid-session.
   if (S.hasUpdater !== true) {
-    var plugins = loadPlugins();
-    S.hasUpdater = plugins.some(function(p) { return p.name.includes("updater") || (p.url && p.url.includes("updater")); })
-      || loadNpmPlugins().some(function(p) { return p.name.includes("updater"); })
-      || !!getUpdater();
+    var upd = getUpdater();
+    S.hasUpdater = !!(upd && typeof upd.updatePluginPublic === "function");
   }
   var hasUpdater = S.hasUpdater;
 
