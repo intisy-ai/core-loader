@@ -73,7 +73,11 @@ export function createAccountMenu() {
     tuiApi.runBlocking(async function () {
       try {
         const mod = await import(handlerPath);
-        if (typeof mod.menuModel === "function") { nav.stack = [mod.menuModel]; const m = curMenu(); nav.cur = m ? selectableIdx(m.items, -1, 1) : 0; nav.active = true; tuiApi.setTextInput(true); }
+        if (typeof mod.menuModel === "function") {
+          nav.stack = [mod.menuModel]; const m = curMenu(); nav.cur = m ? selectableIdx(m.items, -1, 1) : 0; nav.active = true; tuiApi.setTextInput(true);
+          // let the menu fetch live data (e.g. quota) then re-render so bars appear
+          if (m && typeof m.onOpen === "function") Promise.resolve(m.onOpen()).then(function () { if (tuiApi.refresh) tuiApi.refresh(); }).catch(function () {});
+        }
         else if (typeof mod.menu === "function") await mod.menu();   // fallback: provider has no model, use its own menu
         else process.stdout.write(label + " has no menu.\n");
       } catch (e) { process.stdout.write("Menu failed: " + (e && e.message || e) + "\n"); }
