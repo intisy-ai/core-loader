@@ -426,7 +426,10 @@ export function buildMarketplaceList() {
   // catalog already carries one) so it's installable from the marketplace even with
   // no updater present; it's marked installed/available from S.hasUpdater.
   if (!res.some(function(m) { return m.isUpdater || m.name === "plugin-updater"; })) {
-    res.unshift({ name: "plugin-updater", desc: "Plugin engine — install to manage git plugins", isUpdater: true, official: true, installed: !!S.hasUpdater });
+    var updaterDesc = S.hasUpdater
+      ? "Plugin engine — manages git plugins (installed)"
+      : "Plugin engine — install to manage git plugins";
+    res.unshift({ name: "plugin-updater", desc: updaterDesc, isUpdater: true, official: true, installed: !!S.hasUpdater });
   }
   if (S.inputBuf) {
     var q = S.inputBuf.toLowerCase();
