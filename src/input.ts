@@ -13,7 +13,7 @@ import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, s
 import { getUpdater, setupPlugin } from "./updater.js";
 import { openProject, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
-import { buildMarketplaceList, installMarketplacePlugin, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
+import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
 import { getInstalledMcpList, buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions } from "./mcp.js";
 import { flash } from "./views/common.js";
@@ -170,13 +170,15 @@ export function handlePluginKey(key) {
           var action = mkActs[S.mkAcursor].key;
           if (action === "install") {
             S.mkMode = "browse";
+            var method = selectInstallMethod(mitem, S.hasUpdater);
+            var install = method === "git" ? installMarketplacePlugin : installViaNpm;
             S.busy = true;
-            setBusyMessage("Installing " + (mitem.name || mitem.repoName) + "...");
+            setBusyMessage("Installing " + (mitem.name || mitem.repoName) + " (" + method + ")...");
             render();
-            installMarketplacePlugin(mitem, function(merr) {
+            install(mitem, function(merr) {
               S.busy = false;
               if (merr) flash(merr);
-              else { flash("Installed! Restart to activate."); S.pluginItems = buildCombinedPluginList(); }
+              else { flash("Installed (" + method + ")! Restart to activate."); S.pluginItems = buildCombinedPluginList(); }
               S.marketplaceItems = buildMarketplaceList();
               if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
               render();
@@ -240,9 +242,11 @@ export function handlePluginKey(key) {
               render();
               return;
             }
-            setBusyMessage("Installing " + (k + 1) + "/" + batch.length + "...");
+            var batchMethod = selectInstallMethod(batch[k], S.hasUpdater);
+            var batchInstall = batchMethod === "git" ? installMarketplacePlugin : installViaNpm;
+            setBusyMessage("Installing " + (k + 1) + "/" + batch.length + " (" + batchMethod + ")...");
             render();
-            installMarketplacePlugin(batch[k], function(berr) {
+            batchInstall(batch[k], function(berr) {
               if (berr) failed.push(batch[k].name || batch[k].repoName);
               installNext(k + 1);
             });
@@ -251,13 +255,15 @@ export function handlePluginKey(key) {
         } else if (S.marketplaceItems.length > 0) {
           var quickItem = S.marketplaceItems[S.mkCursor];
           if (quickItem.installed) { flash(quickItem.name + " is already installed."); return; }
+          var quickMethod = selectInstallMethod(quickItem, S.hasUpdater);
+          var quickInstall = quickMethod === "git" ? installMarketplacePlugin : installViaNpm;
           S.busy = true;
-          setBusyMessage("Installing " + (quickItem.name || quickItem.repoName) + "...");
+          setBusyMessage("Installing " + (quickItem.name || quickItem.repoName) + " (" + quickMethod + ")...");
           render();
-          installMarketplacePlugin(quickItem, function(quickErr) {
+          quickInstall(quickItem, function(quickErr) {
             S.busy = false;
             if (quickErr) flash(quickErr);
-            else { flash("Installed! Restart to activate."); S.pluginItems = buildCombinedPluginList(); }
+            else { flash("Installed (" + quickMethod + ")! Restart to activate."); S.pluginItems = buildCombinedPluginList(); }
             S.marketplaceItems = buildMarketplaceList();
             if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
             render();

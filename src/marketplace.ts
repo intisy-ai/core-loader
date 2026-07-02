@@ -3,13 +3,13 @@
 // on-disk catalog cache, list building, and one-shot plugin install via git.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
-import { join, dirname } from "path";
 import { exec } from "child_process";
-import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, APP_NAME, REPOS_DIR, tuiLog } from "./env.js";
+import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, APP_NAME, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
-import { loadPlugins, savePlugins, catalogCacheHours } from "./config.js";
+import { loadPlugins, catalogCacheHours } from "./config.js";
 import { scheduleRender } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
+import { getUpdater } from "./updater.js";
 
 export function invalidateCatalogCache() {
   try { unlinkSync(CATALOG_CACHE_PATH); } catch {}
@@ -437,25 +437,48 @@ export function buildMarketplaceList() {
   return res;
 }
 
-// Async so the git clone runs off the main thread (the event loop stays free to
-// animate the spinner and render). Every caller passes a `done(err)` callback:
-// err is null on success, or an error string.
+// Pure rule: prefer git via the updater unless the catalog entry explicitly
+// hints npm, or no updater is loadable — then npm is the only option.
+export function selectInstallMethod(entry, hasUpdater) {
+  if (hasUpdater && entry.install !== "npm") return "git";
+  return "npm";
+}
+
+// Delegates to plugin-updater instead of doing the clone ourselves — the loader
+// stops duplicating the updater's job. When the module is already loaded, call
+// its API directly; otherwise fall back to a transient npx invocation (the one
+// sanctioned direct npx call) so install still works before the updater is set up.
+// Async so it runs off the main thread (the event loop stays free to animate the
+// spinner and render). Every caller passes a `done(err)` callback: err is null on
+// success, or an error string.
 export function installMarketplacePlugin(entry, done) {
   var repoName = entry.repoName || entry.name;
   var url = entry.url;
-  var plugins = loadPlugins();
-  plugins.push({ name: repoName, url: url, autoUpdate: true, enabled: true });
-  savePlugins(plugins);
-  var folderName = entry.full_name || (entry.author + "/" + repoName);
-  var dir = join(REPOS_DIR, folderName);
-  if (!existsSync(dir)) {
-    var parentDir = dirname(dir);
-    if (!existsSync(parentDir)) try { mkdirSync(parentDir, { recursive: true }); } catch {}
-    exec("git clone --recurse-submodules " + url + " " + folderName, { cwd: REPOS_DIR, timeout: 60000 }, function(err) {
-      done(err ? ("Clone failed: " + ((err && err.message) || err)) : null);
-    });
+  var updater = getUpdater();
+  if (updater && typeof updater.updatePluginPublic === "function") {
+    Promise.resolve(updater.updatePluginPublic(repoName, url)).then(function() { done(null); })
+      .catch(function(e) { done("Install failed: " + ((e && e.message) || e)); });
     return;
   }
-  done(null);
+  var app = APP_NAME === "Claude Code" ? "claude" : "opencode";
+  exec("npx -y plugin-updater@latest add " + url + " --app " + app, { timeout: 120000 }, function(err) {
+    done(err ? ("Install failed: " + ((err && err.message) || err)) : null);
+  });
+}
+
+// Secondary/fallback install method: npm instead of git. Uses the updater's
+// installNpmPlugin when loaded (keeps opencode.json/config in sync); otherwise
+// falls back to a plain global npm install.
+export function installViaNpm(entry, done) {
+  var name = entry.repoName || entry.name;
+  var updater = getUpdater();
+  if (updater && typeof updater.installNpmPlugin === "function") {
+    try { var e = updater.installNpmPlugin(name, CONFIG_DIR) || ""; done(e || null); }
+    catch (err) { done("npm install failed: " + ((err && err.message) || err)); }
+    return;
+  }
+  exec("npm install -g " + name, { timeout: 120000 }, function(err) {
+    done(err ? ("npm install failed: " + ((err && err.message) || err)) : null);
+  });
 }
 
