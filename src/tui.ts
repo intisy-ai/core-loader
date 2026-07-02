@@ -277,21 +277,34 @@ function onData(buf) {
         const { execSync } = require('child_process');
         const fs = require('fs');
         const path = require('path');
-        execSync("npm install -g plugin-updater", { stdio: "inherit" });
-        const ocPath = path.join(CONFIG_DIR, "opencode.json");
-        var ocData = {};
-        if (fs.existsSync(ocPath)) {
-          try { ocData = JSON.parse(fs.readFileSync(ocPath, "utf-8").replace(/^\s*\/\/[^\n]*/gm, "")); } catch {}
+        if (APP_NAME === "Claude Code") {
+          // Claude uses the transient npx engine via the SessionStart hook; register it.
+          const settingsPath = path.join(CONFIG_DIR, "settings.json");
+          let settings = {};
+          try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")); } catch {}
+          const hooks = settings.hooks || (settings.hooks = {});
+          const sessionStart = hooks.SessionStart || (hooks.SessionStart = []);
+          if (!JSON.stringify(sessionStart).includes("plugin-updater")) {
+            sessionStart.push({ hooks: [{ type: "command", command: "npx -y plugin-updater@latest run --app claude" }] });
+          }
+          fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+        } else {
+          execSync("npm install -g plugin-updater", { stdio: "inherit" });
+          const ocPath = path.join(CONFIG_DIR, "opencode.json");
+          let ocData = {};
+          if (fs.existsSync(ocPath)) {
+            try { ocData = JSON.parse(fs.readFileSync(ocPath, "utf-8").replace(/^\s*\/\/[^\n]*/gm, "")); } catch {}
+          }
+          if (!Array.isArray(ocData.plugin)) ocData.plugin = [];
+          if (!ocData.plugin.includes("plugin-updater")) ocData.plugin.unshift("plugin-updater");
+          fs.writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");
         }
-        if (!Array.isArray(ocData.plugin)) ocData.plugin = [];
-        if (!ocData.plugin.includes("plugin-updater")) ocData.plugin.unshift("plugin-updater");
-        fs.writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");
       } catch(e) {
         tuiLog("Failed to install updater: " + e.message);
         flash("Failed to install updater: " + e.message);
-        setTimeout(function(){}, 2000);
       }
       S.globalKeyHandler = null;
+      S.hasUpdater = false;   // re-detect on next render (Claude: only real after next launch populates npx cache)
       S.pluginItems = buildCombinedPluginList();
       render();
     }
