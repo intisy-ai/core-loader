@@ -136,13 +136,14 @@ export function migrateConfigs() {
 }
 
 export function loadPlugins() {
+  // The plugin list comes ONLY from the plugin-updater API — no direct plugins.json
+  // fallback. Without a functional updater there is no way to act on plugins, so the
+  // list must be empty (the Plugins tab then shows only the install-updater prompt).
+  // Reading plugins.json directly here is what made the tab look usable with no updater.
   var updater = getUpdater();
   if (updater && typeof updater.getPlugins === "function") {
-    try { return updater.getPlugins(CONFIG_DIR); } catch {}
+    try { return updater.getPlugins(CONFIG_DIR) || []; } catch {}
   }
-  try { if (existsSync(PLUGINS_JSON)) return JSON.parse(readFileSync(PLUGINS_JSON, "utf-8")); } catch {}
-  var legacy = join(CONFIG_DIR, "plugins.json");
-  try { if (existsSync(legacy)) return JSON.parse(readFileSync(legacy, "utf-8")); } catch {}
   return [];
 }
 
