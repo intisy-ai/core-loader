@@ -9,6 +9,7 @@ import { loadPlugins } from "../config.js";
 import { loadNpmPlugins, getUpdater } from "../updater.js";
 import { getPluginActions } from "../plugins.js";
 import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
+import { IS_CLAUDE } from "../env.js";
 import { hints, messageLine, spinnerFrame } from "./common.js";
 
 export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
@@ -19,7 +20,7 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
 
   // NPM plugins: simpler read-only row
   if (pitem.type === "npm") {
-    var nvstr = pitem.version ? (GRAY + "v" + pitem.version + RST) : (GRAY + "not installed" + RST);
+    var nvstr = pitem.engine ? (GREEN + "active" + RST) : pitem.version ? (GRAY + "v" + pitem.version + RST) : (GRAY + "not installed" + RST);
     var typeLabel = pitem.engine ? (DIM + "engine" + RST) : (GRAY + "npm" + RST);
     pushBody("  " + bg + arrow + nameStyle + pad(trunc(pitem.name, nameW), nameW) + RST + bg + " " + typeLabel + "  " + nvstr + RST, isSelected);
     if (sel) {
@@ -265,12 +266,12 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       var starVis = starRaw.length;
       var mkNameW = Math.min(30, nameW);
       // official badge "◆ " occupies 2 chars; non-official gets 2 spaces to keep columns aligned
-      var officialBadge = mitem.official ? (ACCENT + "◆ " + RST) : "  ";
-      var officialBadgeW = 2;
-      // default install-method badge (4-col, kept for every row so names stay aligned):
-      //   git (green) = installed via the updater, npm (cyan) = as an npm plugin.
-      var methodW = 4;
-      var methodBadge = mitem.installed ? "    "
+      // Official/community is already conveyed by the group headers, so no per-row
+      // official badge. Under OpenCode a 4-col install-method badge shows the default
+      // (git=green via updater, npm=cyan); under Claude everything is git, so no badge.
+      var methodW = IS_CLAUDE ? 0 : 4;
+      var methodBadge = IS_CLAUDE ? ""
+        : mitem.installed ? "    "
         : mitem.isUpdater ? (DIM + "eng " + RST)
         : (selectInstallMethod(mitem, S.hasUpdater) === "git" ? (GREEN + "git " + RST) : (CYAN + "npm " + RST));
       // single status circle combines install + selection state (one circle, not two):
@@ -278,16 +279,17 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       var circle = mitem.installed ? (DIM + "●" + RST)
         : (S.mkSelected[selectionKey(mitem)] ? (ACCENT + "◉" + RST) : (GRAY + "○" + RST));
       var circleW = 1;
-      var usedW = 2 + 3 + circleW + 1 + officialBadgeW + methodW + mkNameW + 2 + starVis;
+      var usedW = 2 + 3 + circleW + 1 + methodW + mkNameW + 2 + starVis;
       var descW = Math.max(10, cols - usedW - 2);
       var descText = trunc((mitem.desc || "").replace(/\r?\n/g, " "), descW);
       var descVis = stringWidth(descText);
       var gapW = Math.max(1, cols - usedW - descVis);
       var starStr = starRaw ? (YELLOW + " ".repeat(gapW) + "★" + mitem.stars + RST) : "";
-      pushBody("  " + mbg + marrow + circle + " " + officialBadge + methodBadge + mns + pad(trunc(mitem.name, mkNameW), mkNameW) + RST + mbg + "  " + GRAY + descText + RST + starStr + RST, msel);
+      pushBody("  " + mbg + marrow + circle + " " + methodBadge + mns + pad(trunc(mitem.name, mkNameW), mkNameW) + RST + mbg + "  " + GRAY + descText + RST + starStr + RST, msel);
       if (msel && mitem.url) {
-        // indent to align under the name column: 2 + 3(cursor) + 1(circle) + 1(space) + 2(badge) + 4(method) = 13
-        pushBody("  " + GRAY + "           " + trunc(mitem.url, cols - 13) + RST, msel);
+        // indent to align under the name column: 2 + 3(cursor) + 1(circle) + 1(space) + method
+        var urlIndent = 7 + methodW;
+        pushBody("  " + GRAY + " ".repeat(urlIndent - 2) + trunc(mitem.url, cols - urlIndent) + RST, msel);
       }
     }
     pushBody("", false);
@@ -359,9 +361,10 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     buildPluginItem(pushBody, i, pitem, nameW, cols, i === S.pcursor);
   }
 
-  // Always surface the npm section so it never looks "gone"; when empty, point to
-  // the Marketplace. (plugin-updater is excluded — it's the engine, shown there.)
-  if (!hadNpm) {
+  // npm plugins are an OpenCode-only concept (opencode.jsonc). Under Claude there is
+  // no npm section at all. Under OpenCode, surface it even when empty so it's clearly
+  // present, pointing to the Marketplace.
+  if (!hadNpm && !IS_CLAUDE) {
     pushBody("", false);
     pushBody("  " + BOLD + WHITE + "npm plugins" + RST, false);
     pushBody("  " + DIM + "none installed — add from the Marketplace" + RST, false);

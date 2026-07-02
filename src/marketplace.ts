@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { exec } from "child_process";
-import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, APP_NAME, CONFIG_DIR, tuiLog } from "./env.js";
+import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, APP_NAME, CONFIG_DIR, IS_CLAUDE, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { loadPlugins, catalogCacheHours } from "./config.js";
 import { scheduleRender } from "./views/common.js";
@@ -470,6 +470,9 @@ export function getMarketplaceActions(item, hasUpdater) {
     // already installed — no install action
   } else if (item.isUpdater) {
     acts.push({ key: "install", label: "Install updater" });
+  } else if (IS_CLAUDE) {
+    // Claude has no npm-plugin mechanism — every plugin installs git-via-updater.
+    acts.push({ key: "install-git", label: "Install" });
   } else if (hasUpdater) {
     var def = selectInstallMethod(item, hasUpdater);
     var git = { key: "install-git", label: "Install via updater (git)" + (def === "git" ? "  · default" : "") };

@@ -13,6 +13,9 @@ process.env.PLUGIN_UPDATER_LIBRARY_MODE = "1";
 export const HOME = homedir();
 export const APP_NAME = process.env.HUB_APP_NAME || "OpenCode";
 export const CLI_CMD = process.env.HUB_CLI_CMD || "opencode";
+// Claude Code has no npm-plugin mechanism (npm plugins are an opencode.jsonc concept),
+// so the loader hides the npm section + npm install option under Claude.
+export const IS_CLAUDE = String(CLI_CMD).indexOf("claude") !== -1 || String(APP_NAME).indexOf("Claude") !== -1;
 export const NPM_PKG = process.env.HUB_NPM_PKG || "opencode-ai";
 export const CONFIG_DIR = process.env.HUB_CONFIG_DIR || join(HOME, ".config", "opencode");
 export const CACHE_PKG_DIR = process.env.HUB_CACHE_PKG_DIR || join(CONFIG_DIR, "cache", "node_modules");

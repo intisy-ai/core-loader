@@ -103,20 +103,23 @@ export function fetchPluginRemotes(pluginItems, done) {
 export function buildCombinedPluginList() {
   var git = buildPluginList();
   var savedPlugins = loadPlugins();
-  // plugin-updater is the engine, not a user-managed npm plugin — it's shown in the
-  // Marketplace / gate, never as an npm row (it's transient, so it has no version and
-  // would misleadingly read "not installed").
-  var npm = loadNpmPlugins().filter(function(np) { return np.name !== "plugin-updater"; }).map(function(np) {
+  // Under OpenCode plugin-updater IS an npm plugin (opencode.jsonc) — list it as the
+  // active engine. It's transient (opencode fetches it at runtime) so it has no
+  // resolvable version; mark it active rather than "not installed". Under Claude
+  // loadNpmPlugins is empty (no opencode.jsonc), so no npm rows appear at all.
+  var npm = loadNpmPlugins().map(function(np) {
+    var isEngine = np.name === "plugin-updater";
     return {
       type: "npm",
+      engine: isEngine,
       name: np.name,
       version: np.version,
       raw: np.raw,
-      // npm plugins have no disable state — the app loads whatever opencode.json lists
+      // npm plugins have no disable state — the app loads whatever opencode.jsonc lists
       enabled: true,
       autoUpdate: false,
-      installed: !!np.version,
-      deployed: !!np.version,
+      installed: isEngine ? true : !!np.version,
+      deployed: isEngine ? true : !!np.version,
       updateAvail: false,
       localHead: "",
       remoteHead: "",
