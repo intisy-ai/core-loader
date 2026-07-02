@@ -77,28 +77,15 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
   var hasUpdater = S.hasUpdater;
 
   if (!hasUpdater) {
-    if (process.env.CC_LAUNCHER === "1") {
-      pushBody("  " + BOLD + BAD + "Updater Plugin Missing" + RST, false);
-      pushBody("  The hub requires an updater plugin to manage installations.", false);
-      pushBody("", false);
-      pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install the default updater plugin.", false);
-      pushBody("", false);
-      pushFoot("  " + rule(barW));
-      pushFoot(hints([["enter", "install"], ["q", "quit"]]));
-      S.globalKeyHandler = "updater_install";
-      return;
-    } else {
-      // OC mode: same interactive install prompt as CC mode
-      pushBody("  " + BOLD + BAD + "Updater Plugin Missing" + RST, false);
-      pushBody("  The hub requires an updater plugin to manage installations.", false);
-      pushBody("", false);
-      pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install the default updater plugin.", false);
-      pushBody("", false);
-      pushFoot("  " + rule(barW));
-      pushFoot(hints([["enter", "install"], ["q", "quit"]]));
-      S.globalKeyHandler = "updater_install";
-      return;
-    }
+    pushBody("  " + BOLD + BAD + "Updater Plugin Missing" + RST, false);
+    pushBody("  The hub requires an updater plugin to manage installations.", false);
+    pushBody("", false);
+    pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install the default updater plugin.", false);
+    pushBody("", false);
+    pushFoot("  " + rule(barW));
+    pushFoot(hints([["enter", "install"], ["q", "quit"]]));
+    S.globalKeyHandler = "updater_install";
+    return;
   } else {
     if (S.globalKeyHandler === "updater_install") S.globalKeyHandler = null;
   }

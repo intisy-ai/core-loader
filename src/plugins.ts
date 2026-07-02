@@ -125,28 +125,6 @@ export function buildCombinedPluginList() {
       pluginFile: ""
     };
   });
-  if (getUpdater() && !npm.some(function(p) { return p.name === "plugin-updater"; })) {
-    npm.push({
-      type: "npm",
-      engine: true,
-      name: "plugin-updater",
-      version: getUpdaterVersion(),
-      raw: "plugin-updater",
-      enabled: true,
-      autoUpdate: true,
-      installed: true,
-      deployed: true,
-      updateAvail: false,
-      localHead: "",
-      remoteHead: "",
-      latestTag: "",
-      subject: "plugin engine",
-      folderName: "",
-      url: "",
-      hasBuild: false,
-      pluginFile: ""
-    });
-  }
   return git.concat(npm);
 }
 
