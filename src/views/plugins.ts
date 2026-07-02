@@ -347,6 +347,8 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       (npmCount > 0 ? ", " + GRAY + npmCount + " npm" + GRAY : "") +
       ")" + RST, false);
 
+  pushBody("", false);   // spacer between the count and the engine/locations block
+
   // where plugins live; under Claude the engine's version/update/location live here too
   // (no npm section), under OpenCode the engine is its own npm row so it's omitted here.
   var abbr = function(pth) { return (pth && HOME && String(pth).indexOf(HOME) === 0) ? "~" + String(pth).slice(HOME.length) : pth; };
@@ -358,6 +360,8 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
   } else {
     pushBody("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + " · npm " + abbr(HOME + "/.cache/opencode/packages") + RST, false);
   }
+
+  pushBody("", false);   // spacer between the locations block and the plugin list
 
   if (!S.pluginFetched) {
     pushBody("  " + DIM + "Press F to check for updates" + RST, false);
