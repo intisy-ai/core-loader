@@ -8,6 +8,27 @@
 
 import { existsSync } from "fs";
 
+const BAR_WIDTH = 22;
+
+// Map the model's semantic color to the LOADER palette (muted tones) — the
+// auth-login renderer (select.ts) keeps the raw ANSI cyan/green/red instead.
+function paletteColor(color, h) {
+  if (color === "red") return h.BAD;
+  if (color === "green") return h.OK;
+  if (color === "yellow") return h.YELLOW;
+  if (color === "cyan") return h.INFO || h.ACCENT;
+  return h.GRAY;
+}
+
+// Claude /usage-style bar row (filled = fraction USED), drawn in palette tones.
+function pushBar(h, it) {
+  const frac = Math.max(0, Math.min(1, it.fraction || 0));
+  const filled = Math.round(frac * BAR_WIDTH);
+  const bar = h.ACCENT + "▓".repeat(filled) + h.RST + h.DIM + "░".repeat(BAR_WIDTH - filled) + h.RST;
+  h.pushBody("     " + h.BOLD + h.WHITE + it.label + h.RST + "  " + bar + " " + h.GRAY + Math.round(frac * 100) + "% used" + h.RST, false);
+  if (it.reset) h.pushBody("     " + h.DIM + "Resets " + it.reset + h.RST, false);
+}
+
 export function createAccountMenu() {
   // per-instance state: a stack of menu builders, plus an optional text-input field
   const nav = { active: false, cur: 0, stack: [], input: null, inputBuf: "" };
@@ -87,10 +108,13 @@ export function createAccountMenu() {
     menu.items.forEach(function (it, i) {
       if (it.separator) { h.pushBody("", false); return; }
       if (it.kind === "heading") { h.pushBody("  " + h.BOLD + h.WHITE + "" + it.label + h.RST, false); return; }
+      if (it.kind === "note") { h.pushBody("     " + h.DIM + it.label + h.RST, false); return; }   // dim summary (availability)
+      if (it.kind === "bar") { pushBar(h, it); return; }
       const sel = i === nav.cur;
-      // match the loader's row style: 3-space gutter / " ❯ ", BG_SEL when selected
+      // match the loader's row style: 3-space gutter / " ❯ ", BG_SEL when selected;
+      // unselected items follow the palette (paletteColor), not raw ANSI.
       const gutter = sel ? (h.ACCENT + " ❯ " + h.RST) : "   ";
-      const body = sel ? (h.BG_SEL + h.BOLD + h.WHITE) : (it.color === "red" ? h.RED : h.GRAY);
+      const body = sel ? (h.BG_SEL + h.BOLD + h.WHITE) : paletteColor(it.color, h);
       h.pushBody("  " + gutter + body + it.label + h.RST + (it.hint ? h.DIM + "  " + it.hint + h.RST : ""), sel);
     });
     h.pushFoot("  " + h.GRAY + "─".repeat(h.barW) + h.RST);

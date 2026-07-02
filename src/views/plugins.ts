@@ -310,7 +310,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
         MAGENTA: MAGENTA, CYAN: CYAN, RED: RED,
         // palette tokens so custom tabs (e.g. the Providers tab) match the theme:
         // ACCENT = the per-loader accent, OK/BAD = muted status tones.
-        ACCENT: ACCENT, OK: OK, BAD: BAD,
+        ACCENT: ACCENT, OK: OK, BAD: BAD, INFO: INFO,
         barW: barW
       });
     } catch(e) {}
