@@ -461,6 +461,28 @@ export function selectInstallMethod(entry, hasUpdater) {
   return "npm";
 }
 
+// The action-menu entries for a marketplace item. Built once and shared by the
+// renderer and the input handler so their cursor indices always line up. Offers
+// both install methods (default first) so the user can choose git-via-updater or npm.
+export function getMarketplaceActions(item, hasUpdater) {
+  var acts = [];
+  if (item.installed) {
+    // already installed — no install action
+  } else if (item.isUpdater) {
+    acts.push({ key: "install", label: "Install updater" });
+  } else if (hasUpdater) {
+    var def = selectInstallMethod(item, hasUpdater);
+    var git = { key: "install-git", label: "Install via updater (git)" + (def === "git" ? "  · default" : "") };
+    var npm = { key: "install-npm", label: "Install as npm plugin" + (def === "npm" ? "  · default" : "") };
+    if (def === "git") { acts.push(git); acts.push(npm); } else { acts.push(npm); acts.push(git); }
+  } else {
+    acts.push({ key: "install-npm", label: "Install as npm plugin" });
+  }
+  if (item.url) acts.push({ key: "browser", label: "Open in browser" });
+  acts.push({ key: "cancel", label: "Cancel" });
+  return acts;
+}
+
 // Git install runs entirely in a CHILD PROCESS via plugin-updater's `add`, which
 // registers the plugin in plugins.json AND clones/builds/deploys it — so the loader
 // never writes plugins.json itself and the git clone + npm install + build (all

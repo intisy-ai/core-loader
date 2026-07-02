@@ -8,6 +8,7 @@ import { S } from "../state.js";
 import { loadPlugins } from "../config.js";
 import { loadNpmPlugins, getUpdater } from "../updater.js";
 import { getPluginActions } from "../plugins.js";
+import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
 import { hints, messageLine, spinnerFrame } from "./common.js";
 
 export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
@@ -213,9 +214,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
         pushBody("  " + BOLD + WHITE + "" + trunc(mitem.name, cols - 6) + RST, false);
         pushBody("  " + GRAY + trunc(mitem.desc || mitem.command + " " + (mitem.args || []).join(" "), cols - 6) + RST, false);
         pushBody("", false);
-        var mkActs = mitem.installed ? [] : [{ key: "install", label: "Install" }];
-        if (mitem.url) mkActs.push({ key: "browser", label: "Open in browser" });
-        mkActs.push({ key: "cancel", label: "Cancel" });
+        var mkActs = getMarketplaceActions(mitem, S.hasUpdater);
         for (var ai = 0; ai < mkActs.length; ai++) {
           var a = mkActs[ai];
           var aSel = ai === S.mkAcursor;
@@ -268,21 +267,27 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       // official badge "◆ " occupies 2 chars; non-official gets 2 spaces to keep columns aligned
       var officialBadge = mitem.official ? (ACCENT + "◆ " + RST) : "  ";
       var officialBadgeW = 2;
+      // default install-method badge (4-col, kept for every row so names stay aligned):
+      //   git (green) = installed via the updater, npm (cyan) = as an npm plugin.
+      var methodW = 4;
+      var methodBadge = mitem.installed ? "    "
+        : mitem.isUpdater ? (DIM + "eng " + RST)
+        : (selectInstallMethod(mitem, S.hasUpdater) === "git" ? (GREEN + "git " + RST) : (CYAN + "npm " + RST));
       // single status circle combines install + selection state (one circle, not two):
       //   installed = dim ●, selected = accent ◉, selectable-unselected = ○
       var circle = mitem.installed ? (DIM + "●" + RST)
         : (S.mkSelected[selectionKey(mitem)] ? (ACCENT + "◉" + RST) : (GRAY + "○" + RST));
       var circleW = 1;
-      var usedW = 2 + 3 + circleW + 1 + officialBadgeW + mkNameW + 2 + starVis;
+      var usedW = 2 + 3 + circleW + 1 + officialBadgeW + methodW + mkNameW + 2 + starVis;
       var descW = Math.max(10, cols - usedW - 2);
       var descText = trunc((mitem.desc || "").replace(/\r?\n/g, " "), descW);
       var descVis = stringWidth(descText);
       var gapW = Math.max(1, cols - usedW - descVis);
       var starStr = starRaw ? (YELLOW + " ".repeat(gapW) + "★" + mitem.stars + RST) : "";
-      pushBody("  " + mbg + marrow + circle + " " + officialBadge + mns + pad(trunc(mitem.name, mkNameW), mkNameW) + RST + mbg + "  " + GRAY + descText + RST + starStr + RST, msel);
+      pushBody("  " + mbg + marrow + circle + " " + officialBadge + methodBadge + mns + pad(trunc(mitem.name, mkNameW), mkNameW) + RST + mbg + "  " + GRAY + descText + RST + starStr + RST, msel);
       if (msel && mitem.url) {
-        // indent to align under the name column: 2 + 3(cursor) + 1(circle) + 1(space) + 2(badge) = 9
-        pushBody("  " + GRAY + "       " + trunc(mitem.url, cols - 9) + RST, msel);
+        // indent to align under the name column: 2 + 3(cursor) + 1(circle) + 1(space) + 2(badge) + 4(method) = 13
+        pushBody("  " + GRAY + "           " + trunc(mitem.url, cols - 13) + RST, msel);
       }
     }
     pushBody("", false);

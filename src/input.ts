@@ -13,7 +13,7 @@ import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, s
 import { getUpdater, setupPlugin, installUpdater } from "./updater.js";
 import { openProject, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
-import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
+import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
 import { getInstalledMcpList, buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions } from "./mcp.js";
 import { flash } from "./views/common.js";
@@ -79,14 +79,14 @@ export function switchPluginSubPage() {
 // Route a marketplace entry to the right installer: the engine itself (isUpdater)
 // goes through the app-aware installUpdater; everything else through the git/npm
 // path selectInstallMethod chooses. Calls done(errOrNull, methodLabel).
-function marketplaceInstall(item, done) {
+function marketplaceInstall(item, done, forceMethod) {
   if (item.isUpdater) {
     var uerr = installUpdater(CONFIG_DIR, APP_NAME);
     S.hasUpdater = false;   // re-detect on next render now the engine is set up
     done(uerr || null, "updater");
     return;
   }
-  var method = selectInstallMethod(item, S.hasUpdater);
+  var method = forceMethod || selectInstallMethod(item, S.hasUpdater);
   var install = method === "git" ? installMarketplacePlugin : installViaNpm;
   install(item, function(err) { done(err, method); });
 }
@@ -183,14 +183,13 @@ export function handlePluginKey(key) {
       if (S.mkMode === "actions") {
         var mitem = S.marketplaceItems[S.mkCursor];
         if (!mitem) { S.mkMode = "browse"; return; }
-        var mkActs = mitem.installed ? [] : [{ key: "install", label: "Install" }];
-        if (mitem.url) mkActs.push({ key: "browser", label: "Open in browser" });
-        mkActs.push({ key: "cancel", label: "Cancel" });
+        var mkActs = getMarketplaceActions(mitem, S.hasUpdater);
         if (key === "up" || key === "w") { S.mkAcursor = Math.max(0, S.mkAcursor - 1); }
         else if (key === "down" || key === "s") { S.mkAcursor = Math.min(mkActs.length - 1, S.mkAcursor + 1); }
         else if (key === "enter" || key === "space") {
           var action = mkActs[S.mkAcursor].key;
-          if (action === "install") {
+          if (action === "install" || action === "install-git" || action === "install-npm") {
+            var forceMethod = action === "install-git" ? "git" : action === "install-npm" ? "npm" : undefined;
             S.mkMode = "browse";
             S.busy = true;
             setBusyMessage("Installing " + (mitem.name || mitem.repoName) + "...");
@@ -202,7 +201,7 @@ export function handlePluginKey(key) {
               S.marketplaceItems = buildMarketplaceList();
               if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
               render();
-            });
+            }, forceMethod);
             return;
           } else if (action === "browser" && mitem.url) {
             try {
