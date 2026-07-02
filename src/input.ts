@@ -242,10 +242,15 @@ export function handlePluginKey(key) {
         flash("Refreshing catalog...");
       }
       else if (key === "i") {
-        var batch = selectedInstallables(S.MARKETPLACE_CATALOG, loadPlugins().map(function(p) { return p.name; }), S.mkSelected);
+        // Source from S.marketplaceItems (not the raw catalog) so the synthetic
+        // isUpdater entry buildMarketplaceList() injects is visible to the batch —
+        // it never appears in S.MARKETPLACE_CATALOG.
+        var batch = selectedInstallables(S.marketplaceItems, loadPlugins().map(function(p) { return p.name; }), S.mkSelected);
         if (batch.length > 0) {
           // Install the selection SEQUENTIALLY off-thread: each callback kicks the
           // next, so only one clone runs at a time and the progress count is coherent.
+          // marketplaceInstall() routes isUpdater to installUpdater and everything
+          // else through selectInstallMethod, same as the single-item install path.
           S.busy = true;
           var failed = [];
           var installNext = function(k) {
@@ -262,12 +267,12 @@ export function handlePluginKey(key) {
               render();
               return;
             }
-            var batchMethod = selectInstallMethod(batch[k], S.hasUpdater);
-            var batchInstall = batchMethod === "git" ? installMarketplacePlugin : installViaNpm;
+            var batchItem = batch[k];
+            var batchMethod = batchItem.isUpdater ? "updater" : selectInstallMethod(batchItem, S.hasUpdater);
             setBusyMessage("Installing " + (k + 1) + "/" + batch.length + " (" + batchMethod + ")...");
             render();
-            batchInstall(batch[k], function(berr) {
-              if (berr) failed.push(batch[k].name || batch[k].repoName);
+            marketplaceInstall(batchItem, function(berr) {
+              if (berr) failed.push(batchItem.name || batchItem.repoName);
               installNext(k + 1);
             });
           };
