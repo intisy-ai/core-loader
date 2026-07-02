@@ -76,29 +76,19 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
   }
   var hasUpdater = S.hasUpdater;
 
-  if (!hasUpdater) {
-    if (process.env.CC_LAUNCHER === "1") {
-      pushBody("  " + BOLD + BAD + "Updater Plugin Missing" + RST, false);
-      pushBody("  The hub requires an updater plugin to manage installations.", false);
-      pushBody("", false);
-      pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install the default updater plugin.", false);
-      pushBody("", false);
-      pushFoot("  " + rule(barW));
-      pushFoot(hints([["enter", "install"], ["q", "quit"]]));
-      S.globalKeyHandler = "updater_install";
-      return;
-    } else {
-      // OC mode: same interactive install prompt as CC mode
-      pushBody("  " + BOLD + BAD + "Updater Plugin Missing" + RST, false);
-      pushBody("  The hub requires an updater plugin to manage installations.", false);
-      pushBody("", false);
-      pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install the default updater plugin.", false);
-      pushBody("", false);
-      pushFoot("  " + rule(barW));
-      pushFoot(hints([["enter", "install"], ["q", "quit"]]));
-      S.globalKeyHandler = "updater_install";
-      return;
-    }
+  // Gate ONLY the Installed sub-tab when the updater is missing: the Installed view
+  // has nothing to manage without the engine. The Marketplace (and Providers) stay
+  // reachable so the user can Tab over and install the updater from there.
+  if (!hasUpdater && S.pluginSubPage === "installed") {
+    pushBody("  " + BOLD + BAD + "Updater Plugin Missing" + RST, false);
+    pushBody("  The hub requires an updater plugin to manage installations.", false);
+    pushBody("", false);
+    pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install it, or " + BOLD + WHITE + "Tab" + RST + " to browse the Marketplace.", false);
+    pushBody("", false);
+    pushFoot("  " + rule(barW));
+    pushFoot(hints([["enter", "install"], ["tab", "switch"], ["q", "quit"]]));
+    S.globalKeyHandler = "updater_install";
+    return;
   } else {
     if (S.globalKeyHandler === "updater_install") S.globalKeyHandler = null;
   }
@@ -184,13 +174,20 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     return;
   }
 
-  if (S.pluginItems.length === 0) {
-    pushBody("  " + GRAY + "No plugins configured." + RST, false);
-    pushBody("  " + GRAY + "Add plugins to ~/configDirPlaceholder/config/plugins.json" + RST, false);
+  // Only short-circuit the Installed tab when empty — the Marketplace/Providers tabs
+  // build their own lists (S.marketplaceItems / custom tabs) and must render even
+  // when no plugins are installed yet.
+  if (S.pluginItems.length === 0 && S.pluginSubPage === "installed") {
+    var tabInstalledEmpty = BOLD + ACCENT + BG_SEL + " Installed " + RST;
+    var tabMarketplaceEmpty = GRAY + " Marketplace " + RST;
+    pushBody("  " + tabInstalledEmpty + "  " + tabMarketplaceEmpty + "    " + DIM + "tab switch" + RST, false);
     pushBody("", false);
-    
+    pushBody("  " + GRAY + "No plugins configured." + RST, false);
+    pushBody("  " + GRAY + "Press " + WHITE + "Tab" + GRAY + " to browse the Marketplace." + RST, false);
+    pushBody("", false);
+
     pushFoot("  " + rule(barW));
-    pushFoot(hints([["q", "quit"]]));
+    pushFoot(hints([["tab", "switch"], ["q", "quit"]]));
     return;
   }
 

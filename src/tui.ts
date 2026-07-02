@@ -9,7 +9,7 @@ import { homedir } from "os";
 import { S } from "./state.js";
 import { APP_NAME, CLI_CMD, NPM_PKG, CONFIG_DIR, CACHE_DIR, UPDATE_CHECK_PATH, REPOS_DIR, PLUGINS_DIR, tuiLog } from "./env.js";
 import { hideCur, showCur, cleanup } from "./out.js";
-import { getFolderName } from "./updater.js";
+import { getFolderName, installUpdater } from "./updater.js";
 import { loadConfig, saveConfig, migrateConfigs, loadPlugins, autoUpdateCheck, updateCheckDelayMs, updateCheckIntervalHours, defaultTab } from "./config.js";
 import { flash } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
@@ -17,7 +17,7 @@ import { buildMarketplaceList } from "./marketplace.js";
 import { buildCombinedPluginList } from "./plugins.js";
 import { buildList, outputDir } from "./projects.js";
 import { render } from "./views/render.js";
-import { parseKey, handleKey, handleInputData, handlePluginInputData, handleSearchData, handleTabInputData, handleConfigInputData } from "./input.js";
+import { parseKey, handleKey, handleInputData, handlePluginInputData, handleSearchData, handleTabInputData, handleConfigInputData, switchPluginSubPage } from "./input.js";
 
 global.OpenCodeAPI = {
   getReposDir: function() { return REPOS_DIR; },
@@ -271,27 +271,20 @@ function onData(buf) {
   var key = parseKey(buf);
 
   if (S.globalKeyHandler === "updater_install") {
+    // Tab (and left/right) still switch the plugins sub-tab so the user isn't
+    // trapped on the gated Installed view — they can move to the Marketplace.
+    if (key === "tab" || key === "left" || key === "right") {
+      switchPluginSubPage();
+      S.globalKeyHandler = null;   // cleared here; buildPlugins re-sets it only if the new sub-tab is the gated Installed one
+      render();
+      return;
+    }
     if (key === "enter" || key === "space") {
       process.stdout.write("\x1b[?25h\n\x1b[36mInstalling updater plugin...\x1b[0m\n");
-      try {
-        const { execSync } = require('child_process');
-        const fs = require('fs');
-        const path = require('path');
-        execSync("npm install -g plugin-updater", { stdio: "inherit" });
-        const ocPath = path.join(CONFIG_DIR, "opencode.json");
-        var ocData = {};
-        if (fs.existsSync(ocPath)) {
-          try { ocData = JSON.parse(fs.readFileSync(ocPath, "utf-8").replace(/^\s*\/\/[^\n]*/gm, "")); } catch {}
-        }
-        if (!Array.isArray(ocData.plugin)) ocData.plugin = [];
-        if (!ocData.plugin.includes("plugin-updater")) ocData.plugin.unshift("plugin-updater");
-        fs.writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");
-      } catch(e) {
-        tuiLog("Failed to install updater: " + e.message);
-        flash("Failed to install updater: " + e.message);
-        setTimeout(function(){}, 2000);
-      }
+      var installErr = installUpdater(CONFIG_DIR, APP_NAME);
+      if (installErr) { tuiLog(installErr); flash(installErr); }
       S.globalKeyHandler = null;
+      S.hasUpdater = false;   // re-detect on next render (Claude: only real after next launch populates npx cache)
       S.pluginItems = buildCombinedPluginList();
       render();
     }

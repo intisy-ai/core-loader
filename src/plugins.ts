@@ -7,7 +7,7 @@ import { join } from "path";
 import { execSync, exec } from "child_process";
 import { REPOS_DIR, PLUGINS_DIR } from "./env.js";
 import { loadPlugins } from "./config.js";
-import { getFolderName, loadNpmPlugins, getUpdater, getUpdaterVersion } from "./updater.js";
+import { getFolderName, loadNpmPlugins } from "./updater.js";
 
 export function gitText(args, cwd) {
   try {
@@ -125,44 +125,19 @@ export function buildCombinedPluginList() {
       pluginFile: ""
     };
   });
-  if (getUpdater() && !npm.some(function(p) { return p.name === "plugin-updater"; })) {
-    npm.push({
-      type: "npm",
-      engine: true,
-      name: "plugin-updater",
-      version: getUpdaterVersion(),
-      raw: "plugin-updater",
-      enabled: true,
-      autoUpdate: true,
-      installed: true,
-      deployed: true,
-      updateAvail: false,
-      localHead: "",
-      remoteHead: "",
-      latestTag: "",
-      subject: "plugin engine",
-      folderName: "",
-      url: "",
-      hasBuild: false,
-      pluginFile: ""
-    });
-  }
   return git.concat(npm);
 }
 
 export function getPluginActions(pitem) {
   var a = [];
-  if (pitem.engine) {
-    a.push({ key: "updater-update", label: "Update plugin-updater" });
-    a.push({ key: "updater-run", label: "Update all plugins (early launch)" });
-    a.push({ key: "updater-add", label: "Add plugin from git URL" });
-    a.push({ key: "cancel", label: "Cancel" });
-    return a;
-  }
   if (pitem.type === "npm") {
-    // managed via opencode.json — no disable state, only update or uninstall
-    a.push({ key: "update-npm", label: "Update npm plugin" });
-    a.push({ key: "uninstall-npm", label: "Uninstall npm plugin (removes from opencode.json)" });
+    // managed via opencode.json — no disable state, only update/uninstall (+ Configure
+    // when the deployed bundle answers `config schema`, same probe as git plugins)
+    if (pitem._cfg && pitem._cfg.items && pitem._cfg.items.length) {
+      a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + pitem._cfg.items.length + ")" });
+    }
+    a.push({ cat: "Update", key: "update-npm", label: "Update npm plugin" });
+    a.push({ cat: "Manage", key: "uninstall-npm", label: "Uninstall npm plugin (removes from opencode.json)" });
     a.push({ key: "cancel", label: "Cancel" });
     return a;
   }
@@ -197,9 +172,11 @@ export function getPluginActions(pitem) {
 
 // Probe a deployed plugin bundle for its config schema. A plugin built on our core
 // answers `node <bundle> config schema` with {name, defaults, current}; anything else
-// (non-core plugins, npm engine row, parse error) yields null -> no Configure action.
+// (non-core plugins, undeployed items, parse error) yields null -> no Configure action.
+// Runs for git AND npm plugins alike — an npm plugin built on our core is just as
+// probeable via its deployed bundle file.
 export function probeConfigSchema(pitem) {
-  if (!pitem || pitem.type === "npm" || !pitem.deployed) return null;
+  if (!pitem || !pitem.deployed) return null;
   var bundle = join(PLUGINS_DIR, (pitem.pluginFile || pitem.name + ".js"));
   if (!existsSync(bundle)) return null;
   try {
