@@ -10,23 +10,22 @@ import { existsSync } from "fs";
 
 const BAR_WIDTH = 22;
 
-// Map the model's semantic color to the LOADER palette (muted tones) — the
-// auth-login renderer (select.ts) keeps the raw ANSI cyan/green/red instead.
+// Match the loader's OWN row palette exactly (same as buildPluginItem): plain
+// rows are DIM; only genuinely positive/negative states use OK/BAD. No INFO/accent
+// tinting of ordinary actions. The auth-login renderer (select.ts) keeps raw ANSI.
 function paletteColor(color, h) {
-  if (color === "red") return h.BAD;
-  if (color === "green") return h.OK;
-  if (color === "yellow") return h.YELLOW;
-  if (color === "cyan") return h.INFO || h.ACCENT;
-  return h.GRAY;
+  if (color === "red") return h.BAD;    // destructive (loader uses BAD for negative states)
+  if (color === "green") return h.OK;   // positive (loader uses OK)
+  return h.DIM;                          // everything else = the loader's default row style
 }
 
 // Claude /usage-style bar row (filled = fraction USED), drawn in palette tones.
 function pushBar(h, it) {
   const frac = Math.max(0, Math.min(1, it.fraction || 0));
   const filled = Math.round(frac * BAR_WIDTH);
-  const bar = h.ACCENT + "▓".repeat(filled) + h.RST + h.DIM + "░".repeat(BAR_WIDTH - filled) + h.RST;
+  const bar = h.ACCENT + "▓".repeat(filled) + h.RST + h.GRAY + "░".repeat(BAR_WIDTH - filled) + h.RST;
   h.pushBody("     " + h.BOLD + h.WHITE + it.label + h.RST + "  " + bar + " " + h.GRAY + Math.round(frac * 100) + "% used" + h.RST, false);
-  if (it.reset) h.pushBody("     " + h.DIM + "Resets " + it.reset + h.RST, false);
+  if (it.reset) h.pushBody("     " + h.GRAY + "Resets " + it.reset + h.RST, false);
 }
 
 export function createAccountMenu() {
