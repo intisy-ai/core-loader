@@ -106,22 +106,24 @@ export function createAccountMenu() {
     const menu = curMenu();
     if (!menu) { nav.active = false; return false; }
     h.pushBody("  " + h.BOLD + h.WHITE + "" + (menu.title || "Menu") + h.RST, false);
-    if (menu.subtitle) h.pushBody("  " + h.DIM + menu.subtitle + h.RST, false);
+    if (menu.subtitle) h.pushBody("  " + h.GRAY + menu.subtitle + h.RST, false);
     h.pushBody("", false);
     menu.items.forEach(function (it, i) {
       if (it.separator) { h.pushBody("", false); return; }
-      if (it.kind === "heading") { h.pushBody("  " + h.BOLD + h.WHITE + it.label + h.RST + (it.hint ? h.DIM + "  " + it.hint + h.RST : ""), false); return; }
-      if (it.kind === "note") { h.pushBody("     " + h.DIM + it.label + h.RST, false); return; }   // dim summary (availability)
+      // headings + secondary text use GRAY like the loader's own rows (buildPluginItem).
+      if (it.kind === "heading") { h.pushBody("  " + h.BOLD + h.WHITE + it.label + h.RST + (it.hint ? h.GRAY + "  " + it.hint + h.RST : ""), false); return; }
+      if (it.kind === "note") { h.pushBody("     " + h.GRAY + it.label + h.RST, false); return; }
       if (it.kind === "bar") { pushBar(h, it); return; }
       const sel = i === nav.cur;
-      // match the loader's row style: 3-space gutter / " ❯ ", BG_SEL when selected;
-      // unselected items follow the palette (paletteColor), not raw ANSI.
-      const gutter = sel ? (h.ACCENT + " ❯ " + h.RST) : "   ";
-      const body = sel ? (h.BG_SEL + h.BOLD + h.WHITE) : paletteColor(it.color, h);
-      h.pushBody("  " + gutter + body + it.label + h.RST + (it.hint ? h.DIM + "  " + it.hint + h.RST : ""), sel);
+      // identical construction to buildPluginItem: BG_SEL wraps the arrow gutter,
+      // the name is BOLD+WHITE when selected / paletteColor otherwise, hint in GRAY.
+      const bg = sel ? h.BG_SEL : "";
+      const arrow = sel ? (h.ACCENT + " ❯ " + h.RST) : "   ";
+      const nameStyle = sel ? (h.BOLD + h.WHITE) : paletteColor(it.color, h);
+      h.pushBody("  " + bg + arrow + nameStyle + it.label + h.RST + (it.hint ? h.GRAY + "  " + it.hint + h.RST : ""), sel);
     });
     h.pushFoot("  " + h.GRAY + "─".repeat(h.barW) + h.RST);
-    h.pushFoot("  " + h.DIM + "^v Move   Enter Select   Esc Back" + h.RST);
+    h.pushFoot("  " + h.GRAY + "^v Move   Enter Select   Esc Back" + h.RST);
     return true;
   }
 
