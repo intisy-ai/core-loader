@@ -34,10 +34,14 @@ export function ensureNotifyDrainHook(configDir) {
     let settings = {};
     try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch {}
     const hooks = settings.hooks || (settings.hooks = {});
-    const postTool = hooks.PostToolUse || (hooks.PostToolUse = []);
-    if (!JSON.stringify(postTool).includes("auth-notify-drain")) {
-      postTool.push({ hooks: [{ type: "command", command: `node "${drainPath}"` }] });
-      writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+    const cmd = `node "${drainPath}"`;
+    // Drain on BOTH Stop (end of every turn — surfaces notifications even when no tool
+    // ran, e.g. a plain answer) and PostToolUse (mid-turn, during long tool sequences).
+    let changed = false;
+    for (const evt of ["Stop", "PostToolUse"]) {
+      const list = hooks[evt] || (hooks[evt] = []);
+      if (!JSON.stringify(list).includes("auth-notify-drain")) { list.push({ hooks: [{ type: "command", command: cmd }] }); changed = true; }
     }
+    if (changed) writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
   } catch { /* best-effort — notifications must never break loader activation */ }
 }
