@@ -81,6 +81,11 @@ export const S = {
   // out, so it must never run on a navigation render — computed until true, then held.
   hasUpdater: false,
 
+  // Updater install progress (shown in-body while installUpdater runs). updaterSteps
+  // accumulates step labels; all but the last render as done (✓), the last as active.
+  updaterInstalling: false,
+  updaterSteps: [],
+
   // Status message + render scheduling
   message: "",
   msgTimeout: null,

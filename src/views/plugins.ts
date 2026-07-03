@@ -84,6 +84,25 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
   // Without it there is nothing to manage or install, so BOTH the Installed and
   // Marketplace surfaces are gated to a single install-updater action. (Providers/auth
   // is unrelated and stays reachable via Tab.)
+  // While installUpdater runs, show a step checklist in the BODY (its onStep callback
+  // re-renders between the synchronous steps) instead of a raw write under the footer.
+  if (S.updaterInstalling) {
+    pushBody("  " + BOLD + WHITE + "Installing the updater engine" + RST, false);
+    pushBody("", false);
+    var usteps = S.updaterSteps || [];
+    for (var ui = 0; ui < usteps.length; ui++) {
+      var last = ui === usteps.length - 1;
+      var mark = last ? (ACCENT + "•" + RST) : (OK + "✓" + RST);
+      pushBody("    " + mark + " " + (last ? WHITE : DIM) + usteps[ui] + RST, false);
+    }
+    if (usteps.length === 0) pushBody("    " + DIM + "starting…" + RST, false);
+    pushBody("", false);
+    pushBody("  " + DIM + "This can take up to a minute (clone + build)…" + RST, false);
+    pushFoot("  " + rule(barW));
+    pushFoot("  " + DIM + "Please wait…" + RST);
+    return;
+  }
+
   if (!hasUpdater && (S.pluginSubPage === "installed" || S.pluginSubPage === "marketplace")) {
     pushBody("  " + BOLD + BAD + "Updater Plugin Missing" + RST, false);
     pushBody("  The hub installs and manages every plugin through the updater engine.", false);
@@ -91,7 +110,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install it. Nothing else is available until it is.", false);
     pushBody("", false);
     pushFoot("  " + rule(barW));
-    pushFoot(hints([["enter", "install"], ["tab", "providers"], ["q", "quit"]]));
+    pushFoot(hints([["enter", "install"], ["q", "quit"]]));
     S.globalKeyHandler = "updater_install";
     return;
   } else {

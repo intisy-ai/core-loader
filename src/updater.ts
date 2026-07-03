@@ -173,10 +173,15 @@ export function updateUpdater() {
   }
 }
 
-export function installUpdater(configDir, appName) {
+// onStep(label): optional progress reporter, called before each blocking step so a
+// caller can re-render (the steps run via synchronous execSync, so this is coarse
+// step-by-step progress, not a live spinner).
+export function installUpdater(configDir, appName, onStep) {
+  var step = typeof onStep === "function" ? onStep : function () {};
   try {
     var appFlag = appName === "Claude Code" ? "claude" : "opencode";
     if (appName === "Claude Code") {
+      step("Registering the SessionStart hook");
       var settingsPath = join(configDir, "settings.json");
       var settings = {};
       try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch {}
@@ -187,7 +192,9 @@ export function installUpdater(configDir, appName) {
       }
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
     } else {
+      step("Installing the npm package (npm i -g)");
       execSync("npm install -g plugin-updater", { timeout: 180000, stdio: "ignore" });
+      step("Registering it in opencode.json");
       var ocPath = join(configDir, "opencode.json");
       var ocData = {};
       if (existsSync(ocPath)) {
@@ -199,7 +206,9 @@ export function installUpdater(configDir, appName) {
     }
     // Run the engine now so it's fetched + resolvable immediately (populates the npx
     // cache getUpdater() looks in) — installing shouldn't require an app restart.
+    step("Fetching + building the engine");
     try { execSync("npx -y plugin-updater@latest run --app " + appFlag, { timeout: 180000, stdio: "ignore" }); } catch { /* best effort; getUpdater re-checks */ }
+    step("Done");
     return "";
   } catch (e) {
     return "Failed to install updater: " + ((e && e.message) || e);

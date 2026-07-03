@@ -272,22 +272,20 @@ function onData(buf) {
   var key = parseKey(buf);
 
   if (S.globalKeyHandler === "updater_install") {
-    // Tab (and left/right) still switch the plugins sub-tab so the user isn't
-    // trapped on the gated Installed view — they can move to the Marketplace.
-    if (key === "tab" || key === "left" || key === "right") {
-      switchPluginSubPage();
-      S.globalKeyHandler = null;   // cleared here; buildPlugins re-sets it only if the new sub-tab is the gated Installed one
-      render();
-      return;
-    }
+    // The updater is the foundation — nothing else is available until it's installed,
+    // so there is NO tab escape to Providers/Marketplace here (only install or quit).
     if (key === "enter" || key === "space") {
-      process.stdout.write("\x1b[?25h\n\x1b[36mInstalling updater plugin (fetching + running)...\x1b[0m\n");
-      var installErr = installUpdater(CONFIG_DIR, APP_NAME);
+      // Show progress IN the TUI body (a step checklist), not a raw write below the
+      // footer. installUpdater is synchronous, so onStep re-renders between steps.
+      S.updaterInstalling = true; S.updaterSteps = []; S.globalKeyHandler = null;
+      render();
+      var installErr = installUpdater(CONFIG_DIR, APP_NAME, function (label) { S.updaterSteps.push(label); render(); });
+      S.updaterInstalling = false;
       if (installErr) { tuiLog(installErr); flash(installErr); }
       clearUpdaterCache();   // installUpdater ran the engine; re-resolve it now so the gate lifts
-      S.globalKeyHandler = null;
       S.pluginItems = buildCombinedPluginList();
-      render();   // buildPlugins re-detects the engine; if it still can't resolve, the gate simply re-shows
+      render();   // buildPlugins re-detects the engine; if it still can't resolve, the gate re-shows
+      return;
     }
     if (key === "escape" || key === "q" || buf[0] === 3) process.exit(0);
     return;
