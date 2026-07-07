@@ -139,23 +139,26 @@ function runBlocking(fn) {
   });
 }
 
-function loadCustomTabs() {
+async function loadCustomTabs() {
   S.customTabs = [];
-  function loadExt(extPath) {
+  const { pathToFileURL } = require("url");
+  async function loadExt(extPath) {
     if (!extPath || !existsSync(extPath)) return;
     try {
-      var mod = require(extPath);
+      // tui-extension.js is an esbuild ESM bundle — require() throws under Node, so
+      // import() it (via a file:// URL). This is why the Providers tab was missing.
+      var mod = await import(pathToFileURL(extPath).href);
       var fn = (mod && mod.default) || mod;
       if (typeof fn === "function") fn(tuiApi);
     } catch(e) { tuiLog("custom tab load failed (" + extPath + "): " + e); }
   }
   // 1. The active loader declares its own extension via env (absolute path)
-  loadExt(process.env.HUB_TUI_EXTENSION);
+  await loadExt(process.env.HUB_TUI_EXTENSION);
   // 2. Installed plugins may ship a tui-extension.js in their repo root
   try {
     var pl = loadPlugins();
     for (var i = 0; i < pl.length; i++) {
-      loadExt(join(REPOS_DIR, getFolderName(pl[i]), "tui-extension.js"));
+      await loadExt(join(REPOS_DIR, getFolderName(pl[i]), "tui-extension.js"));
     }
   } catch(e) {}
 }
@@ -249,28 +252,29 @@ if (arg) {
 
 // load loader/plugin-provided tabs, then honor an initial-tab hint (e.g. the
 // cc wrapper sets HUB_OPEN_TAB=provider for `cc auth login`)
-loadCustomTabs();
-if (process.env.HUB_OPEN_TAB) {
-  S.page = "plugins";
-  S.pluginSubPage = process.env.HUB_OPEN_TAB;
-} else {
-  // honor the configured initial tab (validated; defaults to "projects" =
-  // current behavior) only when the wrapper hasn't forced a tab via env
-  S.page = defaultTab();
-}
-
-// disable any mouse reporting a previous program left enabled — pointer
-// movement otherwise arrives as input bytes and triggers random key handlers
-process.stderr.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l");
-// Preload the updater engine (ESM w/ top-level await — must import(), can't require()
-// under Node) BEFORE the first paint, so the TUI knows the engine is present instead
-// of flashing/locking on "Updater Plugin Missing".
-preloadUpdater().catch(function () {}).then(function () {
+// Startup runs async because custom tabs (Providers) and the updater engine are ESM
+// bundles that must be import()'d (require() throws under Node) — await both BEFORE the
+// first paint so the Providers tab shows and the engine isn't reported "missing".
+async function boot() {
+  await loadCustomTabs();
+  if (process.env.HUB_OPEN_TAB) {
+    S.page = "plugins";
+    S.pluginSubPage = process.env.HUB_OPEN_TAB;
+  } else {
+    // honor the configured initial tab (validated; defaults to "projects" =
+    // current behavior) only when the wrapper hasn't forced a tab via env
+    S.page = defaultTab();
+  }
+  // disable any mouse reporting a previous program left enabled — pointer
+  // movement otherwise arrives as input bytes and triggers random key handlers
+  process.stderr.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l");
+  await preloadUpdater().catch(function () {});
   hideCur();
   render();
   process.stdin.setRawMode(true);
   process.stdin.resume();
-});
+}
+boot();
 
 
 function onData(buf) {
