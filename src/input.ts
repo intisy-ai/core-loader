@@ -330,7 +330,7 @@ export function handlePluginKey(key) {
         });
       }
       else if (key === "a") {
-        var toUpdate = S.pluginItems.filter(function(p) { return p.type !== "npm" && (p.updateAvail || !p.deployed); });
+        var toUpdate = S.pluginItems.filter(function(p) { return p.type !== "npm" && p.enabled && (p.updateAvail || !p.deployed); });
         if (toUpdate.length === 0) {
           flash("All plugins are already up to date.");
         } else {
@@ -396,7 +396,7 @@ export function handlePluginKey(key) {
       }
       else if (action === "update-all") {
         S.mode = "list";
-        var toUpdate = S.pluginItems.filter(function(p) { return p.type !== "npm" && (p.updateAvail || !p.deployed); });
+        var toUpdate = S.pluginItems.filter(function(p) { return p.type !== "npm" && p.enabled && (p.updateAvail || !p.deployed); });
         if (toUpdate.length === 0) {
           flash("All plugins are already up to date.");
         } else {
