@@ -136,25 +136,15 @@ export function migrateConfigs() {
 }
 
 export function loadPlugins() {
-  // Prefer the updater's normalized list; fall back to reading plugins.json DIRECTLY so
-  // the Installed tab lists configured plugins even when the updater module didn't load
-  // or its own path resolution came up empty (e.g. on Windows). Managing them still
-  // needs the engine, but the user should always SEE what they've configured.
+  // The plugin list comes ONLY from the plugin-updater API — NO direct plugins.json
+  // fallback. Without a detected updater there is no way to act on plugins, so the list
+  // stays empty and the Plugins tab shows the install-updater prompt (a direct read
+  // would hide a detection failure). If the updater isn't detected, fix DETECTION
+  // (preloadUpdater / candidate paths), don't paper over it here.
   var updater = getUpdater();
   if (updater && typeof updater.getPlugins === "function") {
-    try { var list = updater.getPlugins(CONFIG_DIR); if (Array.isArray(list) && list.length) return list; } catch {}
+    try { return updater.getPlugins(CONFIG_DIR) || []; } catch {}
   }
-  try {
-    var fs = require("fs");
-    var path = require("path");
-    var candidates = [path.join(CONFIG_DIR, "config", "plugins.json"), path.join(CONFIG_DIR, "plugins.json")];
-    for (var i = 0; i < candidates.length; i++) {
-      if (fs.existsSync(candidates[i])) {
-        var arr = JSON.parse(fs.readFileSync(candidates[i], "utf8"));
-        if (Array.isArray(arr)) return arr;
-      }
-    }
-  } catch {}
   return [];
 }
 
