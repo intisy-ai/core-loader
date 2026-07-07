@@ -2,7 +2,6 @@
 // Project list: query recent projects (Claude history.jsonl or the opencode
 // DB), build the display list, and the pin/hide/change-path actions.
 
-import { Database } from "bun:sqlite";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
@@ -11,6 +10,23 @@ import { S } from "./state.js";
 import { loadConfig, saveConfig } from "./config.js";
 import { cleanup } from "./out.js";
 import { flash } from "./views/common.js";
+
+// Lazy sqlite: node's built-in (node 22+) first, bun:sqlite fallback. Loaded lazily
+// (NOT a top-level import) so the loader TUI runs under plain `node` — no bun required.
+// Returns { query(sql) -> stmt with .all(), close() } or null if neither is available.
+function openSqlite(path) {
+  try {
+    const { DatabaseSync } = require("node:sqlite");
+    const db = new DatabaseSync(path, { readOnly: true });
+    return { query: (sql) => db.prepare(sql), close: () => db.close() };
+  } catch {}
+  try {
+    const { Database } = require("bun:sqlite");
+    const db = new Database(path, { readonly: true });
+    return { query: (sql) => db.query(sql), close: () => db.close() };
+  } catch {}
+  return null;
+}
 
 export function queryProjects() {
   if (APP_NAME === "Claude Code") {
@@ -47,7 +63,8 @@ export function queryProjects() {
 
   if (!existsSync(DB_PATH)) return [];
   try {
-    var db = new Database(DB_PATH, { readonly: true });
+    var db = openSqlite(DB_PATH);
+    if (!db) return [];
     var rows = db.query(
       "SELECT directory, MAX(time_updated) as last_used, COUNT(*) as sessions " +
       "FROM session WHERE parent_id IS NULL GROUP BY directory ORDER BY last_used DESC LIMIT 30"
