@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { groupSessions, parseHistoryText, sessionsFromHistory } = require("../dist/projects.js");
+const { groupSessions, parseHistoryText, sessionsFromHistory, sessionPayload } = require("../dist/projects.js");
 
 const DIR = "/home/u/proj";
 const OTHER = "/home/u/other";
@@ -74,4 +74,13 @@ test("sessionsFromHistory skips malformed lines in the text", () => {
   const out = sessionsFromHistory(text, "/p", "Claude Code");
   assert.strictEqual(out.length, 1);
   assert.strictEqual(out[0].id, "s2");
+});
+
+test("sessionPayload: dir alone when no session id", () => {
+  assert.strictEqual(sessionPayload("/p", null), "/p");
+  assert.strictEqual(sessionPayload("/p", ""), "/p");
+});
+
+test("sessionPayload: dir + LF + id when resuming", () => {
+  assert.strictEqual(sessionPayload("/p", "abc"), "/p\nabc");
 });

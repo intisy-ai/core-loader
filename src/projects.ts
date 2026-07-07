@@ -198,12 +198,18 @@ export function openProject(item) {
   process.exit(0);
 }
 
+// Exact cc-wrapper payload: dir alone (new session) or dir + LF + sessionId (resume).
+// Pure so the cross-repo contract with the cc wrapper is unit-testable.
+export function sessionPayload(dir, sessionId) {
+  return sessionId ? (dir + "\n" + sessionId) : dir;
+}
+
 // Emit the launch payload for the cc wrapper: line 1 = dir, optional line 2 =
 // sessionId. A null/empty id writes the dir alone (identical to openProject, so
 // the wrapper starts a fresh session). Uses the same CC_OUTPUT channel.
 export function openProjectSession(dir, sessionId) {
   cleanup();
-  outputDir(sessionId ? (dir + "\n" + sessionId) : dir);
+  outputDir(sessionPayload(dir, sessionId));
   process.exit(0);
 }
 
