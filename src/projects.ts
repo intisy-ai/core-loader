@@ -28,28 +28,37 @@ function openSqlite(path) {
   return null;
 }
 
+// Parse Claude history.jsonl TEXT into entries, skipping blank/malformed lines. Pure.
+export function parseHistoryText(text) {
+  var out = [];
+  var lines = String(text || "").split("\n");
+  for (var i = 0; i < lines.length; i++) {
+    if (!lines[i]) continue;
+    try { out.push(JSON.parse(lines[i])); } catch (e) {}
+  }
+  return out;
+}
+
 export function queryProjects() {
   if (APP_NAME === "Claude Code") {
     var historyPath = join(CONFIG_DIR, "history.jsonl");
     if (!existsSync(historyPath)) return [];
     try {
-      var lines = readFileSync(historyPath, "utf8").split("\n").filter(Boolean);
+      var entries = parseHistoryText(readFileSync(historyPath, "utf8"));
       var projects = {};
-      for (var line of lines) {
-        try {
-          var parsed = JSON.parse(line);
-          if (parsed.project) {
-            if (!projects[parsed.project]) {
-              projects[parsed.project] = { last_used: 0, sessions: new Set() };
-            }
-            if (parsed.timestamp > projects[parsed.project].last_used) {
-              projects[parsed.project].last_used = parsed.timestamp;
-            }
-            if (parsed.sessionId) {
-              projects[parsed.project].sessions.add(parsed.sessionId);
-            }
+      for (var ei = 0; ei < entries.length; ei++) {
+        var parsed = entries[ei];
+        if (parsed && parsed.project) {
+          if (!projects[parsed.project]) {
+            projects[parsed.project] = { last_used: 0, sessions: new Set() };
           }
-        } catch (e) {}
+          if (parsed.timestamp > projects[parsed.project].last_used) {
+            projects[parsed.project].last_used = parsed.timestamp;
+          }
+          if (parsed.sessionId) {
+            projects[parsed.project].sessions.add(parsed.sessionId);
+          }
+        }
       }
       return Object.keys(projects).map(function(dir) {
         return {
@@ -98,20 +107,18 @@ export function groupSessions(entries, dir) {
   return out;
 }
 
-// Read the Claude history and return the session summaries for one project dir.
-// Claude only; returns [] for any other app or on any read/parse failure.
+// Pure: sessions for one dir from raw history TEXT, Claude only. Unit-testable, no I/O.
+export function sessionsFromHistory(text, dir, appName) {
+  if (appName !== "Claude Code") return [];
+  return groupSessions(parseHistoryText(text), dir);
+}
+
+// Thin I/O shell: read history.jsonl (empty on any failure) and delegate.
 export function querySessions(dir) {
-  if (APP_NAME !== "Claude Code") return [];
   var historyPath = join(CONFIG_DIR, "history.jsonl");
-  if (!existsSync(historyPath)) return [];
-  try {
-    var lines = readFileSync(historyPath, "utf8").split("\n").filter(Boolean);
-    var entries = [];
-    for (var i = 0; i < lines.length; i++) {
-      try { entries.push(JSON.parse(lines[i])); } catch (e) {}
-    }
-    return groupSessions(entries, dir);
-  } catch (e) { return []; }
+  var text = "";
+  try { if (existsSync(historyPath)) text = readFileSync(historyPath, "utf8"); } catch (e) {}
+  return sessionsFromHistory(text, dir, APP_NAME);
 }
 
 export function shortPath(dir) {

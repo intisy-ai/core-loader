@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { groupSessions } = require("../dist/projects.js");
+const { groupSessions, parseHistoryText, sessionsFromHistory } = require("../dist/projects.js");
 
 const DIR = "/home/u/proj";
 const OTHER = "/home/u/other";
@@ -39,4 +39,39 @@ test("a session with no prompt gets a placeholder title", () => {
 test("entries from other projects are excluded", () => {
   const out = groupSessions(entries, DIR);
   assert.ok(!out.some((s) => s.id === "s3"));
+});
+
+test("parseHistoryText parses valid lines and skips blank/malformed", () => {
+  const text = '{"a":1}\n\nnot json\n{"b":2}\n';
+  const out = parseHistoryText(text);
+  assert.deepStrictEqual(out, [{ a: 1 }, { b: 2 }]);
+});
+
+test("parseHistoryText returns [] for empty/nullish input", () => {
+  assert.deepStrictEqual(parseHistoryText(""), []);
+  assert.deepStrictEqual(parseHistoryText(null), []);
+});
+
+test("sessionsFromHistory groups when app is Claude Code", () => {
+  const text = [
+    JSON.stringify({ project: "/p", sessionId: "s1", display: "hello", timestamp: 100 }),
+    JSON.stringify({ project: "/p", sessionId: "s1", display: "again", timestamp: 200 }),
+  ].join("\n");
+  const out = sessionsFromHistory(text, "/p", "Claude Code");
+  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out[0].id, "s1");
+  assert.strictEqual(out[0].title, "hello");
+  assert.strictEqual(out[0].lastUsed, 200);
+});
+
+test("sessionsFromHistory returns [] for a non-Claude app (gate)", () => {
+  const text = JSON.stringify({ project: "/p", sessionId: "s1", display: "x", timestamp: 1 });
+  assert.deepStrictEqual(sessionsFromHistory(text, "/p", "opencode"), []);
+});
+
+test("sessionsFromHistory skips malformed lines in the text", () => {
+  const text = 'garbage\n' + JSON.stringify({ project: "/p", sessionId: "s2", display: "ok", timestamp: 5 });
+  const out = sessionsFromHistory(text, "/p", "Claude Code");
+  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out[0].id, "s2");
 });
