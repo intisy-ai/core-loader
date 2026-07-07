@@ -691,7 +691,9 @@ export function parseKey(buf) {
   if (buf[0] === 3) { cleanup(); process.exit(1); }
   if (buf[0] === 9) return "tab";
   var ch = String.fromCharCode(buf[0]).toLowerCase();
-  if ("wsadqpchofuximynr/?".indexOf(ch) !== -1) return ch;
+  // NB: every actionable letter key MUST be listed here or parseKey drops it before
+  // any handler sees it (this is why "E to update" silently did nothing — 'e' was missing).
+  if ("wsadqpchofuximynre/?".indexOf(ch) !== -1) return ch;
   return null;
 }
 
