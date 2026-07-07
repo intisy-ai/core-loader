@@ -18,10 +18,10 @@ export const CLI_CMD = process.env.HUB_CLI_CMD || "opencode";
 export const IS_CLAUDE = String(CLI_CMD).indexOf("claude") !== -1 || String(APP_NAME).indexOf("Claude") !== -1;
 export const NPM_PKG = process.env.HUB_NPM_PKG || "opencode-ai";
 export const CONFIG_DIR = process.env.HUB_CONFIG_DIR || join(HOME, ".config", "opencode");
-export const CACHE_PKG_DIR = process.env.HUB_CACHE_PKG_DIR || join(CONFIG_DIR, "cache", "node_modules");
+export const CACHE_PKG_DIR = join(CONFIG_DIR, "cache", "node_modules");
 
 // opencode keeps its session database in the XDG data dir, not the config dir
-export const DB_PATH = process.env.HUB_DB_PATH || [
+export const DB_PATH = [
   join(HOME, ".local", "share", "opencode", "opencode.db"),
   join(CONFIG_DIR, "opencode.db"),
 ].find(function(p) { return existsSync(p); }) || join(HOME, ".local", "share", "opencode", "opencode.db");
