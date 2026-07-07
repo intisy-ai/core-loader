@@ -11,7 +11,7 @@ import { S } from "./state.js";
 import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
 import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater } from "./updater.js";
-import { openProject, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
+import { openProject, openProjectSession, querySessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
 import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
@@ -19,6 +19,24 @@ import { getInstalledMcpList, buildMcpList, installMcpServer, uninstallMcpServer
 import { flash } from "./views/common.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
+
+// Open a project through the session picker (Claude only). With no prior
+// sessions, launch fresh immediately: "Open here" keeps the exit-42 path so the
+// wrapper forwards the user's own cc args; a project row writes its dir.
+function enterSessions(dir, here) {
+  var sessions = APP_NAME === "Claude Code" ? querySessions(dir) : [];
+  if (sessions.length === 0) {
+    if (here) { cleanup(); process.exit(42); }
+    else { openProjectSession(dir, null); }
+    return;
+  }
+  S.sessionItems = sessions;
+  S.scursor = 0;
+  S.sessionDir = dir;
+  S.sessionHere = here;
+  S.mode = "sessions";
+  S.scrollOff = 0;
+}
 
 // Set a persistent status message for a long busy action. Unlike flash(), it does
 // NOT auto-clear after 2.5s — the message (and its "..." spinner) stays up until
@@ -136,7 +154,7 @@ export function handleProjectKey(key) {
     if (key === "up" || key === "w") { S.cursor = Math.max(0, S.cursor - 1); }
     else if (key === "down" || key === "s") { S.cursor = Math.min(S.items.length, S.cursor + 1); }
     else if (key === "enter" || key === "space") {
-      if (S.cursor === S.items.length) { cleanup(); process.exit(42); }
+      if (S.cursor === S.items.length) { enterSessions(process.cwd(), true); }
       else if (S.items.length > 0) { S.mode = "actions"; S.acursor = 0; }
     }
     else if (key === "o") {
@@ -154,7 +172,7 @@ export function handleProjectKey(key) {
     else if (key === "down" || key === "s") { S.acursor = Math.min(acts.length - 1, S.acursor + 1); }
     else if (key === "enter" || key === "space") {
       var action = acts[S.acursor].key;
-      if (action === "open") { openProject(S.items[S.cursor]); }
+      if (action === "open") { enterSessions(S.items[S.cursor].dir, false); }
       else if (action === "pin" || action === "unpin") { togglePin(S.cursor); S.mode = "list"; }
       else if (action === "hide") { hideItem(S.cursor); S.mode = "list"; }
       else if (action === "chpath") { S.mode = "input"; S.chpathDir = S.items[S.cursor].dir; S.inputBuf = S.items[S.cursor].dir; }
@@ -162,6 +180,19 @@ export function handleProjectKey(key) {
       else { S.mode = "list"; }
     }
     else if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; }
+  } else if (S.mode === "sessions") {
+    var n = S.sessionItems.length;
+    if (key === "up" || key === "w") { S.scursor = Math.max(0, S.scursor - 1); }
+    else if (key === "down" || key === "s") { S.scursor = Math.min(n, S.scursor + 1); }
+    else if (key === "enter" || key === "space") {
+      if (S.scursor === 0) {
+        if (S.sessionHere) { cleanup(); process.exit(42); }
+        else { openProjectSession(S.sessionDir, null); }
+      } else {
+        openProjectSession(S.sessionDir, S.sessionItems[S.scursor - 1].id);
+      }
+    }
+    else if (key === "escape" || key === "q") { S.mode = "list"; }
   }
 }
 
