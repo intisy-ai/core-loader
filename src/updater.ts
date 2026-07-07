@@ -70,7 +70,14 @@ export function setupPlugin(repo, done) {
   // positional args arrived undefined and updatePluginPublic built nothing. Env is
   // read identically under both runtimes.
   var script = 'const {pathToFileURL}=require("url"); import(pathToFileURL(process.env.PU_PATH).href).then(function(m){return m.updatePluginPublic(process.env.PU_NAME, process.env.PU_URL||undefined, process.env.PU_BRANCH||undefined);}).then(function(){process.exit(0);}).catch(function(e){console.error((e&&e.message)||e);process.exit(1);});';
-  var childEnv = Object.assign({}, process.env, { PU_PATH: updaterPath, PU_NAME: repo.name, PU_URL: repo.url || "", PU_BRANCH: repo.branch || "" });
+  // Tell the child WHICH app + config dir to update: without these it guesses from
+  // argv (no "claude") + ~/.<app>, so it updated the wrong home and the loader's own
+  // repos/<name> clone never advanced (updates "did nothing" / kept showing available).
+  var childEnv = Object.assign({}, process.env, {
+    PU_PATH: updaterPath, PU_NAME: repo.name, PU_URL: repo.url || "", PU_BRANCH: repo.branch || "",
+    PLUGIN_UPDATER_APP: IS_CLAUDE ? "claude" : "opencode",
+    HUB_CONFIG_DIR: CONFIG_DIR,
+  });
   var child = require("child_process").spawn(process.execPath, ["-e", script], { stdio: ["ignore", "ignore", "pipe"], env: childEnv });
   var errBuf = "";
   child.stderr.on("data", function(d) { errBuf += d.toString(); });
@@ -151,25 +158,35 @@ export function clearUpdaterCache() {
 // cached npx copy (npx pins @latest) and re-fetch+run the newest published version.
 // OpenCode: update the opencode.jsonc npm plugin via the engine's own API. Returns
 // "" on success or an error string.
-export function updateUpdater() {
+// Runs OFF-THREAD via a child process and reports through `done(err)` — the old
+// execSync blocked the event loop so the busy spinner froze and the user saw no
+// feedback at all. Keeps S.busy owned by the caller; calls done("") on success.
+export function updateUpdater(done) {
+  var finish = typeof done === "function" ? done : function () {};
+  var spawn = require("child_process").spawn;
   try {
     if (IS_CLAUDE) {
+      // drop the cached npx copy (npx pins @latest) so the newest is refetched
       try {
         var npxRoot = join(homedir(), ".npm", "_npx");
         for (var entry of readdirSync(npxRoot)) {
           if (existsSync(join(npxRoot, entry, "node_modules", "plugin-updater"))) rmSync(join(npxRoot, entry), { recursive: true, force: true });
         }
       } catch { /* no cache to clear */ }
-      execSync("npx -y plugin-updater@latest run --app claude", { timeout: 180000, stdio: "ignore" });
-    } else {
-      var upd = getUpdater();
-      if (upd && typeof upd.updateNpmPlugin === "function") upd.updateNpmPlugin("plugin-updater", CONFIG_DIR, 0);
-      else execSync("npm update -g plugin-updater", { timeout: 180000, stdio: "ignore" });
     }
-    clearUpdaterCache();
-    return "";
+    var command = IS_CLAUDE
+      ? "npx -y plugin-updater@latest run --app claude"
+      : "npm update -g plugin-updater";
+    var child = spawn(command, { stdio: ["ignore", "ignore", "pipe"], shell: true });
+    var err = "";
+    child.stderr.on("data", function (d) { err += d.toString(); });
+    child.on("error", function (e) { finish("updater self-update failed: " + ((e && e.message) || e)); });
+    child.on("exit", function (code) {
+      clearUpdaterCache();
+      finish(code === 0 ? "" : ("updater self-update failed" + (err.trim() ? ": " + err.trim() : "")));
+    });
   } catch (e) {
-    return "updater self-update failed: " + ((e && e.message) || e);
+    finish("updater self-update failed: " + ((e && e.message) || e));
   }
 }
 

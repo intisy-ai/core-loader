@@ -28,34 +28,46 @@ function setBusyMessage(msg) {
   S.message = msg;
 }
 
-// Update a list of plugins SEQUENTIALLY off-thread (one child process at a time)
-// under the busy gate. Each step updates the "Updating name (k/N)..." message; the
-// final callback rebuilds the list, flashes a coherent summary, and runs onDone
-// (cursor clamp). Used by update-all ('a' key + action) and single update.
+// Update a list of plugins off-thread with a BOUNDED CONCURRENCY POOL — each plugin is
+// an independent git repo + child process, so running a few at once cuts update-all
+// wall-clock roughly by the pool size vs the old one-at-a-time loop. Progress shows
+// "Updating plugins (done/N)..."; the final callback rebuilds the list, flashes a
+// summary, and runs onDone (cursor clamp). Used by update-all ('a' key + action) and
+// single update.
+var UPDATE_POOL_SIZE = 4;
 function runUpdateSequence(toUpdate, onDone) {
   S.busy = true;
   var errors = [];
-  var updateNext = function(k) {
-    if (k >= toUpdate.length) {
-      S.pluginItems = buildCombinedPluginList();
-      S.busy = false;
-      flash(errors.length > 0 ? errors.join("; ") : toUpdate.length + " plugin(s) updated. Restart " + APP_NAME + " to apply.");
-      if (onDone) onDone();
-      render();
-      return;
-    }
-    var pi = toUpdate[k];
+  var started = 0;
+  var finished = 0;
+  var plugins = loadPlugins();
+  var progress = function() {
     setBusyMessage(toUpdate.length > 1
-      ? ("Updating " + pi.name + " (" + (k + 1) + "/" + toUpdate.length + ")...")
-      : ("Updating " + pi.name + "..."));
+      ? ("Updating plugins (" + finished + "/" + toUpdate.length + ")...")
+      : ("Updating " + toUpdate[0].name + "..."));
     render();
-    var repo = loadPlugins().find(function(r) { return r.name === pi.name; });
+  };
+  var finishAll = function() {
+    S.pluginItems = buildCombinedPluginList();
+    S.busy = false;
+    flash(errors.length > 0 ? errors.join("; ") : toUpdate.length + " plugin(s) updated. Restart " + APP_NAME + " to apply.");
+    if (onDone) onDone();
+    render();
+  };
+  if (toUpdate.length === 0) { finishAll(); return; }
+  var startNext = function() {
+    if (started >= toUpdate.length) return;
+    var pi = toUpdate[started++];
+    var repo = plugins.find(function(r) { return r.name === pi.name; });
     setupPlugin(repo || pi, function(e) {
       if (e) errors.push(pi.name + ": " + e);
-      updateNext(k + 1);
+      finished++;
+      if (finished >= toUpdate.length) finishAll();
+      else { progress(); startNext(); }
     });
   };
-  updateNext(0);
+  progress();
+  for (var i = 0; i < Math.min(UPDATE_POOL_SIZE, toUpdate.length); i++) startNext();
 }
 
 // Cycle the plugins sub-tab (Installed -> Marketplace -> custom tabs -> Installed).
@@ -311,10 +323,12 @@ export function handlePluginKey(key) {
         S.busy = true;
         setBusyMessage("Updating the updater engine...");
         render();
-        var ue = updateUpdater();
-        S.busy = false;
-        S.pluginItems = buildCombinedPluginList();
-        flash(ue ? ue : "Updater engine updated.");
+        updateUpdater(function (ue) {
+          S.busy = false;
+          S.pluginItems = buildCombinedPluginList();
+          flash(ue ? ue : "Updater engine updated.");
+          render();
+        });
       }
       else if (key === "f") {
         S.busy = true;

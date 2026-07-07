@@ -75,7 +75,7 @@ function gitTextAsync(args, cwd, cb) {
 // done() once all complete. `git fetch` hits the network (up to 15s each) — running
 // it synchronously froze the UI; async keeps the loop free so the spinner animates.
 export function fetchPluginRemotes(pluginItems, done) {
-  var targets = pluginItems.filter(function(p) { return p.type !== "npm" && p.installed; });
+  var targets = pluginItems.filter(function(p) { return p.type !== "npm" && p.installed && p.enabled !== false; });
   var remaining = targets.length;
   if (remaining === 0) { if (done) done(); return; }
   targets.forEach(function(p) {
