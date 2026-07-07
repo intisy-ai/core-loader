@@ -10,7 +10,7 @@ import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH } f
 import { S } from "./state.js";
 import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
-import { getUpdater, setupPlugin, installUpdater, updateUpdater } from "./updater.js";
+import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater } from "./updater.js";
 import { openProject, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
 import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
@@ -324,10 +324,14 @@ export function handlePluginKey(key) {
         setBusyMessage("Updating the updater engine...");
         render();
         updateUpdater(function (ue) {
-          S.busy = false;
-          S.pluginItems = buildCombinedPluginList();
-          flash(ue ? ue : "Updater engine updated.");
-          render();
+          // self-update cleared the cached engine module — re-import the (new) one so
+          // the TUI doesn't drop to "Updater Plugin Missing" after updating.
+          preloadUpdater().catch(function () {}).then(function () {
+            S.busy = false;
+            S.pluginItems = buildCombinedPluginList();
+            flash(ue ? ue : "Updater engine updated.");
+            render();
+          });
         });
       }
       else if (key === "f") {

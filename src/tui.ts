@@ -9,7 +9,7 @@ import { homedir } from "os";
 import { S } from "./state.js";
 import { APP_NAME, CLI_CMD, NPM_PKG, CONFIG_DIR, CACHE_DIR, UPDATE_CHECK_PATH, REPOS_DIR, PLUGINS_DIR, tuiLog } from "./env.js";
 import { hideCur, showCur, cleanup } from "./out.js";
-import { getFolderName, installUpdater, clearUpdaterCache } from "./updater.js";
+import { getFolderName, installUpdater, clearUpdaterCache, preloadUpdater } from "./updater.js";
 import { loadConfig, saveConfig, migrateConfigs, loadPlugins, autoUpdateCheck, updateCheckDelayMs, updateCheckIntervalHours, defaultTab } from "./config.js";
 import { flash } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
@@ -262,10 +262,15 @@ if (process.env.HUB_OPEN_TAB) {
 // disable any mouse reporting a previous program left enabled — pointer
 // movement otherwise arrives as input bytes and triggers random key handlers
 process.stderr.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l");
-hideCur();
-render();
-process.stdin.setRawMode(true);
-process.stdin.resume();
+// Preload the updater engine (ESM w/ top-level await — must import(), can't require()
+// under Node) BEFORE the first paint, so the TUI knows the engine is present instead
+// of flashing/locking on "Updater Plugin Missing".
+preloadUpdater().catch(function () {}).then(function () {
+  hideCur();
+  render();
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+});
 
 
 function onData(buf) {
@@ -282,9 +287,11 @@ function onData(buf) {
       var installErr = installUpdater(CONFIG_DIR, APP_NAME, function (label) { S.updaterSteps.push(label); render(); });
       S.updaterInstalling = false;
       if (installErr) { tuiLog(installErr); flash(installErr); }
-      clearUpdaterCache();   // installUpdater ran the engine; re-resolve it now so the gate lifts
-      S.pluginItems = buildCombinedPluginList();
-      render();   // buildPlugins re-detects the engine; if it still can't resolve, the gate re-shows
+      clearUpdaterCache();   // installUpdater ran the engine; re-import it now so the gate lifts
+      preloadUpdater().catch(function () {}).then(function () {
+        S.pluginItems = buildCombinedPluginList();   // re-detects the engine; if still unresolved, gate re-shows
+        render();
+      });
       return;
     }
     if (key === "escape" || key === "q" || buf[0] === 3) process.exit(0);

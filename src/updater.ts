@@ -8,35 +8,56 @@ import { execSync } from "child_process";
 import { PLUGINS_DIR, CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, IS_CLAUDE, tuiLog } from "./env.js";
 import { S } from "./state.js";
 
-export function getUpdater() {
-  if (S.UPDATER_MODULE !== undefined) return S.UPDATER_MODULE;
-  const fs = require('fs');
-  const path = require('path');
-  const updaterCandidates = [
+// Every place the deployed plugin-updater might live. The npx roots differ per OS:
+// ~/.npm/_npx on unix, %LOCALAPPDATA%/%APPDATA%\npm-cache\_npx on Windows — missing the
+// Windows ones was why the loader reported "Updater Plugin Missing" on Windows.
+function updaterCandidatePaths() {
+  const fs = require('fs'); const path = require('path'); const os = require('os');
+  const cands = [
     path.join(PLUGINS_DIR, "plugin-updater", "index.js"),
     path.join(CONFIG_DIR, "node_modules", "plugin-updater"),
-    path.join(require('os').homedir(), ".cache", "opencode", "packages", "plugin-updater@latest", "node_modules", "plugin-updater"),
+    path.join(os.homedir(), ".cache", "opencode", "packages", "plugin-updater@latest", "node_modules", "plugin-updater"),
   ];
-  // under claude the updater arrives via npx, whose cache lives in ~/.npm/_npx
-  try {
-    const npxRoot = path.join(require('os').homedir(), ".npm", "_npx");
-    for (const npxEntry of fs.readdirSync(npxRoot)) {
-      const candidate = path.join(npxRoot, npxEntry, "node_modules", "plugin-updater");
-      if (fs.existsSync(candidate)) { updaterCandidates.push(candidate); break; }
-    }
-  } catch {}
-  const updaterPath = updaterCandidates.find(function(p) { return fs.existsSync(p); });
-  if (updaterPath) {
+  const npxRoots = [
+    path.join(os.homedir(), ".npm", "_npx"),
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "npm-cache", "_npx") : null,
+    process.env.APPDATA ? path.join(process.env.APPDATA, "npm-cache", "_npx") : null,
+  ].filter(Boolean);
+  for (const npxRoot of npxRoots) {
     try {
-      S.UPDATER_MODULE = require(updaterPath);
-      S.UPDATER_PATH = updaterPath;
-      return S.UPDATER_MODULE;
-    } catch(e) {
-      tuiLog("Failed to load updater plugin from " + updaterPath + ": " + e);
+      for (const entry of fs.readdirSync(npxRoot)) {
+        cands.push(path.join(npxRoot, entry, "node_modules", "plugin-updater"));
+      }
+    } catch {}
+  }
+  return cands.filter(function(p) { return fs.existsSync(p); });
+}
+
+// plugin-updater is ESM with top-level await, so require() throws ERR_REQUIRE_ASYNC_MODULE
+// under Node — it MUST be import()'d. Preload it once (async) at TUI startup; getUpdater()
+// then returns the cached module synchronously to all the sync callers.
+export async function preloadUpdater() {
+  if (S.UPDATER_MODULE !== undefined) return S.UPDATER_MODULE;
+  const fs = require('fs'); const path = require('path'); const { pathToFileURL } = require('url');
+  for (const p of updaterCandidatePaths()) {
+    let entry = p;
+    if (!entry.endsWith(".js")) {
+      try { entry = path.join(p, JSON.parse(fs.readFileSync(path.join(p, "package.json"), "utf8")).main || "index.js"); }
+      catch { entry = path.join(p, "index.js"); }
     }
+    try {
+      S.UPDATER_MODULE = await import(pathToFileURL(entry).href);
+      S.UPDATER_PATH = p;        // package dir — for the version lookup
+      S.UPDATER_ENTRY = entry;   // resolved .js — the child process import()s this
+      return S.UPDATER_MODULE;
+    } catch (e) { tuiLog("Failed to load updater from " + entry + ": " + e); }
   }
   S.UPDATER_MODULE = null;
   return null;
+}
+
+export function getUpdater() {
+  return S.UPDATER_MODULE || null;
 }
 
 // The resolved bundle path getUpdater() cached — used to run updatePluginPublic
@@ -64,7 +85,7 @@ export function setupPlugin(repo, done) {
     done("updater not available");
     return;
   }
-  var updaterPath = getUpdaterPath();
+  var updaterPath = S.UPDATER_ENTRY || getUpdaterPath();   // the entry .js the child import()s
   // Params go through ENV, not argv: the loader runs under Bun, and `bun -e "code" a b`
   // does NOT expose the trailing args at process.argv[1..] like `node -e` does — so
   // positional args arrived undefined and updatePluginPublic built nothing. Env is
@@ -151,6 +172,7 @@ export function loadNpmPlugins() {
 export function clearUpdaterCache() {
   S.UPDATER_MODULE = undefined;
   S.UPDATER_PATH = undefined;
+  S.UPDATER_ENTRY = undefined;
   S.hasUpdater = false;
 }
 
