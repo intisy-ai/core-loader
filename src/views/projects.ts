@@ -48,7 +48,36 @@ export function buildOpenHereItem(pushBody) {
   pushBody("  " + bg + arrow + nameStyle + "Open " + APP_NAME + " here" + RST + bg + "  " + GRAY + process.cwd() + RST, sel);
 }
 
+export function buildSessions(pushBody, pushFoot, cols, barW) {
+  var nameW = Math.min(46, Math.max(20, cols - 18));
+  var proj = (S.sessionDir || "").split(/[\\/]/).pop() || S.sessionDir;
+  pushBody("  " + BOLD + WHITE + "Sessions" + RST + GRAY + " · " + trunc(proj, cols - 16) + RST, false);
+  pushBody("", false);
+
+  // Row 0: start a new session.
+  var selNew = S.scursor === 0;
+  var newArrow = selNew ? (ACCENT + " ❯ " + RST) : "   ";
+  var newBg = selNew ? BG_SEL : "";
+  var newStyle = selNew ? (BOLD + WHITE) : DIM;
+  pushBody("  " + newBg + newArrow + newStyle + "＋ New session" + RST, selNew);
+
+  for (var i = 0; i < S.sessionItems.length; i++) {
+    var it = S.sessionItems[i];
+    var sel = S.scursor === i + 1;
+    var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
+    var bg = sel ? BG_SEL : "";
+    var nameStyle = sel ? (BOLD + WHITE) : DIM;
+    var timeStr = GRAY + pad(timeAgo(it.lastUsed), 9) + RST;
+    pushBody("  " + bg + arrow + nameStyle + pad(trunc(it.title, nameW), nameW) + RST + bg + timeStr + RST, sel);
+  }
+
+  pushBody("", false);
+  pushFoot("  " + rule(barW));
+  pushFoot(hints([["↑↓", "move"], ["enter", "select"], ["esc", "back"]]));
+}
+
 export function buildProjects(pushBody, pushFoot, cols, barW) {
+  if (S.mode === "sessions") { buildSessions(pushBody, pushFoot, cols, barW); return; }
   var nameW = Math.min(28, Math.max(16, cols - 36));
 
   if (S.items.length === 0) {

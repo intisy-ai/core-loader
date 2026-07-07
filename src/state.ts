@@ -27,6 +27,13 @@ export const S = {
   page: "projects",
   inputBuf: "",
   chpathDir: "",
+  // Session picker sub-mode (Claude only): the chosen project's sessions,
+  // the cursor within them, the dir being opened, and whether it was reached
+  // via "Open here" (so a new session preserves the exit-42 arg-forwarding path).
+  sessionItems: [],
+  scursor: 0,
+  sessionDir: "",
+  sessionHere: false,
 
   // Plugins page
   pluginItems: [],
