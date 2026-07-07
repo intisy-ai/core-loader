@@ -3,7 +3,7 @@
 // node so the wrapper can dispatch here without bun. Mutations drive plugin-updater
 // via transient npx, never a persistent require.
 
-import { existsSync, readFileSync, readdirSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { execFileSync } from "child_process";
 import {
@@ -14,6 +14,7 @@ import {
   REPOS_DIR,
   PLUGINS_DIR,
 } from "./env.js";
+import { readDeployedProviders } from "./loader-runtime.js";
 
 const PROXY_PORT = parseInt(process.env.HUB_PROXY_PORT || "34567", 10);
 const PROXY_URL = "http://127.0.0.1:" + PROXY_PORT;
@@ -96,22 +97,11 @@ function accountsByProvider() {
 }
 
 function deployedHandlers() {
-  const out = [];
-  let repos = [];
-  try { repos = readdirSync(REPOS_DIR); } catch { /* no repos dir */ }
-  for (const repo of repos) {
-    const pkg = readJson(join(REPOS_DIR, repo, "package.json"));
-    const declared = (pkg && pkg.claudeHub && pkg.claudeHub.authProviders) || (pkg && pkg.authProviders) || [];
-    for (const provider of declared) {
-      if (!provider.handler) continue;
-      out.push({
-        provider: provider.name || repo,
-        repo,
-        present: existsSync(join(REPOS_DIR, repo, provider.handler)),
-      });
-    }
-  }
-  return out;
+  return readDeployedProviders(REPOS_DIR).map((provider) => ({
+    provider: provider.provider,
+    repo: provider.repo,
+    present: existsSync(provider.handlerPath),
+  }));
 }
 
 function tiersByProvider() {

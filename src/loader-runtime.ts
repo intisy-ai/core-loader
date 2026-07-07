@@ -3,7 +3,7 @@
 // opencode-loader). Kept core-free — the caller injects its own logger — so
 // core-loader stays independent of the core bundle.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { execSync } from "child_process";
 import { join } from "path";
 import { homedir } from "os";
@@ -52,6 +52,36 @@ export function ensureBinDir() {
   const binDir = getBinDir();
   if (!existsSync(binDir)) try { mkdirSync(binDir, { recursive: true }); } catch {}
   return binDir;
+}
+
+// Provider handlers deployed under <configDir>/repos: each plugin declares them in its
+// package.json via `claudeHub.authProviders` (or a top-level `authProviders`). One scan
+// shared by the loader CLI's provider/doctor views and the CC proxy's request router, so
+// the "read package.json → pick name/handler" logic lives in exactly one place.
+export function readDeployedProviders(reposDir: string): Array<{
+  provider: string;
+  repo: string;
+  handler: string;
+  handlerPath: string;
+}> {
+  const out = [];
+  let repos = [];
+  try { repos = readdirSync(reposDir); } catch { /* no repos dir */ }
+  for (const repo of repos) {
+    let pkg = null;
+    try { pkg = JSON.parse(readFileSync(join(reposDir, repo, "package.json"), "utf-8")); } catch { continue; }
+    const declared = (pkg && pkg.claudeHub && pkg.claudeHub.authProviders) || (pkg && pkg.authProviders) || [];
+    for (const provider of declared) {
+      if (!provider.handler) continue;
+      out.push({
+        provider: provider.name || repo,
+        repo,
+        handler: provider.handler,
+        handlerPath: join(reposDir, repo, provider.handler),
+      });
+    }
+  }
+  return out;
 }
 
 // getBinDir() (~/.local/bin) is where the cc/oc wrappers land, but that dir is only
