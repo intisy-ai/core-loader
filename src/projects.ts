@@ -74,6 +74,46 @@ export function queryProjects() {
   } catch (e) { return []; }
 }
 
+// Group Claude history entries into per-session summaries for ONE project dir.
+// Pure (no I/O) so it is unit-testable. entries: parsed history.jsonl objects
+// ({project, sessionId, display, timestamp}). Returns newest-first; title = the
+// session's EARLIEST prompt (what it was about).
+export function groupSessions(entries, dir) {
+  var groups = {};
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (!e || e.project !== dir || !e.sessionId) continue;
+    var g = groups[e.sessionId];
+    if (!g) { g = groups[e.sessionId] = { id: e.sessionId, title: "", lastUsed: 0, count: 0, firstTs: Infinity }; }
+    g.count++;
+    var ts = typeof e.timestamp === "number" ? e.timestamp : (Date.parse(e.timestamp) || 0);
+    if (ts > g.lastUsed) g.lastUsed = ts;
+    if (ts <= g.firstTs && typeof e.display === "string" && e.display) { g.firstTs = ts; g.title = e.display; }
+  }
+  var out = Object.keys(groups).map(function (k) {
+    var g = groups[k];
+    return { id: g.id, title: g.title || "(no prompt)", lastUsed: g.lastUsed, count: g.count };
+  });
+  out.sort(function (a, b) { return b.lastUsed - a.lastUsed; });
+  return out;
+}
+
+// Read the Claude history and return the session summaries for one project dir.
+// Claude only; returns [] for any other app or on any read/parse failure.
+export function querySessions(dir) {
+  if (APP_NAME !== "Claude Code") return [];
+  var historyPath = join(CONFIG_DIR, "history.jsonl");
+  if (!existsSync(historyPath)) return [];
+  try {
+    var lines = readFileSync(historyPath, "utf8").split("\n").filter(Boolean);
+    var entries = [];
+    for (var i = 0; i < lines.length; i++) {
+      try { entries.push(JSON.parse(lines[i])); } catch (e) {}
+    }
+    return groupSessions(entries, dir);
+  } catch (e) { return []; }
+}
+
 export function shortPath(dir) {
   var h = HOME.replace(/\\/g, "/");
   var d = dir.replace(/\\/g, "/");
