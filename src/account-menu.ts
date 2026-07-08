@@ -36,7 +36,27 @@ function pushBar(h, it) {
 
 export function createAccountMenu() {
   // per-instance state: a stack of menu builders, plus an optional text-input field
-  const nav = { active: false, cur: 0, stack: [], input: null, inputBuf: "" };
+  const nav = { active: false, cur: 0, stack: [], input: null, inputBuf: "", busy: null, busyTimer: null, busyTimeout: null };
+
+  // Self-contained busy indicator for async in-tab actions. Owns its OWN animation
+  // interval + tuiApi.refresh (not the global updateSpinner, which doesn't reliably
+  // drive this in-tab menu) and a hard timeout so a hung action never freezes the
+  // spinner forever. The spinner ticks only while the event loop is free — which it is
+  // for the network actions this runs (refresh/verify/quota).
+  function stopBusy() {
+    if (nav.busyTimer) { clearInterval(nav.busyTimer); nav.busyTimer = null; }
+    if (nav.busyTimeout) { clearTimeout(nav.busyTimeout); nav.busyTimeout = null; }
+    nav.busy = null;
+  }
+  function startBusy(label, tuiApi) {
+    stopBusy();
+    nav.busy = { label: label, tick: 0 };
+    nav.busyTimer = setInterval(function () { if (nav.busy) { nav.busy.tick++; if (tuiApi && tuiApi.refresh) tuiApi.refresh(); } }, 100);
+    if (nav.busyTimer && nav.busyTimer.unref) nav.busyTimer.unref();
+    nav.busyTimeout = setTimeout(function () { if (nav.busy) { stopBusy(); try { tuiApi.flash(label + " timed out"); } catch (e) {} if (tuiApi && tuiApi.refresh) tuiApi.refresh(); } }, 30000);
+    if (nav.busyTimeout && nav.busyTimeout.unref) nav.busyTimeout.unref();
+    if (tuiApi && tuiApi.refresh) tuiApi.refresh();
+  }
 
   function curMenu() { return nav.stack.length ? nav.stack[nav.stack.length - 1]() : null; }
 
@@ -46,7 +66,7 @@ export function createAccountMenu() {
     return from;
   }
 
-  function exit(tuiApi) { nav.active = false; nav.stack = []; nav.cur = 0; nav.input = null; nav.inputBuf = ""; if (tuiApi && tuiApi.setTextInput) tuiApi.setTextInput(false); }
+  function exit(tuiApi) { stopBusy(); nav.active = false; nav.stack = []; nav.cur = 0; nav.input = null; nav.inputBuf = ""; if (tuiApi && tuiApi.setTextInput) tuiApi.setTextInput(false); }
 
   function applyAction(a, tuiApi) {
     if (!a) return;
@@ -137,12 +157,11 @@ export function createAccountMenu() {
     // Show the transient flash (set by tuiApi.flash — e.g. "Models refreshed (N)") so
     // action feedback is visible INSIDE the account menu (which draws its own footer and
     // would otherwise swallow S.message).
-    if (S.message) {
-      // a "…"-suffixed message means an action is running — show an animated spinner
-      // beside it (updateSpinner ticks the frame + re-renders while "..." is present).
-      var busy = S.message.indexOf("...") !== -1;
-      var spin = busy ? (h.ACCENT + SPINNER_FRAMES[S.spinnerTick % SPINNER_FRAMES.length] + h.RST + " ") : "";
-      h.pushFoot("  " + spin + h.ACCENT + S.message + h.RST);
+    if (nav.busy) {
+      // an async action is running — our own interval animates this frame + re-renders
+      h.pushFoot("  " + h.ACCENT + SPINNER_FRAMES[nav.busy.tick % SPINNER_FRAMES.length] + " " + nav.busy.label + "…" + h.RST);
+    } else if (S.message) {
+      h.pushFoot("  " + h.ACCENT + S.message + h.RST);
     }
     h.pushFoot("  " + h.GRAY + "^v Move   Enter Select   Esc Back" + h.RST);
     return true;
@@ -192,11 +211,10 @@ export function createAccountMenu() {
           tuiApi.runBlocking(async function () { try { const a = await r; applyAction(a, tuiApi); ack(a); } catch (e) { fail(e); } });
         } else {
           // async non-suspend (refresh/verify/build-login-input) resolves live, in chrome.
-          // Show a spinner + label immediately so a slow network call never looks dead;
-          // ack() replaces it with the result flash (or clears it if the action navigates).
-          S.message = (item.label || "Working") + "...";
-          if (tuiApi.refresh) tuiApi.refresh();
-          r.then(function (a) { applyAction(a, tuiApi); ack(a); if (tuiApi.refresh) tuiApi.refresh(); }).catch(function (e) { fail(e); if (tuiApi.refresh) tuiApi.refresh(); });
+          // Animated busy spinner while it runs (own interval) so a slow network call never
+          // looks dead; on settle stopBusy() + ack() shows the result flash (or clears it).
+          startBusy(item.label || "Working", tuiApi);
+          r.then(function (a) { stopBusy(); applyAction(a, tuiApi); ack(a); if (tuiApi.refresh) tuiApi.refresh(); }).catch(function (e) { stopBusy(); fail(e); if (tuiApi.refresh) tuiApi.refresh(); });
         }
       } else { applyAction(r, tuiApi); ack(r); }
       return true;
