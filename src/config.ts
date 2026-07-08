@@ -4,8 +4,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, unlinkSync } from "fs";
 import { join, dirname } from "path";
-import { CONFIG_PATH, CONFIG_FOLDER, CONFIG_DIR, CLI_CMD, PLUGINS_JSON, MCP_CONFIG_PATH } from "./env.js";
-import { getUpdater } from "./updater.js";
+import { CONFIG_PATH, CONFIG_FOLDER, CONFIG_DIR, CLI_CMD, IS_CLAUDE, PLUGINS_JSON, MCP_CONFIG_PATH } from "./env.js";
 
 // ── Loader plugin config (config/<loaderName>.json) ─────────────────────────
 // The active loader's OWN plugin config — the same file the loader's plugin.ts
@@ -136,15 +135,30 @@ export function migrateConfigs() {
 }
 
 export function loadPlugins() {
-  // The plugin list comes ONLY from the plugin-updater API — NO direct plugins.json
-  // fallback. Without a detected updater there is no way to act on plugins, so the list
-  // stays empty and the Plugins tab shows the install-updater prompt (a direct read
-  // would hide a detection failure). If the updater isn't detected, fix DETECTION
-  // (preloadUpdater / candidate paths), don't paper over it here.
-  var updater = getUpdater();
-  if (updater && typeof updater.getPlugins === "function") {
-    try { return updater.getPlugins(CONFIG_DIR) || []; } catch {}
-  }
+  // Read the plugin list DIRECTLY from plugins.json — the single source of truth the
+  // plugin-updater itself reads and writes, and exactly how the non-interactive
+  // `cc plugins` / `cc doctor` CLI reads it. We previously routed this through the loaded
+  // updater module's getPlugins(); that indirection returned empty in some setups even
+  // though the file was present and readable, so the file itself is the reliable source.
+  //
+  // This does NOT hide a missing updater: updater ENGINE detection is a separate concern
+  // handled by buildPlugins, which gates the whole tab on getUpdater() and shows the
+  // install-updater prompt when the engine is absent. So this only ever populates the
+  // list once the updater is already detected.
+  try {
+    var fs = require("fs");
+    var candidates = [PLUGINS_JSON, join(CONFIG_DIR, "plugins.json")];
+    for (var i = 0; i < candidates.length; i++) {
+      if (fs.existsSync(candidates[i])) {
+        var arr = JSON.parse(fs.readFileSync(candidates[i], "utf-8"));
+        if (Array.isArray(arr)) {
+          // never show the OTHER app's loader (mirrors plugin-updater's own getPlugins filter)
+          var foreign = IS_CLAUDE ? "opencode-loader" : "claude-code-loader";
+          return arr.filter(function (e) { return e && e.name !== foreign; });
+        }
+      }
+    }
+  } catch {}
   return [];
 }
 
