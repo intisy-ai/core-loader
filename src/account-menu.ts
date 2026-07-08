@@ -8,6 +8,7 @@
 
 import { existsSync } from "fs";
 import { pathToFileURL } from "url";
+import { S } from "./state.js";
 
 const BAR_WIDTH = 22;
 
@@ -129,6 +130,10 @@ export function createAccountMenu() {
       h.pushBody("  " + bg + arrow + nameStyle + it.label + h.RST + (it.hint ? h.GRAY + "  " + it.hint + h.RST : ""), sel);
     });
     h.pushFoot("  " + h.GRAY + "─".repeat(h.barW) + h.RST);
+    // Show the transient flash (set by tuiApi.flash — e.g. "Models refreshed (N)") so
+    // action feedback is visible INSIDE the account menu (which draws its own footer and
+    // would otherwise swallow S.message).
+    if (S.message) h.pushFoot("  " + h.ACCENT + S.message + h.RST);
     h.pushFoot("  " + h.GRAY + "^v Move   Enter Select   Esc Back" + h.RST);
     return true;
   }
