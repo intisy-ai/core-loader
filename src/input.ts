@@ -258,11 +258,18 @@ export function handlePluginKey(key) {
       if (key === "up" || key === "w") { S.mkCursor = Math.max(0, S.mkCursor - 1); }
       else if (key === "down" || key === "s") { S.mkCursor = Math.min(S.marketplaceItems.length - 1, S.mkCursor + 1); }
       else if (key === "enter") {
+        var curItem = S.marketplaceItems[S.mkCursor];
+        if (curItem && curItem.isAction) {
+          S.mkAddAction = curItem.actionKey;
+          S.inputBuf = "";
+          S.mode = "mkinput";
+          return;
+        }
         if (S.marketplaceItems.length > 0) { S.mkMode = "actions"; S.mkAcursor = 0; }
       }
       else if (key === "space") {
         var selItem = S.marketplaceItems[S.mkCursor];
-        if (selItem) {
+        if (selItem && !selItem.isAction) {
           if (selItem.installed) { flash((selItem.name || selItem.repoName) + " is already installed."); }
           else {
             var sk = selectionKey(selItem);
@@ -317,6 +324,7 @@ export function handlePluginKey(key) {
           installNext(0);
         } else if (S.marketplaceItems.length > 0) {
           var quickItem = S.marketplaceItems[S.mkCursor];
+          if (quickItem.isAction) { return; }   // 'i' is a no-op on the leading action rows
           if (quickItem.installed) { flash(quickItem.name + " is already installed."); return; }
           S.busy = true;
           setBusyMessage("Installing " + (quickItem.name || quickItem.repoName) + "...");
@@ -997,6 +1005,47 @@ export function handlePluginInputData(buf) {
       flash(err ? name + ": " + err : name + " installed. Restart " + APP_NAME + " to load.");
       render();
     });
+    return;
+  }
+  if (buf[0] === 127 || buf[0] === 8) { S.inputBuf = S.inputBuf.slice(0, -1); return; }
+  if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
+}
+
+// Text entry for the two universal marketplace "add" actions (S.mode === "mkinput",
+// S.mkAddAction picks which). "add_plugin_url" installs via the SAME updater path
+// every other marketplace install uses (installMarketplacePlugin -> `plugin-updater add
+// <url>`), so it works identically to the CLI's `plugins install <url>`. "add_marketplace"
+// is generic — it just calls the app-registered S.capabilities.addMarketplace(input).
+export function handleMarketplaceAddInputData(buf) {
+  if (buf[0] === 27) { S.inputBuf = ""; S.mkAddAction = null; S.mode = "list"; return; }
+  if (buf[0] === 3) { cleanup(); process.exit(1); }
+  if (buf[0] === 13 || buf[0] === 10) {
+    var val = S.inputBuf.trim();
+    var action = S.mkAddAction;
+    S.inputBuf = "";
+    S.mkAddAction = null;
+    S.mode = "list";
+    if (!val) return;
+    if (action === "add_plugin_url") {
+      var url = val.replace(/\.git$/, "");
+      S.busy = true;
+      setBusyMessage("Installing plugin...");
+      render();
+      installMarketplacePlugin({ url: url }, function(err) {
+        S.busy = false;
+        if (err) flash(err);
+        else { flash("Installed! Restart " + APP_NAME + " to activate."); S.pluginItems = buildCombinedPluginList(); }
+        S.marketplaceItems = buildMarketplaceList();
+        if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
+        render();
+      });
+    } else if (action === "add_marketplace") {
+      var addFn = S.capabilities && S.capabilities.addMarketplace;
+      if (typeof addFn !== "function") { flash("Not supported."); return; }
+      var res = {};
+      try { res = addFn(val) || {}; } catch (e) { res = { ok: false, error: (e && e.message) || String(e) }; }
+      flash(res.ok ? "Added marketplace" : ("Failed: " + (res.error || "")));
+    }
     return;
   }
   if (buf[0] === 127 || buf[0] === 8) { S.inputBuf = S.inputBuf.slice(0, -1); return; }

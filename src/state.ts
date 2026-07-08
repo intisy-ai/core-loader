@@ -79,6 +79,9 @@ export const S = {
   mkMode: "browse",
   mkAcursor: 0,
   mkSelected: {},
+  // Which leading action row is being confirmed while S.mode === "mkinput":
+  // "add_plugin_url" | "add_marketplace" (see input.ts handleMarketplaceAddInputData).
+  mkAddAction: null,
 
   // Confirm dialog
   confirmAction: null,

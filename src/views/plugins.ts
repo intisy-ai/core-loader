@@ -253,8 +253,11 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
         return;
       }
     }
-    pushBody("  " + BOLD + WHITE + "Marketplace" + RST + GRAY + " (" + S.marketplaceItems.length + " available)" + RST + (S.mode === "search" || S.inputBuf ? " " + BG_SEL + " Search: " + S.inputBuf + (S.mode === "search" ? "_" : "") + " " + RST : " " + DIM + "(press / to search)" + RST), false);
-    if (S.marketplaceItems.length === 0) {
+    // action rows (leading entries) are UI chrome, not catalog results — exclude
+    // them from the "N available" count and the empty-catalog checks below.
+    var catalogItems = S.marketplaceItems.filter(function(m) { return !m.isAction; });
+    pushBody("  " + BOLD + WHITE + "Marketplace" + RST + GRAY + " (" + catalogItems.length + " available)" + RST + (S.mode === "search" || S.inputBuf ? " " + BG_SEL + " Search: " + S.inputBuf + (S.mode === "search" ? "_" : "") + " " + RST : " " + DIM + "(press / to search)" + RST), false);
+    if (catalogItems.length === 0) {
       if (S.inputBuf) {
         pushBody("  " + GRAY + "No results for \"" + S.inputBuf + "\"" + RST, false);
       } else if (S.catalogPending > 0) {
@@ -263,10 +266,38 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
         pushBody("  " + GRAY + "Marketplace catalog is empty. Press R to retry." + RST, false);
       }
     }
+
+    // Generic read-only "App marketplaces" section: shows marketplaces registered
+    // through the host app's own extension (e.g. Claude Code plugin marketplaces),
+    // when it registered the marketplaces capability. Non-selectable, informational.
+    var mfn = S.capabilities && S.capabilities.marketplaces;
+    if (typeof mfn === "function") {
+      var mkts = []; try { mkts = mfn() || []; } catch (e) {}
+      pushBody("", false);
+      pushBody("  " + BOLD + WHITE + "Marketplaces" + RST, false);
+      if (!mkts.length) pushBody("    " + GRAY + "None." + RST, false);
+      for (var mki = 0; mki < mkts.length; mki++) pushBody("    " + DIM + trunc(mkts[mki].name, 28) + RST + GRAY + "  " + trunc(mkts[mki].source || "", cols - 36) + RST, false);
+      pushBody("", false);
+    }
+
     // track the current section so we insert a header when the group changes
     var lastGroup = null;
     for (var mi = 0; mi < S.marketplaceItems.length; mi++) {
       var mitem = S.marketplaceItems[mi];
+
+      // Leading action rows ("Add plugin (git URL)" / "Add marketplace") are real
+      // entries in S.marketplaceItems (so S.mkCursor indexes them with no extra
+      // offset math) but render as simple selectable rows outside the
+      // official/community grouping — they never touch lastGroup.
+      if (mitem.isAction) {
+        var actSel = mi === S.mkCursor;
+        var actArrow = actSel ? (ACCENT + " ❯ " + RST) : "   ";
+        var actBg = actSel ? BG_SEL : "";
+        var actStyle = actSel ? (BOLD + WHITE) : DIM;
+        pushBody("  " + actBg + actArrow + actStyle + mitem.name + RST, actSel);
+        continue;
+      }
+
       var group = mitem.official ? "official" : "community";
 
       // emit a non-selectable section header whenever the group changes
@@ -301,6 +332,12 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     pushBody("", false);
     if (S.message) { pushFoot(messageLine(cols)); }
     pushFoot("  " + rule(barW));
+    if (S.mode === "mkinput") {
+      var mkLabel = S.mkAddAction === "add_marketplace" ? "Marketplace (url or owner/repo): " : "Git URL: ";
+      pushFoot("  " + ACCENT + mkLabel + RST + S.inputBuf + BOLD + "|" + RST);
+      pushFoot(hints([["enter", "confirm"], ["esc", "cancel"]]));
+      return;
+    }
     var selCount = Object.keys(S.mkSelected).length;
     if (selCount > 0) {
       pushFoot("  " + BOLD + ACCENT + selCount + " selected" + RST + GRAY + " · space toggle · i install · esc back" + RST);

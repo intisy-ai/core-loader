@@ -415,6 +415,20 @@ export function fetchCatalogsAsync() {
   enrichCuratedMcpStars();
 }
 
+// Synthetic leading rows for the two universal "add" actions. They are prepended
+// to the S.marketplaceItems array itself (not a parallel list) so S.mkCursor keeps
+// indexing straight into one flat array — no separate offset math anywhere else.
+// "add_plugin_url" always installs via the updater (every app); "add_marketplace"
+// only appears once the active loader's extension registers S.capabilities.addMarketplace.
+function buildMarketplaceActionRows() {
+  var rows = [{ isAction: true, actionKey: "add_plugin_url", name: "＋ Add plugin (git URL)" }];
+  var addMk = S.capabilities && S.capabilities.addMarketplace;
+  if (typeof addMk === "function") {
+    rows.push({ isAction: true, actionKey: "add_marketplace", name: "＋ Add marketplace" });
+  }
+  return rows;
+}
+
 export function buildMarketplaceList() {
   fetchCatalogsAsync();
   var installed = loadPlugins();
@@ -444,7 +458,9 @@ export function buildMarketplaceList() {
     if (bSt !== aSt) return bSt - aSt;
     return (a.name || "").localeCompare(b.name || "");
   });
-  return res;
+  // action rows go in front, always — regardless of the active search filter, so
+  // "Add plugin (git URL)" / "Add marketplace" never disappear mid-search.
+  return buildMarketplaceActionRows().concat(res);
 }
 
 // Pure rule: prefer git via the updater unless the catalog entry explicitly
