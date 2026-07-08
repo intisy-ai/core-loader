@@ -49,6 +49,7 @@ export function buildMcp(pushBody, pushFoot, cols, barW) {
     } else {
       pushBody("  " + BOLD + WHITE + "Installed MCP Servers" + RST + GRAY + " (" + realCount + ")" + RST, false);
     }
+    var mcpPrevAction = false;
     for (var i = 0; i < installedList.length; i++) {
       var m = installedList[i];
       var sel = i === S.mcpCursor;
@@ -56,7 +57,12 @@ export function buildMcp(pushBody, pushFoot, cols, barW) {
       var bg = sel ? BG_SEL : "";
       if (m.isAction) {
         pushBody("  " + bg + arrow + (sel ? (BOLD + ACCENT) : DIM) + m.name + RST, sel);
+        mcpPrevAction = true;
         continue;
+      }
+      if (mcpPrevAction) {
+        pushBody("", false);   // gap between the leading action rows and real content
+        mcpPrevAction = false;
       }
       var nameStyle = sel ? (BOLD + WHITE) : DIM;
       if (m.fromCapability) {

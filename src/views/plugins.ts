@@ -277,6 +277,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
         pushBody("  " + GRAY + "No results for \"" + S.inputBuf + "\"" + RST, false);
       }
       pushBody("", false);
+      var mktPrevAction = false;
       for (var mi = 0; mi < S.marketplaceItems.length; mi++) {
         var mktItem = S.marketplaceItems[mi];
         var mktSel = mi === S.mkCursor;
@@ -286,7 +287,12 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
         // (BOLD+ACCENT when selected, DIM otherwise; no separate status column).
         if (mktItem.isAction) {
           pushBody("  " + mktBg + mktArrow + (mktSel ? (BOLD + ACCENT) : DIM) + mktItem.name + RST, mktSel);
+          mktPrevAction = true;
           continue;
+        }
+        if (mktPrevAction) {
+          pushBody("", false);   // gap between the leading action rows and real content
+          mktPrevAction = false;
         }
         var mktNameStyle = mktSel ? (BOLD + WHITE) : DIM;
         var mktNameW = Math.min(34, Math.max(20, nameW));
