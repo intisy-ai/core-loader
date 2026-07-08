@@ -313,7 +313,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     var lastGroup = null;
     for (var pi2 = 0; pi2 < S.marketplaceItems.length; pi2++) {
       var mitem = S.marketplaceItems[pi2];
-      var group = mitem.category || (mitem.capability ? "From " + (mitem.source || S.mkMarket) : (mitem.official ? "Official" : "Community"));
+      var group = mitem.category || ((mitem.capability || mitem.seed) ? "From " + (mitem.source || S.mkMarket) : (mitem.official ? "Official" : "Community"));
       if (group !== lastGroup) {
         pushBody("", false);
         pushBody("  " + BOLD + WHITE + group + RST, false);
@@ -322,10 +322,10 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
 
       var msel = pi2 === S.mkCursor;
       var mkNameW = Math.min(30, nameW);
-      var methodW = (IS_CLAUDE || mitem.capability) ? 0 : 4;
+      var methodW = (IS_CLAUDE || mitem.capability || mitem.seed) ? 0 : 4;
       // Method badge (git/npm) only makes sense for the loader's own installable
-      // catalog entries; capability-sourced rows and Claude (git-only) show none.
-      var methodBadge = (IS_CLAUDE || mitem.capability) ? ""
+      // catalog entries; capability/seed-sourced rows and Claude (git-only) show none.
+      var methodBadge = (IS_CLAUDE || mitem.capability || mitem.seed) ? ""
         : mitem.installed ? "    "
         : (selectInstallMethod(mitem, S.hasUpdater) === "git" ? (OK + "git " + RST) : (INFO + "npm " + RST));
       // status circle: installed = dim ●, selected = accent ◉, selectable = ○

@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { exec } from "child_process";
-import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, APP_NAME, CONFIG_DIR, IS_CLAUDE, tuiLog } from "./env.js";
+import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, APP_NAME, CONFIG_DIR, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { loadPlugins, catalogCacheHours } from "./config.js";
 import { scheduleRender } from "./views/common.js";
@@ -14,6 +14,10 @@ import { getUpdater } from "./updater.js";
 
 export function invalidateCatalogCache() {
   try { unlinkSync(CATALOG_CACHE_PATH); } catch {}
+}
+
+export function invalidateSeedCache() {
+  try { unlinkSync(SEED_CACHE_PATH); } catch {}
 }
 
 export function loadCatalogCache() {
@@ -36,6 +40,101 @@ export function loadCatalogCache() {
     tuiLog("marketplace catalog loaded from cache");
     return true;
   } catch { return false; }
+}
+
+// ---- Seeded default marketplaces --------------------------------------
+// DEFAULT_MARKETPLACES (env.ts) are popular marketplaces shown at Level 1 for
+// every user, even before they've added them to the host app. Each seed's
+// .claude-plugin/marketplace.json is fetched once per cache window (HEAD,
+// falling back to main/master) and cached on disk exactly like the plugin
+// catalog above, so a cold TUI open never blocks on the network — Level 1
+// shows the seed immediately with count "…" until the fetch (kicked off at
+// startup, see fetchSeedMarketplacesAsync below) resolves.
+
+function loadSeedCache() {
+  try {
+    if (!existsSync(SEED_CACHE_PATH)) return false;
+    var cached = JSON.parse(readFileSync(SEED_CACHE_PATH, "utf-8"));
+    if (!cached || Date.now() - cached.time > catalogCacheHours() * 3600000) return false;
+    if (!cached.data || typeof cached.data !== "object") return false;
+    for (var name in cached.data) S.seedMarketplaces[name] = cached.data[name];
+    tuiLog("seed marketplaces loaded from cache");
+    return true;
+  } catch { return false; }
+}
+
+function saveSeedCache() {
+  try {
+    if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(SEED_CACHE_PATH, JSON.stringify({ time: Date.now(), data: S.seedMarketplaces }));
+    tuiLog("seed marketplaces cached (" + Object.keys(S.seedMarketplaces).length + ")");
+  } catch {}
+}
+
+// A fetched marketplace.json's `plugins` array -> the drill-in shape used by
+// buildMarketplacePluginsList. [] on anything malformed (never throws).
+export function parseSeedPlugins(json, seedName) {
+  var plugins = json && json.plugins;
+  if (!Array.isArray(plugins)) return [];
+  return plugins.map(function(e) {
+    return { id: (e && e.name) || "", name: (e && e.name) || "", description: (e && e.description) || "", source: seedName };
+  });
+}
+
+// Async, non-blocking, cache-respecting: called (guarded by S.seedFetched) every
+// time Level 1 is built, same shape as fetchCatalogsAsync. On a fresh cache hit
+// this does nothing further; otherwise it fetches each seed once, trying HEAD
+// then main then master, and degrades a seed to count 0 / empty drill-in on
+// total failure (offline, renamed default branch, missing file, bad JSON) —
+// it never throws and never blocks rendering.
+export function fetchSeedMarketplacesAsync() {
+  if (S.seedFetched) return;
+  S.seedFetched = true;
+  if (loadSeedCache()) return;
+
+  var curlCmd = process.platform === "win32" ? "curl.exe" : "curl";
+  var branches = ["HEAD", "main", "master"];
+  var remaining = DEFAULT_MARKETPLACES.length;
+
+  function refreshIfViewing() {
+    if (S.pluginSubPage === "marketplace") {
+      S.marketplaceItems = buildMarketplaceList();
+      scheduleRender();
+    }
+  }
+
+  function seedSettled() {
+    remaining--;
+    refreshIfViewing();
+    if (remaining <= 0) saveSeedCache();
+  }
+
+  function tryBranch(seed, idx) {
+    if (idx >= branches.length) {
+      S.seedMarketplaces[seed.name] = { plugins: [], count: 0, repo: seed.repo, error: "fetch failed" };
+      seedSettled();
+      return;
+    }
+    var url = "https://raw.githubusercontent.com/" + seed.repo + "/" + branches[idx] + "/.claude-plugin/marketplace.json";
+    S.catalogPending++;
+    exec(curlCmd + ' -sL -H "User-Agent: OpenCode" "' + url + '"', { timeout: 15000 }, function(err, stdout) {
+      S.catalogPending = Math.max(0, S.catalogPending - 1);
+      if (!err && stdout) {
+        try {
+          var json = JSON.parse(stdout);
+          if (json && Array.isArray(json.plugins)) {
+            var plugins = parseSeedPlugins(json, seed.name);
+            S.seedMarketplaces[seed.name] = { plugins: plugins, count: plugins.length, repo: seed.repo, error: null };
+            seedSettled();
+            return;
+          }
+        } catch (e) {}
+      }
+      tryBranch(seed, idx + 1);
+    });
+  }
+
+  for (var si = 0; si < DEFAULT_MARKETPLACES.length; si++) tryBranch(DEFAULT_MARKETPLACES[si], 0);
 }
 
 // Ensure every official plugin is present in the catalog exactly once.
@@ -448,13 +547,42 @@ function loaderOwnMarketplaces() {
   ];
 }
 
+// Seeded defaults not already covered by a real (loader-own or capability)
+// marketplace — matched by name (seenNames) or by the seed's repo appearing in
+// a capability marketplace's `source` (git URL or "owner/repo"; seenRepos holds
+// those sources lowercased). A seed the user already has wins, so it's never
+// shown twice. Count is "…" (undefined) until fetchSeedMarketplacesAsync resolves.
+function seedMarketplaceRows(seenNames, seenRepos) {
+  var rows = [];
+  for (var i = 0; i < DEFAULT_MARKETPLACES.length; i++) {
+    var seed = DEFAULT_MARKETPLACES[i];
+    if (seenNames[seed.name]) continue;
+    var repoKey = seed.repo.toLowerCase();
+    var dup = false;
+    for (var rk in seenRepos) { if (rk.indexOf(repoKey) !== -1) { dup = true; break; } }
+    if (dup) continue;
+    var cached = S.seedMarketplaces[seed.name];
+    rows.push({
+      name: seed.name,
+      source: seed.repo,
+      count: cached ? cached.count : undefined,
+      seed: true,
+      repo: seed.repo,
+    });
+  }
+  return rows;
+}
+
 // Level 1: the marketplace-of-marketplaces list. Unified Add rows up top, then
 // the loader's own two marketplaces, then every marketplace the active app's
 // extension registers via capabilities.marketplaces() — deduped by name (the
-// loader's own entries always win a name collision).
+// loader's own entries always win a name collision) — then the seeded defaults
+// not already covered by a real entry.
 export function buildMarketplaceMarketsList() {
   fetchCatalogsAsync();
+  fetchSeedMarketplacesAsync();
   var seen = {};
+  var seenRepos = {};
   var rows = buildMarketplaceActionRows();
   var own = loaderOwnMarketplaces();
   for (var oi = 0; oi < own.length; oi++) { rows.push(own[oi]); seen[own[oi].name] = true; }
@@ -466,9 +594,12 @@ export function buildMarketplaceMarketsList() {
       var c = caps[ci];
       if (!c || !c.name || seen[c.name]) continue;
       seen[c.name] = true;
+      if (c.source) seenRepos[String(c.source).toLowerCase()] = true;
       rows.push({ name: c.name, source: c.source || "", count: typeof c.count === "number" ? c.count : 0, capability: true });
     }
   }
+  var seeds = seedMarketplaceRows(seen, seenRepos);
+  for (var sj = 0; sj < seeds.length; sj++) { rows.push(seeds[sj]); seen[seeds[sj].name] = true; }
   // action rows are UI chrome, not search results — keep them pinned regardless
   // of the active filter, same rule buildMarketplacePluginsList follows at Level 2.
   if (S.inputBuf) {
@@ -513,6 +644,25 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
       return (a.name || "").localeCompare(b.name || "");
     });
     return res;
+  }
+  // A seeded default marketplace (env.ts DEFAULT_MARKETPLACES) not yet added to
+  // the host app. Served entirely from S.seedMarketplaces (fetched/cached by
+  // fetchSeedMarketplacesAsync) — [] until that resolves or if the fetch failed,
+  // degrading gracefully rather than throwing. `repo` rides along on every row so
+  // an install action can addMarketplace(repo) before installAppPlugin(id, name).
+  if (kind === "seed") {
+    var seedDef = DEFAULT_MARKETPLACES.find(function(d) { return d.name === marketName; });
+    var seedCache = S.seedMarketplaces[marketName];
+    var seedPlugins = (seedCache && seedCache.plugins) || [];
+    var res3 = seedPlugins.map(function(p) {
+      return { name: p.name, desc: p.description, source: p.source || marketName, seed: true, id: p.id, repo: (seedDef && seedDef.repo) || (seedCache && seedCache.repo), installed: false };
+    });
+    if (S.inputBuf) {
+      var q3 = S.inputBuf.toLowerCase();
+      res3 = res3.filter(function(m) { return (m.name || "").toLowerCase().indexOf(q3) !== -1 || (m.desc || "").toLowerCase().indexOf(q3) !== -1; });
+    }
+    res3.sort(function(a, b) { return (a.name || "").localeCompare(b.name || ""); });
+    return res3;
   }
   // A capability-registered marketplace (e.g. the host app's own plugin
   // marketplace). Browse-only: the capability contract has no generic "install
@@ -567,6 +717,19 @@ export function selectInstallMethod(entry, hasUpdater) {
 // both install methods (default first) so the user can choose git-via-updater or npm.
 export function getMarketplaceActions(item, hasUpdater) {
   var acts = [];
+  if (item.seed) {
+    // Not yet added to the host app: one action does both steps — addMarketplace(repo)
+    // registers it, then installAppPlugin(id, name) installs the plugin — so the user
+    // never has to add the marketplace separately first. Absent either capability
+    // (e.g. opencode), this stays browse-only like a capability marketplace.
+    var addMkFn = S.capabilities && S.capabilities.addMarketplace;
+    var installAppFn0 = S.capabilities && S.capabilities.installAppPlugin;
+    if (typeof addMkFn === "function" && typeof installAppFn0 === "function" && !item.installed) {
+      acts.push({ key: "install-seed", label: "Install (adds " + (item.source || item.repo) + ")" });
+    }
+    acts.push({ key: "cancel", label: "Cancel" });
+    return acts;
+  }
   if (item.capability) {
     // Level-2 rows sourced from capabilities.marketplacePlugins() install through
     // capabilities.installAppPlugin(id, marketplace) when the active app registers

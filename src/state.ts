@@ -23,6 +23,12 @@ export const S = {
   catalogFetched: false,
   catalogPending: 0,
 
+  // Seeded default marketplaces (env.ts DEFAULT_MARKETPLACES): name -> { plugins,
+  // count, repo, error }, filled in by marketplace.ts's fetchSeedMarketplacesAsync.
+  // Absent key = not fetched yet (Level 1 shows "…" for its count).
+  seedMarketplaces: {},
+  seedFetched: false,
+
   // Projects page
   items: [],
   cursor: 0,

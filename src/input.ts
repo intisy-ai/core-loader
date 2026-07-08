@@ -13,7 +13,7 @@ import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, s
 import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater } from "./updater.js";
 import { openProject, openProjectSession, listSessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
-import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
+import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync } from "./marketplace.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
@@ -145,6 +145,43 @@ function marketplaceInstall(item, done, forceMethod) {
   var method = forceMethod || selectInstallMethod(item, S.hasUpdater);
   var install = method === "git" ? installMarketplacePlugin : installViaNpm;
   install(item, function(err) { done(err, method); });
+}
+
+// Install a plugin browsed from a SEEDED default marketplace (not yet added to
+// the host app, see marketplace.ts's DEFAULT_MARKETPLACES / getMarketplaceActions
+// "install-seed"): register the marketplace first (capabilities.addMarketplace),
+// then install the plugin from it (capabilities.installAppPlugin) — one user
+// action does both. Both calls are guarded (absent capability -> graceful flash,
+// same as a capability-marketplace row); `done()` always runs so the caller can
+// refresh the list/cursor and re-render.
+function installSeedPlugin(item, done) {
+  var addMkFn = S.capabilities && S.capabilities.addMarketplace;
+  var installAppFn = S.capabilities && S.capabilities.installAppPlugin;
+  if (typeof addMkFn !== "function" || typeof installAppFn !== "function") {
+    flash("Not installable from here yet.");
+    done();
+    return;
+  }
+  S.busy = true;
+  setBusyMessage("Adding " + (item.repo || item.source) + "...");
+  render();
+  var addRes;
+  try { addRes = addMkFn(item.repo || item.source); }
+  catch (e) { addRes = { ok: false, error: (e && e.message) || String(e) }; }
+  if (!addRes || !addRes.ok) {
+    S.busy = false;
+    flash("Failed to add marketplace: " + ((addRes && addRes.error) || ""));
+    done();
+    return;
+  }
+  setBusyMessage("Installing " + item.name + "...");
+  render();
+  var iares;
+  try { iares = installAppFn(item.id, item.source); }
+  catch (e) { iares = { ok: false, error: (e && e.message) || String(e) }; }
+  S.busy = false;
+  flash(iares && iares.ok ? ("Installing " + item.name + "… restart to activate") : ("Failed: " + ((iares && iares.error) || "")));
+  done();
 }
 
 export function handleKey(key) {
@@ -287,6 +324,14 @@ export function handlePluginKey(key) {
             if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
             render();
             return;
+          } else if (action === "install-seed") {
+            S.mkMode = "browse";
+            installSeedPlugin(mitem, function() {
+              S.marketplaceItems = buildMarketplaceList();
+              if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
+              render();
+            });
+            return;
           } else if (action === "browser" && mitem.url) {
             try {
               var openCmd = process.platform === "win32" ? "start \"\" \"" + mitem.url + "\"" : process.platform === "darwin" ? "open \"" + mitem.url + "\"" : "xdg-open \"" + mitem.url + "\"";
@@ -318,7 +363,7 @@ export function handlePluginKey(key) {
           // handled above and never reach here.
           if (!curItem) return;
           S.mkMarket = curItem.name;
-          S.mkMarketKind = curItem.builtin || (curItem.capability ? "capability" : null);
+          S.mkMarketKind = curItem.builtin || (curItem.capability ? "capability" : (curItem.seed ? "seed" : null));
           S.mkLevel = "plugins";
           S.mkCursor = 0;
           S.mkScrollOff = 0;
@@ -334,6 +379,7 @@ export function handlePluginKey(key) {
         var selItem = S.marketplaceItems[S.mkCursor];
         if (selItem && !selItem.isAction) {
           if (selItem.capability) { flash("Not installable from here yet."); }
+          else if (selItem.seed) { flash("Press i or Enter to install (adds the marketplace first)."); }
           else if (selItem.installed) { flash((selItem.name || selItem.repoName) + " is already installed."); }
           else {
             var sk = selectionKey(selItem);
@@ -345,8 +391,11 @@ export function handlePluginKey(key) {
       else if (key === "/") { S.mode = "search"; return; }
       else if (key === "r") {
         invalidateCatalogCache();
+        invalidateSeedCache();
         S.catalogFetched = false;
+        S.seedFetched = false;
         fetchCatalogsAsync();
+        fetchSeedMarketplacesAsync();
         S.marketplaceItems = buildMarketplaceList();
         flash("Refreshing catalog...");
       }
@@ -398,6 +447,14 @@ export function handlePluginKey(key) {
             flash(iares2 && iares2.ok ? ("Installing " + quickItem.name + "… restart to activate") : ("Failed: " + ((iares2 && iares2.error) || "")));
             S.marketplaceItems = buildMarketplaceList();
             if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
+            return;
+          }
+          if (quickItem.seed) {
+            installSeedPlugin(quickItem, function() {
+              S.marketplaceItems = buildMarketplaceList();
+              if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
+              render();
+            });
             return;
           }
           S.busy = true;

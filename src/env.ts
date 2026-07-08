@@ -34,6 +34,7 @@ export const REPOS_DIR = join(CONFIG_DIR, "repos");
 export const PLUGINS_DIR = join(CONFIG_DIR, "plugin");
 export const MCP_CONFIG_PATH = join(CONFIG_DIR, ".mcp.json");
 export const CATALOG_CACHE_PATH = join(CACHE_DIR, "marketplace-catalog.json");
+export const SEED_CACHE_PATH = join(CACHE_DIR, "seed-marketplaces.json");
 
 // anything printed to the terminal corrupts the TUI — diagnostics go to a file
 export const TUI_START_TIME = new Date().toISOString().replace(/:/g, "-").split(".")[0];
@@ -125,6 +126,22 @@ export const OFFICIAL_PLUGINS = [
 ];
 // mark every entry so downstream code can test e.official without string comparisons
 OFFICIAL_PLUGINS.forEach(function(e) { e.official = true; });
+
+// Popular marketplaces seeded into Level 1 for every user, even before they've
+// added them to the host app. name -> github "owner/repo"; marketplace.ts fetches
+// each repo's .claude-plugin/marketplace.json (HEAD, falling back to main/master)
+// to derive a plugin count + drill-in list, cached on disk (see fetchSeedMarketplacesAsync).
+// Verified list — do NOT add unverified repos here (see the redesign plan's seed catalog).
+export const DEFAULT_MARKETPLACES = [
+  { name: "claude-plugins-official", repo: "anthropics/claude-plugins-official" },
+  { name: "claude-plugins-community", repo: "anthropics/claude-plugins-community" },
+  { name: "superpowers", repo: "obra/superpowers-marketplace" },
+  { name: "wshobson-agents", repo: "wshobson/agents" },
+  { name: "claude-code-templates", repo: "davila7/claude-code-templates" },
+  { name: "ecc", repo: "affaan-m/ECC" },
+  { name: "xiaolai", repo: "xiaolai/claude-plugin-marketplace" },
+  { name: "claude-mem", repo: "thedotmack/claude-mem" },
+];
 
 export const MCP_CATEGORIES = ["All", "Search", "Development", "Files", "Database", "Cloud", "Communication", "Productivity", "Data", "AI", "Plugin"];
 
