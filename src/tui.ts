@@ -262,6 +262,10 @@ if (arg) {
 // first paint so the Providers tab shows and the engine isn't reported "missing".
 async function boot() {
   await loadCustomTabs();
+  // The module-load build of S.pluginItems (top of file) ran BEFORE loadCustomTabs
+  // registered the app's capabilities, so it missed the host's own "App plugins"
+  // (foreignPlugins). Rebuild now that capabilities are live so they show on first render.
+  S.pluginItems = buildCombinedPluginList();
   if (process.env.HUB_OPEN_TAB) {
     S.page = "plugins";
     S.pluginSubPage = process.env.HUB_OPEN_TAB;
