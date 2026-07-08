@@ -137,10 +137,11 @@ export const HELP_BINDINGS = {
     ["C", "Open custom path"], ["<- ->", "Switch page"], ["Q / Esc", "Quit"],
   ],
   plugins: [
-    ["^v / WS", "Move"], ["Enter", "Plugin actions"], ["Tab", "Installed / Marketplace / Providers"],
+    ["^v / WS", "Move"], ["Enter", "Plugin actions / open marketplace"], ["Tab", "Installed / Marketplace / Providers"],
     ["F", "Check for updates"], ["R", "Refresh list / catalog"], ["U", "Update selected"],
     ["A", "Update all"], ["E", "Update updater engine"], ["D", "Disable selected"], ["I", "Quick install (marketplace)"],
-    ["/", "Search (marketplace)"], ["<- ->", "Switch page"], ["Q / Esc", "Quit"],
+    ["/", "Search (marketplace)"], ["[ / ]", "Jump group (marketplace)"], ["Esc", "Back out of a marketplace"],
+    ["<- ->", "Switch page"], ["Q", "Quit"],
   ],
   mcp: [
     ["^v / WS", "Move"], ["Enter", "Server actions"], ["Tab", "Installed / Marketplace"],

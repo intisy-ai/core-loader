@@ -89,7 +89,11 @@ function runUpdateSequence(toUpdate, onDone) {
 // the gated Installed tab onto the Marketplace with the same mechanics as Tab here.
 export function switchPluginSubPage() {
   S.inputBuf = "";
-  if (S.pluginSubPage === "installed") { S.pluginSubPage = "marketplace"; S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0; }
+  if (S.pluginSubPage === "installed") {
+    S.pluginSubPage = "marketplace";
+    S.mkLevel = "markets"; S.mkMarket = null; S.mkSelected = {};
+    S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0;
+  }
   else if (S.pluginSubPage === "marketplace" && S.customTabs.length > 0) { S.pluginSubPage = S.customTabs[0].id; }
   else if (S.pluginSubPage === "marketplace") { S.pluginSubPage = "installed"; }
   else {
@@ -99,6 +103,32 @@ export function switchPluginSubPage() {
     } else {
       S.pluginSubPage = "installed";
     }
+  }
+}
+
+// Fast nav within a (potentially long) Level-2 marketplace: jump the cursor to
+// the start of the previous/next category group ("Official"/"Community"/"Curated"
+// for the loader's own two catalogs). A capability marketplace's plugins carry no
+// category, so there is only one implicit group there — in that case (or any
+// single-group list) fall back to a 10-row page jump so the keys stay useful.
+function jumpMarketplaceGroup(dir) {
+  var items = S.marketplaceItems;
+  if (items.length === 0) return;
+  var groupOf = function(it) { return it.category || (it.official ? "Official" : it.capability ? "capability" : "Community"); };
+  var boundaries = [];
+  for (var i = 0; i < items.length; i++) {
+    if (i === 0 || groupOf(items[i]) !== groupOf(items[i - 1])) boundaries.push(i);
+  }
+  if (boundaries.length <= 1) {
+    S.mkCursor = Math.max(0, Math.min(items.length - 1, S.mkCursor + dir * 10));
+    return;
+  }
+  if (dir > 0) {
+    var next = boundaries.find(function(b) { return b > S.mkCursor; });
+    S.mkCursor = next !== undefined ? next : items.length - 1;
+  } else {
+    var before = boundaries.filter(function(b) { return b < S.mkCursor; });
+    S.mkCursor = before.length ? before[before.length - 1] : 0;
   }
 }
 
@@ -198,6 +228,12 @@ export function handlePluginKey(key) {
     // and tracks its own S.mkMode) instead of quitting the loader; only the
     // top-level list quits on Esc. `q` always quits.
     if (key === "escape" && S.pluginSubPage === "marketplace" && S.mkMode === "actions") { S.mkMode = "browse"; return; }
+    // Esc at Level 2 backs out to Level 1 (the marketplace list) instead of quitting.
+    if (key === "escape" && S.pluginSubPage === "marketplace" && S.mkLevel === "plugins") {
+      S.mkLevel = "markets"; S.mkMarket = null; S.mkSelected = {}; S.inputBuf = "";
+      S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0;
+      return;
+    }
     if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
     
     if (key === "tab") {
@@ -257,6 +293,9 @@ export function handlePluginKey(key) {
       // Browse mode
       if (key === "up" || key === "w") { S.mkCursor = Math.max(0, S.mkCursor - 1); }
       else if (key === "down" || key === "s") { S.mkCursor = Math.min(S.marketplaceItems.length - 1, S.mkCursor + 1); }
+      else if (key === "[" || key === "]") {
+        if (S.mkLevel === "plugins") jumpMarketplaceGroup(key === "]" ? 1 : -1);
+      }
       else if (key === "enter") {
         var curItem = S.marketplaceItems[S.mkCursor];
         if (curItem && curItem.isAction) {
@@ -265,12 +304,27 @@ export function handlePluginKey(key) {
           S.mode = "mkinput";
           return;
         }
+        if (S.mkLevel === "markets") {
+          // Drill into the selected marketplace (Level 2). isAction rows were
+          // handled above and never reach here.
+          if (!curItem) return;
+          S.mkMarket = curItem.name;
+          S.mkLevel = "plugins";
+          S.mkCursor = 0;
+          S.mkScrollOff = 0;
+          S.mkSelected = {};
+          S.inputBuf = "";
+          S.marketplaceItems = buildMarketplaceList();
+          return;
+        }
         if (S.marketplaceItems.length > 0) { S.mkMode = "actions"; S.mkAcursor = 0; }
       }
       else if (key === "space") {
+        if (S.mkLevel !== "plugins") return;   // Level 1 rows aren't installable/selectable
         var selItem = S.marketplaceItems[S.mkCursor];
         if (selItem && !selItem.isAction) {
-          if (selItem.installed) { flash((selItem.name || selItem.repoName) + " is already installed."); }
+          if (selItem.capability) { flash("Not installable from here yet."); }
+          else if (selItem.installed) { flash((selItem.name || selItem.repoName) + " is already installed."); }
           else {
             var sk = selectionKey(selItem);
             if (S.mkSelected[sk]) delete S.mkSelected[sk];
@@ -287,6 +341,7 @@ export function handlePluginKey(key) {
         flash("Refreshing catalog...");
       }
       else if (key === "i") {
+        if (S.mkLevel !== "plugins") { flash("Open a marketplace first."); return; }
         // Source from S.marketplaceItems (not the raw catalog) so the synthetic
         // isUpdater entry buildMarketplaceList() injects is visible to the batch —
         // it never appears in S.MARKETPLACE_CATALOG.
@@ -325,6 +380,7 @@ export function handlePluginKey(key) {
         } else if (S.marketplaceItems.length > 0) {
           var quickItem = S.marketplaceItems[S.mkCursor];
           if (quickItem.isAction) { return; }   // 'i' is a no-op on the leading action rows
+          if (quickItem.capability) { flash("Not installable from here yet."); return; }
           if (quickItem.installed) { flash(quickItem.name + " is already installed."); return; }
           S.busy = true;
           setBusyMessage("Installing " + (quickItem.name || quickItem.repoName) + "...");
@@ -732,7 +788,7 @@ export function parseKey(buf) {
   var ch = String.fromCharCode(buf[0]).toLowerCase();
   // NB: every actionable letter key MUST be listed here or parseKey drops it before
   // any handler sees it (this is why "E to update" silently did nothing — 'e' was missing).
-  if ("wsadqpchofuximynre/?".indexOf(ch) !== -1) return ch;
+  if ("wsadqpchofuximynre/?[]".indexOf(ch) !== -1) return ch;
   return null;
 }
 

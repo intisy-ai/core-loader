@@ -84,6 +84,11 @@ export const S = {
   mkMode: "browse",
   mkAcursor: 0,
   mkSelected: {},
+  // Two-level browser: "markets" (marketplaces themselves) | "plugins" (one
+  // marketplace's plugins, named by mkMarket). S.marketplaceItems always holds
+  // whichever level is active — see marketplace.ts buildMarketplaceList().
+  mkLevel: "markets",
+  mkMarket: null,
   // Which leading action row is being confirmed while S.mode === "mkinput":
   // "add_plugin_url" | "add_marketplace" (see input.ts handleMarketplaceAddInputData).
   mkAddAction: null,

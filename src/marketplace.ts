@@ -420,6 +420,8 @@ export function fetchCatalogsAsync() {
 // indexing straight into one flat array — no separate offset math anywhere else.
 // "add_plugin_url" always installs via the updater (every app); "add_marketplace"
 // only appears once the active loader's extension registers S.capabilities.addMarketplace.
+// Both are LEVEL-1-ONLY (they add a marketplace/plugin globally, not "into" a
+// drilled-in marketplace), so only buildMarketplaceMarketsList() calls this.
 function buildMarketplaceActionRows() {
   var rows = [{ isAction: true, actionKey: "add_plugin_url", name: "＋ Add plugin (git URL)" }];
   var addMk = S.capabilities && S.capabilities.addMarketplace;
@@ -429,38 +431,121 @@ function buildMarketplaceActionRows() {
   return rows;
 }
 
-export function buildMarketplaceList() {
+// The loader's own two "marketplaces" — the built-in catalog (fetched/curated by
+// this file) split into its official and community halves, each reported with a
+// live plugin count. They are marketplaces like any other at Level 1, just backed
+// by S.MARKETPLACE_CATALOG instead of a capabilities.marketplaces() entry.
+function loaderOwnMarketplaces() {
+  var officialCount = 0, communityCount = 0;
+  for (var i = 0; i < S.MARKETPLACE_CATALOG.length; i++) {
+    var e = S.MARKETPLACE_CATALOG[i];
+    if (e.isUpdater) continue;   // the engine itself is never a browsable catalog entry
+    if (e.official) officialCount++; else communityCount++;
+  }
+  return [
+    { name: "intisy-ai (official)", source: "built-in catalog", count: officialCount, builtin: "official" },
+    { name: "community", source: "built-in catalog", count: communityCount, builtin: "community" },
+  ];
+}
+
+// Level 1: the marketplace-of-marketplaces list. Unified Add rows up top, then
+// the loader's own two marketplaces, then every marketplace the active app's
+// extension registers via capabilities.marketplaces() — deduped by name (the
+// loader's own entries always win a name collision).
+export function buildMarketplaceMarketsList() {
   fetchCatalogsAsync();
-  var installed = loadPlugins();
-  var installedNames = installed.map(function(p) { return p.name; });
-  var res = S.MARKETPLACE_CATALOG.map(function(m) {
-    var repoName = m.repoName || m.name;
-    var isInstalled = installedNames.indexOf(m.name) !== -1 || installedNames.indexOf(repoName) !== -1;
-    return Object.assign({}, m, { installed: isInstalled });
-  });
-  // plugin-updater (the engine) is installed only via the gate, never from the
-  // marketplace, so it is not injected here — the marketplace only appears once the
-  // engine already exists.
+  var seen = {};
+  var rows = buildMarketplaceActionRows();
+  var own = loaderOwnMarketplaces();
+  for (var oi = 0; oi < own.length; oi++) { rows.push(own[oi]); seen[own[oi].name] = true; }
+  var mfn = S.capabilities && S.capabilities.marketplaces;
+  if (typeof mfn === "function") {
+    var caps = [];
+    try { caps = mfn() || []; } catch (e) {}
+    for (var ci = 0; ci < caps.length; ci++) {
+      var c = caps[ci];
+      if (!c || !c.name || seen[c.name]) continue;
+      seen[c.name] = true;
+      rows.push({ name: c.name, source: c.source || "", count: typeof c.count === "number" ? c.count : 0, capability: true });
+    }
+  }
+  // action rows are UI chrome, not search results — keep them pinned regardless
+  // of the active filter, same rule buildMarketplacePluginsList follows at Level 2.
   if (S.inputBuf) {
     var q = S.inputBuf.toLowerCase();
-    res = res.filter(function(m) { return (m.name||'').toLowerCase().indexOf(q) !== -1 || (m.desc||'').toLowerCase().indexOf(q) !== -1; });
+    rows = rows.filter(function(r) { return r.isAction || (r.name || "").toLowerCase().indexOf(q) !== -1; });
   }
-  // the engine sorts first of all; then official entries; within each group by stars desc then name asc
-  res.sort(function(a, b) {
-    var aUpd = a.isUpdater ? 1 : 0;
-    var bUpd = b.isUpdater ? 1 : 0;
-    if (bUpd !== aUpd) return bUpd - aUpd;
-    var aOff = a.official ? 1 : 0;
-    var bOff = b.official ? 1 : 0;
-    if (bOff !== aOff) return bOff - aOff;
-    var aSt = a.stars != null ? a.stars : -1;
-    var bSt = b.stars != null ? b.stars : -1;
-    if (bSt !== aSt) return bSt - aSt;
-    return (a.name || "").localeCompare(b.name || "");
+  return rows;
+}
+
+// Level 2: a single marketplace's plugins. "intisy-ai (official)"/"community" are
+// served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG); every other
+// name is assumed to be an app-registered marketplace and is served through
+// capabilities.marketplacePlugins(name) — which returns [] if the capability is
+// absent or the marketplace is unknown, so this degrades to an empty list rather
+// than throwing.
+export function buildMarketplacePluginsList(marketName) {
+  fetchCatalogsAsync();
+  if (marketName === "intisy-ai (official)" || marketName === "community") {
+    var wantOfficial = marketName === "intisy-ai (official)";
+    var installed = loadPlugins();
+    var installedNames = installed.map(function(p) { return p.name; });
+    var res = S.MARKETPLACE_CATALOG.filter(function(m) { return !m.isUpdater && !!m.official === wantOfficial; }).map(function(m) {
+      var repoName = m.repoName || m.name;
+      var isInstalled = installedNames.indexOf(m.name) !== -1 || installedNames.indexOf(repoName) !== -1;
+      return Object.assign({}, m, { installed: isInstalled });
+    });
+    if (S.inputBuf) {
+      var q = S.inputBuf.toLowerCase();
+      res = res.filter(function(m) { return (m.name || "").toLowerCase().indexOf(q) !== -1 || (m.desc || "").toLowerCase().indexOf(q) !== -1; });
+    }
+    res.sort(function(a, b) {
+      var aSt = a.stars != null ? a.stars : -1;
+      var bSt = b.stars != null ? b.stars : -1;
+      if (bSt !== aSt) return bSt - aSt;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+    return res;
+  }
+  // A capability-registered marketplace (e.g. the host app's own plugin
+  // marketplace). Browse-only: the capability contract has no generic "install
+  // plugin X from marketplace Y" call (only enable/disable/uninstall for an
+  // ALREADY-installed foreign plugin, wired into the Installed tab), so these
+  // rows carry `capability: true` and getMarketplaceActions() only offers Cancel.
+  // foreignPlugins() is cross-referenced purely for the installed/○ dot.
+  var mpfn = S.capabilities && S.capabilities.marketplacePlugins;
+  var raw = [];
+  if (typeof mpfn === "function") { try { raw = mpfn(marketName) || []; } catch (e) {} }
+  var fpfn = S.capabilities && S.capabilities.foreignPlugins;
+  var foreignKeys = {};
+  if (typeof fpfn === "function") {
+    try {
+      var foreign = fpfn() || [];
+      for (var fi = 0; fi < foreign.length; fi++) {
+        var f = foreign[fi];
+        foreignKeys[(f.name || "") + "@" + (f.source || marketName)] = true;
+      }
+    } catch (e) {}
+  }
+  var res2 = raw.map(function(p) {
+    var key = (p.id || p.name || "") + "@" + marketName;
+    return { name: p.name, desc: p.description, source: p.source || marketName, capability: true, id: p.id, installed: !!foreignKeys[key] };
   });
-  // action rows go in front, always — regardless of the active search filter, so
-  // "Add plugin (git URL)" / "Add marketplace" never disappear mid-search.
-  return buildMarketplaceActionRows().concat(res);
+  if (S.inputBuf) {
+    var q2 = S.inputBuf.toLowerCase();
+    res2 = res2.filter(function(m) { return (m.name || "").toLowerCase().indexOf(q2) !== -1 || (m.desc || "").toLowerCase().indexOf(q2) !== -1; });
+  }
+  res2.sort(function(a, b) { return (a.name || "").localeCompare(b.name || ""); });
+  return res2;
+}
+
+// Single entry point every caller uses (unchanged name/signature on purpose —
+// input.ts/views/plugins.ts never need to know which level is active). Dispatches
+// on S.mkLevel so re-running it after e.g. a catalog fetch always rebuilds
+// whichever level the user is currently looking at.
+export function buildMarketplaceList() {
+  if (S.mkLevel === "plugins" && S.mkMarket) return buildMarketplacePluginsList(S.mkMarket);
+  return buildMarketplaceMarketsList();
 }
 
 // Pure rule: prefer git via the updater unless the catalog entry explicitly
@@ -475,6 +560,12 @@ export function selectInstallMethod(entry, hasUpdater) {
 // both install methods (default first) so the user can choose git-via-updater or npm.
 export function getMarketplaceActions(item, hasUpdater) {
   var acts = [];
+  if (item.capability) {
+    // Level-2 rows sourced from capabilities.marketplacePlugins() have no
+    // install path yet (see buildMarketplacePluginsList) — browse-only.
+    acts.push({ key: "cancel", label: "Cancel" });
+    return acts;
+  }
   if (item.installed) {
     // already installed — no install action
   } else if (IS_CLAUDE) {
