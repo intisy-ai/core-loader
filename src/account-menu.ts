@@ -159,16 +159,26 @@ export function createAccountMenu() {
     if (key === "enter") {
       const item = menu.items[nav.cur];
       if (!item || typeof item.run !== "function") return true;
-      let r; try { r = item.run(); } catch (e) { return true; }
+      // Always give feedback: prefer an action's own {flash}; otherwise, when it doesn't
+      // navigate to another menu/input (push/pop/input/close), acknowledge the item so no
+      // click ever feels dead. Errors always flash.
+      const ack = function (a) {
+        try {
+          if (a && a.flash) tuiApi.flash(a.flash);
+          else if (!a || (!a.push && !a.input && !a.pop && !a.close)) tuiApi.flash((item.label || "Done") + " ✓");
+        } catch (e) {}
+      };
+      var fail = function (e) { try { tuiApi.flash("Failed: " + (e && e.message || e)); } catch (x) {} };
+      let r; try { r = item.run(); } catch (e) { fail(e); return true; }
       if (r && typeof r.then === "function") {
         if (item.suspend) {
           // suspend items (provider login(), proxy pickers, confirm) need a clean terminal
-          tuiApi.runBlocking(async function () { try { applyAction(await r, tuiApi); } catch (e) { process.stdout.write(String(e) + "\n"); } });
+          tuiApi.runBlocking(async function () { try { const a = await r; applyAction(a, tuiApi); ack(a); } catch (e) { fail(e); } });
         } else {
           // async non-suspend (e.g. building an in-tab login input) resolves live, in chrome
-          r.then(function (a) { applyAction(a, tuiApi); if (tuiApi.refresh) tuiApi.refresh(); }).catch(function (e) { try { tuiApi.flash(String(e && e.message || e)); } catch (x) {} if (tuiApi.refresh) tuiApi.refresh(); });
+          r.then(function (a) { applyAction(a, tuiApi); ack(a); if (tuiApi.refresh) tuiApi.refresh(); }).catch(function (e) { fail(e); if (tuiApi.refresh) tuiApi.refresh(); });
         }
-      } else applyAction(r, tuiApi);
+      } else { applyAction(r, tuiApi); ack(r); }
       return true;
     }
     return true;   // swallow other keys while the menu owns the tab
