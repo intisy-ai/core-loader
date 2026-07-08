@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { exec } from "child_process";
-import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, APP_NAME, CONFIG_DIR, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, tuiLog } from "./env.js";
+import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, FEATURED_PLUGINS, APP_NAME, CONFIG_DIR, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { loadPlugins, catalogCacheHours } from "./config.js";
 import { scheduleRender } from "./views/common.js";
@@ -544,6 +544,7 @@ function loaderOwnMarketplaces() {
   return [
     { name: "intisy-ai (official)", source: "built-in catalog", count: officialCount, builtin: "official" },
     { name: "community", source: "built-in catalog", count: communityCount, builtin: "community" },
+    { name: "Featured", source: "curated standalone plugins", count: FEATURED_PLUGINS.length, builtin: "featured" },
   ];
 }
 
@@ -610,19 +611,20 @@ export function buildMarketplaceMarketsList() {
 }
 
 // Level 2: a single marketplace's plugins. "intisy-ai (official)"/"community" are
-// served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG); every other
-// name is assumed to be an app-registered marketplace and is served through
+// served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG); "Featured"
+// is served from the static FEATURED_PLUGINS list (env.ts); every other name is
+// assumed to be an app-registered marketplace and is served through
 // capabilities.marketplacePlugins(name) — which returns [] if the capability is
 // absent or the marketplace is unknown, so this degrades to an empty list rather
 // than throwing.
 export function buildMarketplacePluginsList(marketName, marketKind) {
   fetchCatalogsAsync();
-  // Route by the KIND captured off the Level-1 row (builtin "official"/"community"
-  // tag, or "capability"), not by string-comparing marketName against the loader's
-  // own display names — a capability marketplace could itself be named "community"
-  // and would otherwise be misrouted/dedup-swallowed into the built-in catalog.
-  // marketKind is undefined for any caller that predates this param (defensive
-  // fallback to the old name comparison).
+  // Route by the KIND captured off the Level-1 row (builtin "official"/"community"/
+  // "featured" tag, or "capability"), not by string-comparing marketName against the
+  // loader's own display names — a capability marketplace could itself be named
+  // "community" and would otherwise be misrouted/dedup-swallowed into the built-in
+  // catalog. marketKind is undefined for any caller that predates this param
+  // (defensive fallback to the old name comparison).
   var kind = marketKind || (marketName === "intisy-ai (official)" ? "official" : marketName === "community" ? "community" : null);
   if (kind === "official" || kind === "community") {
     var wantOfficial = kind === "official";
@@ -644,6 +646,26 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
       return (a.name || "").localeCompare(b.name || "");
     });
     return res;
+  }
+  // The built-in "Featured" catalog (env.ts FEATURED_PLUGINS) — standalone plugin
+  // repos, not a marketplace.json to fetch. Each row is a plain catalog-shaped
+  // item (name/desc/url/category/repoName/full_name) so it falls through the
+  // SAME default branch of getMarketplaceActions()/marketplaceInstall() that the
+  // official/community catalog uses: install-git via installMarketplacePlugin(url)
+  // when a git updater is present, else install-npm via installViaNpm(repoName).
+  if (kind === "featured") {
+    var installedFt = loadPlugins();
+    var installedFtNames = installedFt.map(function(p) { return p.name; });
+    var resFt = FEATURED_PLUGINS.map(function(m) {
+      var isInstalled = installedFtNames.indexOf(m.name) !== -1 || installedFtNames.indexOf(m.repoName) !== -1;
+      return Object.assign({}, m, { installed: isInstalled });
+    });
+    if (S.inputBuf) {
+      var qFt = S.inputBuf.toLowerCase();
+      resFt = resFt.filter(function(m) { return (m.name || "").toLowerCase().indexOf(qFt) !== -1 || (m.desc || "").toLowerCase().indexOf(qFt) !== -1; });
+    }
+    resFt.sort(function(a, b) { return (a.name || "").localeCompare(b.name || ""); });
+    return resFt;
   }
   // A seeded default marketplace (env.ts DEFAULT_MARKETPLACES) not yet added to
   // the host app. Served entirely from S.seedMarketplaces (fetched/cached by

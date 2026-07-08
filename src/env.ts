@@ -141,7 +141,51 @@ export const DEFAULT_MARKETPLACES = [
   { name: "ecc", repo: "affaan-m/ECC" },
   { name: "xiaolai", repo: "xiaolai/claude-plugin-marketplace" },
   { name: "claude-mem", repo: "thedotmack/claude-mem" },
+  // Added July 2026 — verified marketplace repos (curated catalog pass).
+  { name: "superpowers-plugin", repo: "obra/superpowers" },
+  { name: "wshobson-commands", repo: "wshobson/commands" },
+  { name: "anthropics-skills", repo: "anthropics/skills" },
+  { name: "voltagent-subagents", repo: "VoltAgent/awesome-claude-code-subagents" },
+  { name: "furai-subagents", repo: "0xfurai/claude-code-subagents" },
+  { name: "context-engineering-kit", repo: "NeoLabHQ/context-engineering-kit" },
+  { name: "claude-skills-marketplace", repo: "mhattingpete/claude-skills-marketplace" },
 ];
+
+// Standalone individual plugin repos (not marketplaces) curated for a built-in
+// "Featured" catalog shown in Level 1 alongside "intisy-ai (official)"/"community"
+// (see marketplace.ts loaderOwnMarketplaces). Each installs like any other
+// catalog plugin — git clone via the updater, using the derived .url below —
+// there is no marketplace.json to fetch, so these never go through the seed
+// fetch machinery. Verified list — do NOT add unverified repos here.
+export const FEATURED_PLUGINS = [
+  { name: "claude-mem", repo: "thedotmack/claude-mem", description: "Persistent cross-session memory (capture/compress/reinject)", category: "memory" },
+  { name: "hindsight", repo: "vectorize-io/hindsight", description: "Agent memory that learns (+ hindsight-skills)", category: "memory" },
+  { name: "context7", repo: "upstash/context7", description: "Up-to-date library docs for LLMs via MCP", category: "docs" },
+  { name: "claude-hud", repo: "jarrodwatts/claude-hud", description: "HUD statusline: context/tools/agents/todos", category: "statusline" },
+  { name: "claude-code-usage-bar", repo: "leeguooooo/claude-code-usage-bar", description: "Statusline: rate-limit usage, resets, model/context", category: "statusline" },
+  { name: "cartographer", repo: "kingbootoshi/cartographer", description: "Maps/documents codebases via parallel subagents", category: "codebase" },
+  { name: "dev-browser", repo: "SawyerHood/dev-browser", description: "Real web browser for the agent (Playwright)", category: "browser" },
+  { name: "playwright-skill", repo: "lackeyjb/playwright-skill", description: "Model-invoked Playwright browser automation", category: "browser" },
+  { name: "skill-seekers", repo: "yusufkaraaslan/Skill_Seekers", description: "Convert docs/repos/PDFs into Claude skills", category: "authoring" },
+  { name: "ios-simulator-skill", repo: "conorluddy/ios-simulator-skill", description: "Build/run/interact with iOS Simulator", category: "mobile" },
+  { name: "claude-code-otel", repo: "ColeMurray/claude-code-otel", description: "OpenTelemetry -> Grafana observability for CC", category: "observability" },
+  { name: "aws-skills", repo: "zxkane/aws-skills", description: "AWS dev skills (CDK/SST, serverless, cost, Bedrock)", category: "cloud" },
+  { name: "ui-craft", repo: "educlopez/ui-craft", description: "Design-engineering skill for craft-quality UI", category: "design" },
+  { name: "claude-epub-skill", repo: "smerchek/claude-epub-skill", description: "Markdown -> EPUB (send-to-Kindle)", category: "documents" },
+  { name: "openweb", repo: "openweb-org/openweb", description: "Agent-native access to 90+ websites via APIs", category: "integration" },
+  { name: "tapestry-skills", repo: "michalparkola/tapestry-skills", description: "Download articles/PDFs/YouTube transcripts", category: "research" },
+];
+// derive the fields the generic catalog-item install/select machinery expects
+// (selectionKey, getMarketplaceActions, marketplaceRow) from the raw schema
+FEATURED_PLUGINS.forEach(function(e) {
+  var parts = e.repo.split("/");
+  e.author = parts[0];
+  e.repoName = parts[1];
+  e.full_name = e.repo;
+  e.url = "https://github.com/" + e.repo + ".git";
+  e.desc = e.description;
+  e.featured = true;
+});
 
 export const MCP_CATEGORIES = ["All", "Search", "Development", "Files", "Database", "Cloud", "Communication", "Productivity", "Data", "AI", "Plugin"];
 
