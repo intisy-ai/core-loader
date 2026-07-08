@@ -9,7 +9,7 @@ import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "../config.js";
 import { buildConfigItems } from "../plugins.js";
 import { hints, messageLine } from "./common.js";
 
-export function buildSettings(pushBody, pushFoot, cols, barW) {
+export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   // The pconfig/pcfginput overlay is rendered here (same markup as plugin configure).
   // handleSettingsKey enters "pconfig" mode and sets S.configTarget = { global: true }.
   if (S.mode === "pconfig" || S.mode === "pcfginput") {
@@ -46,9 +46,9 @@ export function buildSettings(pushBody, pushFoot, cols, barW) {
   // List view: show every global setting key with its current value.
   var items = buildConfigItems({ defaults: GLOBAL_SETTINGS_DEFAULTS, current: loadGlobalSettings() });
 
-  pushBody("  " + BOLD + WHITE + "Global Settings" + RST, false);
-  pushBody("  " + DIM + "Ecosystem-wide settings stored in config/settings.json" + RST, false);
-  pushBody("", false);
+  pushSticky("  " + BOLD + WHITE + "Global Settings" + RST);
+  pushSticky("  " + DIM + "Ecosystem-wide settings stored in config/settings.json" + RST);
+  pushSticky("");
 
   if (items.length === 0) {
     pushBody("  " + GRAY + "No global settings defined." + RST, false);

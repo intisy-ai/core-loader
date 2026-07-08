@@ -21,15 +21,20 @@ export function render() {
   var barW = Math.max(20, cols - 4);
 
   var headLines = [];
+  var stickyLines = [];
   var bodyLines = [];
   var footLines = [];
   var selStart = 0;
   var selEnd = 0;
 
   function pushHead(s) { headLines.push(s); }
-  function pushBody(s, isSelLine) { 
+  // Sticky region: rendered ALWAYS between the header/tabs and the scrollable body.
+  // Never scrolled and never counted in selStart/selEnd, so a view's top info block
+  // stays visible while only its list scrolls.
+  function pushSticky(s) { stickyLines.push(s); }
+  function pushBody(s, isSelLine) {
     if (isSelLine && selStart === 0) selStart = bodyLines.length;
-    bodyLines.push(s); 
+    bodyLines.push(s);
     if (isSelLine) selEnd = bodyLines.length;
   }
   function pushFoot(s) { footLines.push(s); }
@@ -51,13 +56,13 @@ export function render() {
   } else if (S.mode === "confirm") {
     buildConfirm(pushBody, pushFoot, cols, barW);
   } else if (S.page === "projects") {
-    buildProjects(pushBody, pushFoot, cols, barW);
+    buildProjects(pushBody, pushFoot, cols, barW, pushSticky);
   } else if (S.page === "mcp") {
-    buildMcp(pushBody, pushFoot, cols, barW);
+    buildMcp(pushBody, pushFoot, cols, barW, pushSticky);
   } else if (S.page === "settings") {
-    buildSettings(pushBody, pushFoot, cols, barW);
+    buildSettings(pushBody, pushFoot, cols, barW, pushSticky);
   } else {
-    buildPlugins(pushBody, pushFoot, cols, barW);
+    buildPlugins(pushBody, pushFoot, cols, barW, pushSticky);
   }
   updateSpinner();
 
@@ -66,8 +71,9 @@ export function render() {
   while (bodyLines.length > 0 && bodyLines[bodyLines.length - 1] === "") bodyLines.pop();
   if (footLines.length) footLines.unshift("");
 
-  // 3. Viewport calculation
-  var maxBody = Math.max(2, totalRows - headLines.length - footLines.length);
+  // 3. Viewport calculation — the scrollable body occupies the space BELOW the
+  // header/tabs and the sticky region (which are always shown in full).
+  var maxBody = Math.max(2, totalRows - headLines.length - stickyLines.length - footLines.length);
   
   var activeScroll = 0;
   if (S.page === "projects") activeScroll = S.scrollOff;
@@ -100,9 +106,13 @@ export function render() {
 
     var hiddenAbove = activeScroll;
     var hiddenBelow = bodyLines.length - (activeScroll + innerH);
-    // at scroll-top the reserved top marker is blank; drop the header's trailing
-    // blank so it doesn't stack into a double gap above the tabs
-    if (hiddenAbove === 0 && headLines.length && headLines[headLines.length - 1] === "") headLines.pop();
+    // at scroll-top the reserved top marker is blank; drop the trailing blank of
+    // whatever sits directly above the body (the sticky block if present, else the
+    // header) so it doesn't stack into a double gap above the first row
+    if (hiddenAbove === 0) {
+      if (stickyLines.length && stickyLines[stickyLines.length - 1] === "") stickyLines.pop();
+      else if (!stickyLines.length && headLines.length && headLines[headLines.length - 1] === "") headLines.pop();
+    }
     var visibleBody = bodyLines.slice(activeScroll, activeScroll + innerH);
     visibleBody.unshift(hiddenAbove > 0 ? "  " + GRAY + "     ↑ " + hiddenAbove + " more" + RST : "");
     visibleBody.push(hiddenBelow > 0 ? "  " + GRAY + "     ↓ " + hiddenBelow + " more" + RST : "");
@@ -115,7 +125,7 @@ export function render() {
   // no newline after the last row: writing into the bottom-right corner would
   // scroll the terminal and shift the whole frame every redraw
   S._buf = "\x1b[?2026h" + E + "H";
-  S._buf += headLines.concat(bodyLines, footLines).map(function(l) { return l + CLR; }).join("\n");
+  S._buf += headLines.concat(stickyLines, bodyLines, footLines).map(function(l) { return l + CLR; }).join("\n");
   S._buf += E + "J" + "\x1b[?2026l";
 
   process.stderr.write(S._buf);

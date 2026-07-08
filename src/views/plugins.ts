@@ -78,7 +78,7 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
 
 }
 
-export function buildPlugins(pushBody, pushFoot, cols, barW) {
+export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
   var nameW = Math.min(32, Math.max(20, cols - 44));
 
   // "hasUpdater" must mean the updater is actually INSTALLED AND LOADABLE — not
@@ -238,8 +238,8 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     tabsLine += "  " + ctStr;
   }
   tabsLine += "    " + DIM + "tab switch" + RST;
-    pushBody(tabsLine, false);
-  pushBody("", false);
+  pushSticky(tabsLine);
+  pushSticky("");
 
   // --- Marketplace sub-page (two levels: markets -> a marketplace's plugins) ---
   if (S.pluginSubPage === "marketplace") {
@@ -272,11 +272,11 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     if (S.mkLevel !== "plugins") {
       // --- Level 1: the marketplace-of-marketplaces list ---
       var marketRows = S.marketplaceItems.filter(function(m) { return !m.isAction; });
-      pushBody("  " + BOLD + WHITE + "Marketplaces" + RST + GRAY + " (" + marketRows.length + ")" + RST + (S.mode === "search" || S.inputBuf ? " " + BG_SEL + " Search: " + S.inputBuf + (S.mode === "search" ? "_" : "") + " " + RST : " " + DIM + "(press / to search)" + RST), false);
+      pushSticky("  " + BOLD + WHITE + "Marketplaces" + RST + GRAY + " (" + marketRows.length + ")" + RST + (S.mode === "search" || S.inputBuf ? " " + BG_SEL + " Search: " + S.inputBuf + (S.mode === "search" ? "_" : "") + " " + RST : " " + DIM + "(press / to search)" + RST));
+      pushSticky("");
       if (marketRows.length === 0 && S.inputBuf) {
         pushBody("  " + GRAY + "No results for \"" + S.inputBuf + "\"" + RST, false);
       }
-      pushBody("", false);
       var mktPrevAction = false;
       for (var mi = 0; mi < S.marketplaceItems.length; mi++) {
         var mktItem = S.marketplaceItems[mi];
@@ -316,7 +316,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     var catalogItems = S.marketplaceItems;   // no leading action rows at Level 2
     var mkHeader = "  " + DIM + "‹ " + RST + BOLD + WHITE + trunc(S.mkMarket || "", 34) + RST + GRAY + " (" + catalogItems.length + " available)" + RST;
     mkHeader += (S.mode === "search" || S.inputBuf) ? " " + BG_SEL + " Search: " + S.inputBuf + (S.mode === "search" ? "_" : "") + " " + RST : " " + DIM + "(press / to search)" + RST;
-    pushBody(mkHeader, false);
+    pushSticky(mkHeader);
     if (catalogItems.length === 0) {
       if (S.inputBuf) {
         pushBody("  " + GRAY + "No results for \"" + S.inputBuf + "\"" + RST, false);
@@ -387,6 +387,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
         mode: S.mode
       }, {
         pushBody: pushBody,
+        pushSticky: pushSticky,
         pushFoot: pushFoot,
         pad: pad,
         trunc: trunc,
@@ -412,13 +413,14 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
   }
 
   var npmCount = S.pluginItems.filter(function(p) { return p.type === "npm"; }).length;
-  pushBody("  " + BOLD + WHITE + "Plugins" + RST + " " +
+  // Top info block stays pinned (sticky) so it never scrolls off behind an "↑ N more".
+  pushSticky("  " + BOLD + WHITE + "Plugins" + RST + " " +
       GRAY + "(" + autoCount + " auto, " + manualCount + " manual, " + disabledCount + " disabled" +
       (updateCount > 0 ? ", " + ACCENT + updateCount + " updates" + GRAY : "") +
       (npmCount > 0 ? ", " + GRAY + npmCount + " npm" + GRAY : "") +
-      ")" + RST, false);
+      ")" + RST);
 
-  pushBody("", false);   // spacer between the count and the engine/locations block
+  pushSticky("");   // spacer between the count and the engine/locations block
 
   // where plugins live; under Claude the engine's version/update/location live here too
   // (no npm section), under OpenCode the engine is its own npm row so it's omitted here.
@@ -426,16 +428,16 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
   if (IS_CLAUDE) {
     var uv = getUpdaterVersion();
     var upath = getUpdaterPath();
-    pushBody("  " + DIM + "updater " + (uv ? "v" + uv : "(resolving)") + GRAY + " · press " + WHITE + "E" + GRAY + " to update" + (upath ? " · " + abbr(upath) : "") + RST, false);
-    pushBody("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + RST, false);
+    pushSticky("  " + DIM + "updater " + (uv ? "v" + uv : "(resolving)") + GRAY + " · press " + WHITE + "E" + GRAY + " to update" + (upath ? " · " + abbr(upath) : "") + RST);
+    pushSticky("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + RST);
   } else {
-    pushBody("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + " · npm " + abbr(HOME + "/.cache/opencode/packages") + RST, false);
+    pushSticky("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + " · npm " + abbr(HOME + "/.cache/opencode/packages") + RST);
   }
 
-  pushBody("", false);   // spacer between the locations block and the plugin list
+  pushSticky("");   // spacer between the locations block and the plugin list
 
   if (!S.pluginFetched) {
-    pushBody("  " + DIM + "Press F to check for updates" + RST, false);
+    pushSticky("  " + DIM + "Press F to check for updates" + RST);
   }
 
   var hadNpm = false;

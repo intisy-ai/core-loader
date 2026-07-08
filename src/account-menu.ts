@@ -108,9 +108,12 @@ export function createAccountMenu() {
     }
     const menu = curMenu();
     if (!menu) { nav.active = false; return false; }
-    h.pushBody("  " + h.BOLD + h.WHITE + "" + (menu.title || "Menu") + h.RST, false);
-    if (menu.subtitle) h.pushBody("  " + h.GRAY + menu.subtitle + h.RST, false);
-    h.pushBody("", false);
+    // Pin the title/subtitle so they stay visible while the accounts list scrolls
+    // (falls back to pushBody when the host's h object predates the sticky region).
+    const pushSticky = h.pushSticky || h.pushBody;
+    pushSticky("  " + h.BOLD + h.WHITE + "" + (menu.title || "Menu") + h.RST, false);
+    if (menu.subtitle) pushSticky("  " + h.GRAY + menu.subtitle + h.RST, false);
+    pushSticky("", false);
     menu.items.forEach(function (it, i) {
       if (it.separator) { h.pushBody("", false); return; }
       // headings + secondary text use GRAY like the loader's own rows (buildPluginItem).

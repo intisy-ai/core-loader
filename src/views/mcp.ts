@@ -6,7 +6,7 @@ import { S } from "../state.js";
 import { buildMcpList, getMcpActions, buildInstalledMcpRows } from "../mcp.js";
 import { hints, messageLine, marketplaceRow } from "./common.js";
 
-export function buildMcp(pushBody, pushFoot, cols, barW) {
+export function buildMcp(pushBody, pushFoot, cols, barW, pushSticky) {
   var nameW = Math.min(28, Math.max(18, cols - 50));
 
   if (S.mcpMode === "actions") {
@@ -37,8 +37,8 @@ export function buildMcp(pushBody, pushFoot, cols, barW) {
 
   var mcpInstTab = S.mcpSubPage === "installed" ? (BOLD + ACCENT + BG_SEL + " Installed " + RST) : (GRAY + " Installed " + RST);
   var mcpMktTab = S.mcpSubPage === "marketplace" ? (BOLD + ACCENT + BG_SEL + " Marketplace " + RST) : (GRAY + " Marketplace " + RST);
-  pushBody("  " + mcpInstTab + "  " + mcpMktTab + "    " + DIM + "tab switch" + RST, false);
-  pushBody("", false);
+  pushSticky("  " + mcpInstTab + "  " + mcpMktTab + "    " + DIM + "tab switch" + RST);
+  pushSticky("");
 
   if (S.mcpSubPage === "installed") {
     var installedList = buildInstalledMcpRows();
@@ -47,7 +47,7 @@ export function buildMcp(pushBody, pushFoot, cols, barW) {
       pushBody("  " + GRAY + "No MCP servers installed." + RST, false);
       pushBody("  " + GRAY + "Switch to Marketplace to browse and install servers." + RST, false);
     } else {
-      pushBody("  " + BOLD + WHITE + "Installed MCP Servers" + RST + GRAY + " (" + realCount + ")" + RST, false);
+      pushSticky("  " + BOLD + WHITE + "Installed MCP Servers" + RST + GRAY + " (" + realCount + ")" + RST);
     }
     var mcpPrevAction = false;
     for (var i = 0; i < installedList.length; i++) {
@@ -99,7 +99,7 @@ export function buildMcp(pushBody, pushFoot, cols, barW) {
   } else {
     // Marketplace
     S.mcpItems = buildMcpList("All");
-    pushBody("  " + BOLD + WHITE + "MCP Marketplace" + RST + GRAY + " (" + S.mcpItems.length + " available)" + RST + (S.mode === "search" || S.inputBuf ? " " + BG_SEL + " Search: " + S.inputBuf + (S.mode === "search" ? "_" : "") + " " + RST : " " + DIM + "(press / to search)" + RST) + "  " + ACCENT + "✦" + RST + DIM + " = curated" + RST, false);
+    pushSticky("  " + BOLD + WHITE + "MCP Marketplace" + RST + GRAY + " (" + S.mcpItems.length + " available)" + RST + (S.mode === "search" || S.inputBuf ? " " + BG_SEL + " Search: " + S.inputBuf + (S.mode === "search" ? "_" : "") + " " + RST : " " + DIM + "(press / to search)" + RST) + "  " + ACCENT + "✦" + RST + DIM + " = curated" + RST);
     for (var i = 0; i < S.mcpItems.length; i++) {
       var m = S.mcpItems[i];
       var sel = i === S.mcpCursor;
