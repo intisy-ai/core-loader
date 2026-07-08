@@ -18,6 +18,20 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
   var bg = sel ? BG_SEL : "";
   var nameStyle = sel ? (BOLD + WHITE) : DIM;
 
+  // App-managed plugins (native to the host app, e.g. Claude Code's own plugin
+  // system): selectable like everything else in the list, actions gated by
+  // whichever capabilities getPluginActions() finds registered.
+  if (pitem.type === "foreign") {
+    var fstate = pitem.enabled === false ? (BAD + "disabled" + RST) : (OK + "enabled" + RST);
+    var fver = pitem.version ? (GRAY + "v" + pitem.version + RST) : (GRAY + "---" + RST);
+    pushBody("  " + bg + arrow + nameStyle + pad(trunc(pitem.name, nameW), nameW) + RST + bg + " " + fstate + "  " + fver + RST, isSelected);
+    if (sel) {
+      var fsubInfo = GRAY + "     " + (pitem.source ? "marketplace: " + pitem.source : "app-managed plugin") + RST;
+      pushBody("  " + fsubInfo, isSelected);
+    }
+    return;
+  }
+
   // NPM plugins: simpler read-only row
   if (pitem.type === "npm") {
     var nvstr = pitem.engine
@@ -385,7 +399,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
   // --- Installed sub-page (existing code) ---
   var autoCount = 0, manualCount = 0, updateCount = 0, disabledCount = 0;
   for (var p of S.pluginItems) {
-    if (p.type === "npm") continue;
+    if (p.type === "npm" || p.foreign) continue;
     if (!p.enabled) disabledCount++;
     else if (p.autoUpdate) autoCount++; else manualCount++;
     if (p.updateAvail) updateCount++;
@@ -426,6 +440,10 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
       pushBody("", false);
       pushBody("  " + BOLD + WHITE + "npm plugins" + RST, false);
     }
+    if (pitem.foreign && (i === 0 || !S.pluginItems[i - 1].foreign)) {
+      pushBody("", false);
+      pushBody("  " + BOLD + WHITE + "App plugins" + RST + GRAY + " (managed by " + APP_NAME + ")" + RST, false);
+    }
     buildPluginItem(pushBody, i, pitem, nameW, cols, i === S.pcursor);
   }
 
@@ -436,25 +454,6 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     pushBody("", false);
     pushBody("  " + BOLD + WHITE + "npm plugins" + RST, false);
     pushBody("  " + DIM + "none installed — add from the Marketplace" + RST, false);
-  }
-
-  // Generic read-only "App plugins" section: shows the host app's own plugins when
-  // it registered the foreignPlugins capability (e.g. Claude Code's own plugin list).
-  // Purely informational — non-selectable rows, no S.pluginItems/cursor involvement.
-  var fp = S.capabilities && S.capabilities.foreignPlugins;
-  if (S.pluginSubPage === "installed" && typeof fp === "function") {
-    var foreign = [];
-    try { foreign = fp() || []; } catch (e) { foreign = []; }
-    if (foreign.length) {
-      pushBody("", false);
-      pushBody("  " + BOLD + WHITE + "App plugins" + RST + GRAY + " (managed by " + APP_NAME + ")" + RST, false);
-      for (var fi = 0; fi < foreign.length; fi++) {
-        var it = foreign[fi];
-        var state = it.enabled === false ? (BAD + "disabled" + RST) : (OK + "enabled" + RST);
-        var ver = it.version ? (GRAY + " v" + it.version + RST) : "";
-        pushBody("    " + DIM + trunc(it.name, cols - 24) + RST + "  " + state + ver, false);
-      }
-    }
   }
 
   pushBody("", false);

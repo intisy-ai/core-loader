@@ -8,6 +8,7 @@ import { execSync, exec } from "child_process";
 import { REPOS_DIR, PLUGINS_DIR } from "./env.js";
 import { loadPlugins } from "./config.js";
 import { getFolderName, loadNpmPlugins, getUpdaterVersion } from "./updater.js";
+import { S } from "./state.js";
 
 export function gitText(args, cwd) {
   try {
@@ -75,7 +76,7 @@ function gitTextAsync(args, cwd, cb) {
 // done() once all complete. `git fetch` hits the network (up to 15s each) — running
 // it synchronously froze the UI; async keeps the loop free so the spinner animates.
 export function fetchPluginRemotes(pluginItems, done) {
-  var targets = pluginItems.filter(function(p) { return p.type !== "npm" && p.installed && p.enabled !== false; });
+  var targets = pluginItems.filter(function(p) { return p.type !== "npm" && !p.foreign && p.installed && p.enabled !== false; });
   var remaining = targets.length;
   if (remaining === 0) { if (done) done(); return; }
   targets.forEach(function(p) {
@@ -133,11 +134,61 @@ export function buildCombinedPluginList() {
       pluginFile: ""
     };
   });
-  return git.concat(npm);
+  return git.concat(npm).concat(buildForeignPluginList());
+}
+
+// The host app's OWN plugins (e.g. Claude Code's native plugin system), exposed
+// read-only-no-more via S.capabilities.foreignPlugins() -> [{name, source, enabled,
+// version}]. Absent capability (opencode) -> []. Tagged `foreign: true` (+ `key` =
+// "name@source", the CLI's own identifier) so callers can guard them out of every
+// updater-only action (update/commits/configure operate on a git clone that simply
+// doesn't exist for these rows).
+export function buildForeignPluginList() {
+  var fpFn = S.capabilities && S.capabilities.foreignPlugins;
+  if (typeof fpFn !== "function") return [];
+  var foreign = [];
+  try { foreign = fpFn() || []; } catch (e) { foreign = []; }
+  return foreign.map(function(it) {
+    return {
+      type: "foreign",
+      foreign: true,
+      name: it.name,
+      source: it.source,
+      key: it.name + "@" + it.source,
+      version: it.version,
+      enabled: it.enabled !== false,
+      autoUpdate: false,
+      installed: true,
+      deployed: true,
+      updateAvail: false,
+      localHead: "",
+      remoteHead: "",
+      latestTag: it.version || "",
+      subject: "App plugin" + (it.source ? " · " + it.source : ""),
+      folderName: "",
+      url: "",
+      hasBuild: false,
+      pluginFile: ""
+    };
+  });
 }
 
 export function getPluginActions(pitem) {
   var a = [];
+  if (pitem.foreign) {
+    // App-managed plugin (native to the host app): only what the capabilities
+    // actually support. Neither registered (opencode) -> Cancel only.
+    var toggleFn = S.capabilities && S.capabilities.setForeignPluginEnabled;
+    var uninstallFn = S.capabilities && S.capabilities.uninstallForeignPlugin;
+    if (typeof toggleFn === "function") {
+      a.push({ key: "foreign-toggle", label: (pitem.enabled ? "Disable" : "Enable") + " plugin" });
+    }
+    if (typeof uninstallFn === "function") {
+      a.push({ cat: "Manage", key: "foreign-uninstall", label: "Uninstall plugin" });
+    }
+    a.push({ key: "cancel", label: "Cancel" });
+    return a;
+  }
   if (pitem.type === "npm") {
     // managed via opencode.json — no disable state, only update/uninstall (+ Configure
     // when the deployed bundle answers `config schema`, same probe as git plugins)
@@ -184,7 +235,7 @@ export function getPluginActions(pitem) {
 // Runs for git AND npm plugins alike — an npm plugin built on our core is just as
 // probeable via its deployed bundle file.
 export function probeConfigSchema(pitem) {
-  if (!pitem || !pitem.deployed) return null;
+  if (!pitem || !pitem.deployed || pitem.foreign) return null;
   var bundle = join(PLUGINS_DIR, (pitem.pluginFile || pitem.name + ".js"));
   if (!existsSync(bundle)) return null;
   try {

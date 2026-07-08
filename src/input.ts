@@ -514,7 +514,7 @@ export function handlePluginKey(key) {
         });
       }
       else if (key === "a") {
-        var toUpdate = S.pluginItems.filter(function(p) { return p.type !== "npm" && p.enabled && (p.updateAvail || !p.deployed); });
+        var toUpdate = S.pluginItems.filter(function(p) { return p.type !== "npm" && !p.foreign && p.enabled && (p.updateAvail || !p.deployed); });
         if (toUpdate.length === 0) {
           flash("All plugins are already up to date.");
         } else {
@@ -524,7 +524,7 @@ export function handlePluginKey(key) {
         }
       }
       else if (key === "u") {
-        if (S.pluginItems.length > 0 && S.pluginItems[S.pcursor].type !== "npm") {
+        if (S.pluginItems.length > 0 && S.pluginItems[S.pcursor].type !== "npm" && !S.pluginItems[S.pcursor].foreign) {
           var p = S.pluginItems[S.pcursor];
           runUpdateSequence([p], function() {
             if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
@@ -532,7 +532,7 @@ export function handlePluginKey(key) {
         }
       }
       else if (key === "d") {
-        if (S.pluginItems.length > 0 && S.pluginItems[S.pcursor].type !== "npm") {
+        if (S.pluginItems.length > 0 && S.pluginItems[S.pcursor].type !== "npm" && !S.pluginItems[S.pcursor].foreign) {
           var p = S.pluginItems[S.pcursor];
           var updater = getUpdater();
           if (updater && updater.disable) {
@@ -693,6 +693,21 @@ export function handlePluginKey(key) {
         } catch (e) {
           flash("Failed to fetch commits"); S.mode = "list";
         }
+      }
+      else if (action === "foreign-toggle") {
+        S.mode = "list";
+        var newEnabled = !pitem.enabled;
+        var toggleFn = S.capabilities && S.capabilities.setForeignPluginEnabled;
+        var tres = typeof toggleFn === "function" ? toggleFn(pitem.key, newEnabled) : { ok: false, error: "not available" };
+        S.pluginItems = buildCombinedPluginList();
+        if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+        flash(tres && tres.ok ? (pitem.name + (newEnabled ? " enabled." : " disabled.")) : ("Failed: " + ((tres && tres.error) || "unknown error")));
+      }
+      else if (action === "foreign-uninstall") {
+        S.confirmAction = { type: "uninstall-foreign", target: pitem };
+        S.confirmLabel = "Uninstall " + pitem.name + "? This removes it via " + APP_NAME + ".";
+        S.confirmCursor = 0;
+        S.mode = "confirm";
       }
       else { S.mode = "list"; }
     }
@@ -902,6 +917,13 @@ export function handleConfirmKey(key) {
       S.mcpItems = buildMcpList("All");
       if (S.mcpCursor >= S.mcpItems.length) S.mcpCursor = Math.max(0, S.mcpItems.length - 1);
       flash(S.confirmAction.target + " removed.");
+    } else if (S.confirmAction && S.confirmAction.type === "uninstall-foreign") {
+      var fpitem = S.confirmAction.target;
+      var uninstallFn = S.capabilities && S.capabilities.uninstallForeignPlugin;
+      var ures = typeof uninstallFn === "function" ? uninstallFn(fpitem.key) : { ok: false, error: "not available" };
+      S.pluginItems = buildCombinedPluginList();
+      if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+      flash(ures && ures.ok ? (fpitem.name + " uninstalled.") : ("Failed: " + ((ures && ures.error) || "unknown error")));
     }
     S.confirmAction = null;
     S.confirmLabel = "";
