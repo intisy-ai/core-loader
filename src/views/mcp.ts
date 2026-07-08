@@ -3,14 +3,14 @@
 
 import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
-import { getInstalledMcpList, buildMcpList, getMcpActions } from "../mcp.js";
+import { buildMcpList, getMcpActions, buildInstalledMcpRows } from "../mcp.js";
 import { hints, messageLine, marketplaceRow } from "./common.js";
 
 export function buildMcp(pushBody, pushFoot, cols, barW) {
   var nameW = Math.min(28, Math.max(18, cols - 50));
 
   if (S.mcpMode === "actions") {
-    var mitem = S.mcpSubPage === "installed" ? getInstalledMcpList()[S.mcpCursor] : S.mcpItems[S.mcpCursor];
+    var mitem = S.mcpSubPage === "installed" ? buildInstalledMcpRows()[S.mcpCursor] : S.mcpItems[S.mcpCursor];
     if (!mitem) { S.mcpMode = "catalog"; return; }
     var acts = getMcpActions(mitem);
     pushBody("  " + BOLD + WHITE + "" + mitem.name + RST, false);
@@ -41,18 +41,27 @@ export function buildMcp(pushBody, pushFoot, cols, barW) {
   pushBody("", false);
 
   if (S.mcpSubPage === "installed") {
-    var installedList = getInstalledMcpList();
-    if (installedList.length === 0) {
+    var installedList = buildInstalledMcpRows();
+    var realCount = installedList.filter(function(r) { return !r.isAction; }).length;
+    if (realCount === 0) {
       pushBody("  " + GRAY + "No MCP servers installed." + RST, false);
       pushBody("  " + GRAY + "Switch to Marketplace to browse and install servers." + RST, false);
     } else {
-      pushBody("  " + BOLD + WHITE + "Installed MCP Servers" + RST + GRAY + " (" + installedList.length + ")" + RST, false);
-      for (var i = 0; i < installedList.length; i++) {
-        var m = installedList[i];
-        var sel = i === S.mcpCursor;
-        var arrow = sel ? (ACCENT + " \u276f " + RST) : "   ";
-        var bg = sel ? BG_SEL : "";
-        var nameStyle = sel ? (BOLD + WHITE) : DIM;
+      pushBody("  " + BOLD + WHITE + "Installed MCP Servers" + RST + GRAY + " (" + realCount + ")" + RST, false);
+    }
+    for (var i = 0; i < installedList.length; i++) {
+      var m = installedList[i];
+      var sel = i === S.mcpCursor;
+      var arrow = sel ? (ACCENT + " \u276f " + RST) : "   ";
+      var bg = sel ? BG_SEL : "";
+      if (m.isAction) {
+        pushBody("  " + bg + arrow + (sel ? (BOLD + ACCENT) : DIM) + m.name + RST, sel);
+        continue;
+      }
+      var nameStyle = sel ? (BOLD + WHITE) : DIM;
+      if (m.fromCapability) {
+        pushBody("  " + bg + arrow + DIM + "\u25cf" + RST + " " + nameStyle + pad(trunc(m.name, nameW), nameW) + RST + bg + "  " + GRAY + (m.transport || "") + (m.detail ? "  " + m.detail : "") + RST, sel);
+      } else {
         pushBody("  " + bg + arrow + DIM + "\u25cf" + RST + " " + nameStyle + pad(trunc(m.name, nameW), nameW) + RST + bg + "  " + GRAY + m.command + " " + (m.args || []).join(" ") + RST, sel);
         if (sel) {
           var ek = Object.keys(m.env || {});
@@ -61,6 +70,21 @@ export function buildMcp(pushBody, pushFoot, cols, barW) {
       }
     }
     pushBody("", false);
+    if (S.mode === "mcpaddinput") {
+      pushFoot("  " + rule(barW));
+      if (S.mcpAddStep === 1) {
+        var httpSel = S.mcpAddDraft.transport === "http";
+        pushFoot("  " + ACCENT + "Transport: " + RST
+          + (httpSel ? (BOLD + ACCENT + "[http]" + RST) : (DIM + " http " + RST)) + "  "
+          + (!httpSel ? (BOLD + ACCENT + "[stdio]" + RST) : (DIM + " stdio " + RST)));
+        pushFoot(hints([["\u2190\u2192", "toggle"], ["enter", "next"], ["esc", "cancel"]]));
+      } else {
+        var stepLabel = S.mcpAddStep === 0 ? "Name: " : ("Target (" + (S.mcpAddDraft.transport === "http" ? "URL" : "command") + "): ");
+        pushFoot("  " + ACCENT + stepLabel + RST + S.inputBuf + BOLD + "|" + RST);
+        pushFoot(hints([["enter", S.mcpAddStep === 2 ? "confirm" : "next"], ["esc", "cancel"]]));
+      }
+      return;
+    }
     if (S.message) {
       pushFoot(messageLine(cols));
     }

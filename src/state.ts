@@ -67,6 +67,11 @@ export const S = {
   mcpSubPage: "installed",
   mcpMode: "catalog",
   mcpAcursor: 0,
+  // "＋ Add MCP server" multi-step input (S.mode === "mcpaddinput"): step 0 = name,
+  // 1 = transport (http|stdio, toggled not typed), 2 = target (URL or command).
+  // See input.ts handleMcpAddInputData.
+  mcpAddStep: 0,
+  mcpAddDraft: null,
 
   // Settings page (global settings editor)
   settingsCursor: 0,

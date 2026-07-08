@@ -15,7 +15,7 @@ import { openProject, openProjectSession, listSessions, togglePin, hideItem, unh
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
 import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
-import { getInstalledMcpList, buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions } from "./mcp.js";
+import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
@@ -838,12 +838,29 @@ export function handleMcpKey(key) {
     }
     else if (key === "up" || key === "w") { S.mcpCursor = Math.max(0, S.mcpCursor - 1); }
     else if (key === "down" || key === "s") {
-      var maxLen = S.mcpSubPage === "installed" ? getInstalledMcpList().length : S.mcpItems.length;
+      var maxLen = S.mcpSubPage === "installed" ? buildInstalledMcpRows().length : S.mcpItems.length;
       S.mcpCursor = Math.min(maxLen - 1, S.mcpCursor + 1);
     }
     else if (key === "enter" || key === "space") {
-      var maxLen = S.mcpSubPage === "installed" ? getInstalledMcpList().length : S.mcpItems.length;
-      if (maxLen > 0) { S.mcpMode = "actions"; S.mcpAcursor = 0; }
+      if (S.mcpSubPage === "installed") {
+        var instRow = buildInstalledMcpRows()[S.mcpCursor];
+        if (!instRow) return;
+        if (instRow.isAction) {
+          if (instRow.actionKey === "add_mcp_server") {
+            S.mcpAddDraft = { name: "", transport: "http", target: "" };
+            S.mcpAddStep = 0;
+            S.inputBuf = "";
+            S.mode = "mcpaddinput";
+          }
+          return;
+        }
+        // capability-sourced servers have no per-item action menu yet (no
+        // remove/configure capability defined) — only the legacy on-disk list does.
+        if (instRow.fromCapability) return;
+        S.mcpMode = "actions"; S.mcpAcursor = 0;
+        return;
+      }
+      if (S.mcpItems.length > 0) { S.mcpMode = "actions"; S.mcpAcursor = 0; }
     }
     else if (key === "/" && S.mcpSubPage === "marketplace") { S.mode = "search"; return; }
     else if (key === "i" && S.mcpSubPage === "marketplace") {
@@ -854,10 +871,11 @@ export function handleMcpKey(key) {
       }
     }
     else if (key === "x" && S.mcpSubPage === "installed") {
-      var instList = getInstalledMcpList();
-      if (instList.length > 0 && S.mcpCursor < instList.length) {
-        S.confirmAction = { type: "uninstall-mcp", target: instList[S.mcpCursor].name };
-        S.confirmLabel = "Remove MCP server " + instList[S.mcpCursor].name + "?";
+      var instList = buildInstalledMcpRows();
+      var instTarget = instList[S.mcpCursor];
+      if (instTarget && !instTarget.isAction && !instTarget.fromCapability) {
+        S.confirmAction = { type: "uninstall-mcp", target: instTarget.name };
+        S.confirmLabel = "Remove MCP server " + instTarget.name + "?";
         S.confirmCursor = 0;
         S.mode = "confirm";
       }
@@ -870,7 +888,7 @@ export function handleMcpKey(key) {
     }
     else if (key === "q" || key === "escape") { cleanup(); process.exit(1); }
   } else if (S.mcpMode === "actions") {
-    var activeList = S.mcpSubPage === "installed" ? getInstalledMcpList() : S.mcpItems;
+    var activeList = S.mcpSubPage === "installed" ? buildInstalledMcpRows() : S.mcpItems;
     var mitem = activeList[S.mcpCursor];
     if (!mitem) { S.mcpMode = "catalog"; return; }
     var acts = getMcpActions(mitem);
@@ -1048,6 +1066,58 @@ export function handleMarketplaceAddInputData(buf) {
     }
     return;
   }
+  if (buf[0] === 127 || buf[0] === 8) { S.inputBuf = S.inputBuf.slice(0, -1); return; }
+  if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
+}
+
+// Multi-step "＋ Add MCP server" flow (S.mode === "mcpaddinput"): step 0 collects
+// a free-text name, step 1 toggles transport (http|stdio) via arrow keys — never
+// typed — and step 2 collects the target (a URL for http, a command for stdio).
+// Escape at any step cancels the whole flow (mirrors handleMarketplaceAddInputData).
+// On completion, calls the app-registered S.capabilities.addMcpServer(draft).
+export function handleMcpAddInputData(buf) {
+  if (buf[0] === 3) { cleanup(); process.exit(1); }
+  if (buf[0] === 27) {
+    if (buf.length === 1) {
+      S.mode = "list"; S.mcpAddStep = 0; S.mcpAddDraft = null; S.inputBuf = "";
+      return;
+    }
+    // arrow keys during the transport step toggle the selection; ignored elsewhere
+    if (S.mcpAddStep === 1 && buf[1] === 91 && (buf[2] === 65 || buf[2] === 66 || buf[2] === 67 || buf[2] === 68)) {
+      S.mcpAddDraft.transport = S.mcpAddDraft.transport === "http" ? "stdio" : "http";
+    }
+    return;
+  }
+  if (buf[0] === 13 || buf[0] === 10) {
+    if (S.mcpAddStep === 0) {
+      var name = S.inputBuf.trim();
+      if (!name) return;
+      S.mcpAddDraft.name = name;
+      S.inputBuf = "";
+      S.mcpAddStep = 1;
+      return;
+    }
+    if (S.mcpAddStep === 1) {
+      S.mcpAddStep = 2;
+      S.inputBuf = "";
+      return;
+    }
+    // step 2: target — completes the flow
+    var target = S.inputBuf.trim();
+    S.mcpAddDraft.target = target;
+    var draft = S.mcpAddDraft;
+    S.mode = "list";
+    S.mcpAddStep = 0;
+    S.mcpAddDraft = null;
+    S.inputBuf = "";
+    var addFn = S.capabilities && S.capabilities.addMcpServer;
+    if (typeof addFn !== "function") { flash("Not supported."); return; }
+    var res = {};
+    try { res = addFn(draft) || {}; } catch (e) { res = { ok: false, error: (e && e.message) || String(e) }; }
+    flash(res.ok ? "Added MCP server" : ("Failed: " + (res.error || "")));
+    return;
+  }
+  if (S.mcpAddStep === 1) return;   // no free text on the transport step
   if (buf[0] === 127 || buf[0] === 8) { S.inputBuf = S.inputBuf.slice(0, -1); return; }
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }

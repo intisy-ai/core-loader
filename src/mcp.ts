@@ -7,6 +7,7 @@ import { join } from "path";
 import { HOME, MCP_CATALOG } from "./env.js";
 import { loadMcpConfig, saveMcpConfig } from "./config.js";
 import { fetchCatalogsAsync } from "./marketplace.js";
+import { S } from "./state.js";
 
 // Cached once per session: the scan does readdirSync + many reads across the repos
 // and plugin-cache dirs, which made every MCP render (buildMcpList) hit disk and lag
@@ -173,6 +174,37 @@ export function uninstallMcpServer(name) {
   var config = loadMcpConfig();
   delete config.mcpServers[name];
   saveMcpConfig(config);
+}
+
+// The active loader extension's mcpServers() capability, normalized to the same
+// row shape the "installed" view renders — {name, transport, detail}. Returns
+// null when the capability isn't registered (caller falls back to the legacy
+// on-disk list); returns [] on a capability call error so a broken host doesn't
+// crash the TUI.
+export function getCapabilityMcpList() {
+  var fn = S.capabilities && S.capabilities.mcpServers;
+  if (typeof fn !== "function") return null;
+  try {
+    var list = fn() || [];
+    return list.map(function(srv) {
+      return { name: srv.name, transport: srv.transport || "", detail: srv.detail || "", installed: true, fromCapability: true };
+    });
+  } catch (e) { return []; }
+}
+
+// Rows for the "Installed" MCP sub-tab. Prefers S.capabilities.mcpServers() over
+// the legacy MCP_CONFIG_PATH file when registered (the host app may not actually
+// read that file), and prepends a synthetic "＋ Add MCP server" action row when
+// addMcpServer is registered — the SAME isAction-row approach buildMarketplaceList()
+// uses, so S.mcpCursor keeps indexing straight into one flat array.
+export function buildInstalledMcpRows() {
+  var capList = getCapabilityMcpList();
+  var rows = (capList !== null ? capList : getInstalledMcpList()).slice();
+  var addFn = S.capabilities && S.capabilities.addMcpServer;
+  if (typeof addFn === "function") {
+    rows = [{ isAction: true, actionKey: "add_mcp_server", name: "＋ Add MCP server" }].concat(rows);
+  }
+  return rows;
 }
 
 export function getMcpActions(mitem) {
