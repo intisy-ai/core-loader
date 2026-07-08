@@ -1096,26 +1096,7 @@ export function handleSearchData(buf) {
   if (buf[0] === 13 || buf[0] === 10) { S.mode = "list"; return; }
   if (buf[0] === 8 || buf[0] === 127) {
     S.inputBuf = S.inputBuf.slice(0, -1);
-    if (S.page === "plugins" || S.page === "mcp") {
-    var hasUpdater = loadPlugins().some(function(p) { return p.name.includes("updater") || p.url.includes("updater"); });
-    if (!hasUpdater) {
-      pushLine("");
-      pushBody("  " + BOLD + RED + "Updater Plugin Missing" + RST, false);
-      pushBody("  The hub requires an updater plugin to manage installations.", false);
-      pushLine("");
-      pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install the default updater plugin.", false);
-      
-      // Override key handler for this screen
-      if (S.globalKeyHandler !== "updater_install") {
-        S.globalKeyHandler = "updater_install";
-      }
-      return;
-    } else {
-      if (S.globalKeyHandler === "updater_install") S.globalKeyHandler = null;
-    }
-  }
-
-  if (S.page === "plugins") { S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; }
+    if (S.page === "plugins") { S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; }
     else if (S.page === "mcp") { S.mcpItems = buildMcpList("All"); S.mcpCursor = 0; }
     return;
   }
