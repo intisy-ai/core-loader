@@ -117,7 +117,12 @@ export var tuiApi = {
   refresh: function() { render(); },
   // suspend the loader TUI, run a blocking raw-stdin routine (the shared account
   // menu), then re-attach input and redraw
-  runBlocking: function(fn) { return runBlocking(fn); }
+  runBlocking: function(fn) { return runBlocking(fn); },
+  registerCapabilities: function(caps) {
+    if (caps && typeof caps === "object") {
+      for (var k in caps) { if (Object.prototype.hasOwnProperty.call(caps, k)) S.capabilities[k] = caps[k]; }
+    }
+  }
 };
 
 function runBlocking(fn) {

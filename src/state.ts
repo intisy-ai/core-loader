@@ -13,6 +13,11 @@ export const S = {
   // Plugin extension tabs registered at startup
   customTabs: [],
 
+  // App-specific feature implementations registered by the active loader's tui-extension
+  // at boot (see tuiApi.registerCapabilities). Generic UI renders a feature only when its
+  // key is present, so core-loader carries no app-specific logic for these features.
+  capabilities: {},
+
   // Marketplace + MCP catalogs (mutated by async fetches)
   MARKETPLACE_CATALOG: [],
   catalogFetched: false,
