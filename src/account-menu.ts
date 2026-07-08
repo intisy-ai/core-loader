@@ -9,6 +9,7 @@
 import { existsSync } from "fs";
 import { pathToFileURL } from "url";
 import { S } from "./state.js";
+import { SPINNER_FRAMES } from "./env.js";
 
 const BAR_WIDTH = 22;
 
@@ -16,9 +17,12 @@ const BAR_WIDTH = 22;
 // rows are DIM; only genuinely positive/negative states use OK/BAD. No INFO/accent
 // tinting of ordinary actions. The auth-login renderer (select.ts) keeps raw ANSI.
 function paletteColor(color, h) {
-  if (color === "red") return h.BAD;    // destructive (loader uses BAD for negative states)
-  if (color === "green") return h.OK;   // positive (loader uses OK)
-  return h.DIM;                          // everything else = the loader's default row style
+  if (color === "red") return h.BAD;                    // destructive
+  if (color === "green") return h.OK;                   // positive (enabled, add)
+  if (color === "yellow") return h.YELLOW;              // caution (disable, reset)
+  if (color === "cyan") return h.CYAN || h.ACCENT;      // primary actions
+  if (color === "magenta") return h.MAGENTA || h.ACCENT;
+  return h.DIM;                                          // uncolored = plain row
 }
 
 // Claude /usage-style bar row (filled = fraction USED), drawn in palette tones.
@@ -133,7 +137,13 @@ export function createAccountMenu() {
     // Show the transient flash (set by tuiApi.flash — e.g. "Models refreshed (N)") so
     // action feedback is visible INSIDE the account menu (which draws its own footer and
     // would otherwise swallow S.message).
-    if (S.message) h.pushFoot("  " + h.ACCENT + S.message + h.RST);
+    if (S.message) {
+      // a "…"-suffixed message means an action is running — show an animated spinner
+      // beside it (updateSpinner ticks the frame + re-renders while "..." is present).
+      var busy = S.message.indexOf("...") !== -1;
+      var spin = busy ? (h.ACCENT + SPINNER_FRAMES[S.spinnerTick % SPINNER_FRAMES.length] + h.RST + " ") : "";
+      h.pushFoot("  " + spin + h.ACCENT + S.message + h.RST);
+    }
     h.pushFoot("  " + h.GRAY + "^v Move   Enter Select   Esc Back" + h.RST);
     return true;
   }
@@ -171,6 +181,7 @@ export function createAccountMenu() {
         try {
           if (a && a.flash) tuiApi.flash(a.flash);
           else if (!a || (!a.push && !a.input && !a.pop && !a.close)) tuiApi.flash((item.label || "Done") + " ✓");
+          else S.message = "";   // navigating action: clear any busy spinner (no flash)
         } catch (e) {}
       };
       var fail = function (e) { try { tuiApi.flash("Failed: " + (e && e.message || e)); } catch (x) {} };
@@ -180,7 +191,11 @@ export function createAccountMenu() {
           // suspend items (provider login(), proxy pickers, confirm) need a clean terminal
           tuiApi.runBlocking(async function () { try { const a = await r; applyAction(a, tuiApi); ack(a); } catch (e) { fail(e); } });
         } else {
-          // async non-suspend (e.g. building an in-tab login input) resolves live, in chrome
+          // async non-suspend (refresh/verify/build-login-input) resolves live, in chrome.
+          // Show a spinner + label immediately so a slow network call never looks dead;
+          // ack() replaces it with the result flash (or clears it if the action navigates).
+          S.message = (item.label || "Working") + "...";
+          if (tuiApi.refresh) tuiApi.refresh();
           r.then(function (a) { applyAction(a, tuiApi); ack(a); if (tuiApi.refresh) tuiApi.refresh(); }).catch(function (e) { fail(e); if (tuiApi.refresh) tuiApi.refresh(); });
         }
       } else { applyAction(r, tuiApi); ack(r); }
