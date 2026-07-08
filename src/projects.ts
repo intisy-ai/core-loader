@@ -28,37 +28,28 @@ function openSqlite(path) {
   return null;
 }
 
-// Parse Claude history.jsonl TEXT into entries, skipping blank/malformed lines. Pure.
-export function parseHistoryText(text) {
-  var out = [];
-  var lines = String(text || "").split("\n");
-  for (var i = 0; i < lines.length; i++) {
-    if (!lines[i]) continue;
-    try { out.push(JSON.parse(lines[i])); } catch (e) {}
-  }
-  return out;
-}
-
 export function queryProjects() {
   if (APP_NAME === "Claude Code") {
     var historyPath = join(CONFIG_DIR, "history.jsonl");
     if (!existsSync(historyPath)) return [];
     try {
-      var entries = parseHistoryText(readFileSync(historyPath, "utf8"));
+      var lines = readFileSync(historyPath, "utf8").split("\n").filter(Boolean);
       var projects = {};
-      for (var ei = 0; ei < entries.length; ei++) {
-        var parsed = entries[ei];
-        if (parsed && parsed.project) {
-          if (!projects[parsed.project]) {
-            projects[parsed.project] = { last_used: 0, sessions: new Set() };
+      for (var li = 0; li < lines.length; li++) {
+        try {
+          var parsed = JSON.parse(lines[li]);
+          if (parsed && parsed.project) {
+            if (!projects[parsed.project]) {
+              projects[parsed.project] = { last_used: 0, sessions: new Set() };
+            }
+            if (parsed.timestamp > projects[parsed.project].last_used) {
+              projects[parsed.project].last_used = parsed.timestamp;
+            }
+            if (parsed.sessionId) {
+              projects[parsed.project].sessions.add(parsed.sessionId);
+            }
           }
-          if (parsed.timestamp > projects[parsed.project].last_used) {
-            projects[parsed.project].last_used = parsed.timestamp;
-          }
-          if (parsed.sessionId) {
-            projects[parsed.project].sessions.add(parsed.sessionId);
-          }
-        }
+        } catch (e) {}
       }
       return Object.keys(projects).map(function(dir) {
         return {
@@ -83,42 +74,10 @@ export function queryProjects() {
   } catch (e) { return []; }
 }
 
-// Group Claude history entries into per-session summaries for ONE project dir.
-// Pure (no I/O) so it is unit-testable. entries: parsed history.jsonl objects
-// ({project, sessionId, display, timestamp}). Returns newest-first; title = the
-// session's EARLIEST prompt (what it was about).
-export function groupSessions(entries, dir) {
-  var groups = {};
-  for (var i = 0; i < entries.length; i++) {
-    var e = entries[i];
-    if (!e || e.project !== dir || !e.sessionId) continue;
-    var g = groups[e.sessionId];
-    if (!g) { g = groups[e.sessionId] = { id: e.sessionId, title: "", lastUsed: 0, count: 0, firstTs: Infinity }; }
-    g.count++;
-    var ts = typeof e.timestamp === "number" ? e.timestamp : (Date.parse(e.timestamp) || 0);
-    if (ts > g.lastUsed) g.lastUsed = ts;
-    if (ts <= g.firstTs && typeof e.display === "string" && e.display) { g.firstTs = ts; g.title = e.display; }
-  }
-  var out = Object.keys(groups).map(function (k) {
-    var g = groups[k];
-    return { id: g.id, title: g.title || "(no prompt)", lastUsed: g.lastUsed, count: g.count };
-  });
-  out.sort(function (a, b) { return b.lastUsed - a.lastUsed; });
-  return out;
-}
-
-// Pure: sessions for one dir from raw history TEXT, Claude only. Unit-testable, no I/O.
-export function sessionsFromHistory(text, dir, appName) {
-  if (appName !== "Claude Code") return [];
-  return groupSessions(parseHistoryText(text), dir);
-}
-
-// Thin I/O shell: read history.jsonl (empty on any failure) and delegate.
-export function querySessions(dir) {
-  var historyPath = join(CONFIG_DIR, "history.jsonl");
-  var text = "";
-  try { if (existsSync(historyPath)) text = readFileSync(historyPath, "utf8"); } catch (e) {}
-  return sessionsFromHistory(text, dir, APP_NAME);
+// Sessions for a project dir come from the active app's capability (absent -> none).
+export function listSessions(dir) {
+  var fn = S.capabilities && S.capabilities.listSessions;
+  try { return typeof fn === "function" ? (fn(dir) || []) : []; } catch (e) { return []; }
 }
 
 export function shortPath(dir) {

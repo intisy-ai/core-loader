@@ -11,7 +11,7 @@ import { S } from "./state.js";
 import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
 import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater } from "./updater.js";
-import { openProject, openProjectSession, querySessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
+import { openProject, openProjectSession, listSessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
 import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync } from "./marketplace.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
@@ -20,22 +20,18 @@ import { flash } from "./views/common.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
 
-// Open a project through the session picker (Claude only). With no prior
+// Open a project through the session picker. Sessions come from the active
+// app's listSessions capability (absent -> none, picker skipped). With no prior
 // sessions, launch fresh immediately: "Open here" keeps the exit-42 path so the
 // wrapper forwards the user's own cc args; a project row writes its dir.
 function enterSessions(dir, here) {
-  var sessions = APP_NAME === "Claude Code" ? querySessions(dir) : [];
-  if (sessions.length === 0) {
-    if (here) { cleanup(); process.exit(42); }
-    else { openProjectSession(dir, null); }
+  var sessions = listSessions(dir);
+  if (!sessions.length) {
+    if (here) { cleanup(); process.exit(42); } else { openProjectSession(dir, null); }
     return;
   }
-  S.sessionItems = sessions;
-  S.scursor = 0;
-  S.sessionDir = dir;
-  S.sessionHere = here;
-  S.mode = "sessions";
-  S.scrollOff = 0;
+  S.sessionItems = sessions; S.scursor = 0; S.sessionDir = dir; S.sessionHere = here;
+  S.mode = "sessions"; S.scrollOff = 0;
 }
 
 // Set a persistent status message for a long busy action. Unlike flash(), it does
