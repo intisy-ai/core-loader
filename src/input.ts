@@ -271,8 +271,9 @@ export function handlePluginKey(key) {
       S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0;
       return;
     }
-    if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
-    
+    // `q` always quits, from any sub-page (incl. custom tabs).
+    if (key === "q") { cleanup(); process.exit(1); return; }
+
     if (key === "tab") {
       switchPluginSubPage();
       return;
@@ -280,6 +281,9 @@ export function handlePluginKey(key) {
 
     var activeTab = S.customTabs.find(function(t) { return t.id === S.pluginSubPage; });
     if (activeTab && activeTab.handleKey) {
+      // A custom tab OWNS all its keys — including Esc, so it can back out of its own
+      // sub-views (e.g. chain editor -> slots) instead of the core quitting the loader.
+      // Quitting from a custom tab is `q` only (handled above).
       try {
         activeTab.handleKey(key, {
           pluginSubPage: S.pluginSubPage,
@@ -288,6 +292,9 @@ export function handlePluginKey(key) {
       } catch(e) {}
       return;
     }
+
+    // Built-in sub-pages (installed / marketplace top level): Esc quits.
+    if (key === "escape") { cleanup(); process.exit(1); return; }
 
 
     if (S.pluginSubPage === "marketplace") {

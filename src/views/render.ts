@@ -85,6 +85,11 @@ export function render() {
     if (selEnd - activeScroll > innerH) activeScroll = selEnd - innerH;
     if (activeScroll > bodyLines.length - innerH) activeScroll = bodyLines.length - innerH;
     if (activeScroll < 0) activeScroll = 0;
+    // Snap to the very top when we're within a few lines of it: otherwise the non-
+    // selectable header block (counts/paths/etc. above the first selectable row) stays
+    // scrolled off behind a spurious "↑ N more" after scrolling down and back up. Safe
+    // because a tiny activeScroll means the selection is near the top and still fits.
+    if (activeScroll <= contextLines) activeScroll = 0;
 
     if (S.page === "projects") S.scrollOff = activeScroll;
     else if (S.page === "mcp") S.mcpScrollOff = activeScroll;

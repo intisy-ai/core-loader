@@ -7,6 +7,7 @@
 // createAccountMenu() returns an isolated instance so each tab keeps its own state.
 
 import { existsSync } from "fs";
+import { pathToFileURL } from "url";
 
 const BAR_WIDTH = 22;
 
@@ -71,7 +72,9 @@ export function createAccountMenu() {
     if (!tuiApi.runBlocking || !tuiApi.setTextInput) { try { tuiApi.flash("Loader too old — update to manage providers"); } catch (e) {} return false; }
     tuiApi.runBlocking(async function () {
       try {
-        const mod = await import(handlerPath);
+        // pathToFileURL: a raw Windows path (C:\...) is not a valid import specifier
+        // ("protocol 'c:'"), so the account menu silently failed to open on Windows.
+        const mod = await import(pathToFileURL(handlerPath).href);
         if (typeof mod.menuModel === "function") {
           nav.stack = [mod.menuModel]; const m = curMenu(); nav.cur = m ? selectableIdx(m.items, -1, 1) : 0; nav.active = true; tuiApi.setTextInput(true);
           // let the menu fetch live data (e.g. quota) then re-render so bars appear
