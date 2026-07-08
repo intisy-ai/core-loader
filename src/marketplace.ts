@@ -484,10 +484,17 @@ export function buildMarketplaceMarketsList() {
 // capabilities.marketplacePlugins(name) — which returns [] if the capability is
 // absent or the marketplace is unknown, so this degrades to an empty list rather
 // than throwing.
-export function buildMarketplacePluginsList(marketName) {
+export function buildMarketplacePluginsList(marketName, marketKind) {
   fetchCatalogsAsync();
-  if (marketName === "intisy-ai (official)" || marketName === "community") {
-    var wantOfficial = marketName === "intisy-ai (official)";
+  // Route by the KIND captured off the Level-1 row (builtin "official"/"community"
+  // tag, or "capability"), not by string-comparing marketName against the loader's
+  // own display names — a capability marketplace could itself be named "community"
+  // and would otherwise be misrouted/dedup-swallowed into the built-in catalog.
+  // marketKind is undefined for any caller that predates this param (defensive
+  // fallback to the old name comparison).
+  var kind = marketKind || (marketName === "intisy-ai (official)" ? "official" : marketName === "community" ? "community" : null);
+  if (kind === "official" || kind === "community") {
+    var wantOfficial = kind === "official";
     var installed = loadPlugins();
     var installedNames = installed.map(function(p) { return p.name; });
     var res = S.MARKETPLACE_CATALOG.filter(function(m) { return !m.isUpdater && !!m.official === wantOfficial; }).map(function(m) {
@@ -544,7 +551,7 @@ export function buildMarketplacePluginsList(marketName) {
 // on S.mkLevel so re-running it after e.g. a catalog fetch always rebuilds
 // whichever level the user is currently looking at.
 export function buildMarketplaceList() {
-  if (S.mkLevel === "plugins" && S.mkMarket) return buildMarketplacePluginsList(S.mkMarket);
+  if (S.mkLevel === "plugins" && S.mkMarket) return buildMarketplacePluginsList(S.mkMarket, S.mkMarketKind);
   return buildMarketplaceMarketsList();
 }
 
@@ -561,8 +568,14 @@ export function selectInstallMethod(entry, hasUpdater) {
 export function getMarketplaceActions(item, hasUpdater) {
   var acts = [];
   if (item.capability) {
-    // Level-2 rows sourced from capabilities.marketplacePlugins() have no
-    // install path yet (see buildMarketplacePluginsList) — browse-only.
+    // Level-2 rows sourced from capabilities.marketplacePlugins() install through
+    // capabilities.installAppPlugin(id, marketplace) when the active app registers
+    // it (e.g. Claude's `claude plugin install name@marketplace`); otherwise this
+    // stays browse-only (opencode has no such capability).
+    var installAppFn = S.capabilities && S.capabilities.installAppPlugin;
+    if (typeof installAppFn === "function" && !item.installed) {
+      acts.push({ key: "install-app", label: "Install" });
+    }
     acts.push({ key: "cancel", label: "Cancel" });
     return acts;
   }

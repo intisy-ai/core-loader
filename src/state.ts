@@ -89,6 +89,12 @@ export const S = {
   // whichever level is active — see marketplace.ts buildMarketplaceList().
   mkLevel: "markets",
   mkMarket: null,
+  // Kind of the drilled-in marketplace, captured from its Level-1 row's
+  // builtin/capability tag ("official" | "community" | "capability" | null).
+  // buildMarketplacePluginsList() routes on THIS, not on comparing mkMarket's
+  // display name to "intisy-ai (official)"/"community" — a capability
+  // marketplace could otherwise share one of those names and be misrouted.
+  mkMarketKind: null,
   // Which leading action row is being confirmed while S.mode === "mkinput":
   // "add_plugin_url" | "add_marketplace" (see input.ts handleMarketplaceAddInputData).
   mkAddAction: null,

@@ -91,7 +91,7 @@ export function switchPluginSubPage() {
   S.inputBuf = "";
   if (S.pluginSubPage === "installed") {
     S.pluginSubPage = "marketplace";
-    S.mkLevel = "markets"; S.mkMarket = null; S.mkSelected = {};
+    S.mkLevel = "markets"; S.mkMarket = null; S.mkMarketKind = null; S.mkSelected = {};
     S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0;
   }
   else if (S.pluginSubPage === "marketplace" && S.customTabs.length > 0) { S.pluginSubPage = S.customTabs[0].id; }
@@ -230,7 +230,7 @@ export function handlePluginKey(key) {
     if (key === "escape" && S.pluginSubPage === "marketplace" && S.mkMode === "actions") { S.mkMode = "browse"; return; }
     // Esc at Level 2 backs out to Level 1 (the marketplace list) instead of quitting.
     if (key === "escape" && S.pluginSubPage === "marketplace" && S.mkLevel === "plugins") {
-      S.mkLevel = "markets"; S.mkMarket = null; S.mkSelected = {}; S.inputBuf = "";
+      S.mkLevel = "markets"; S.mkMarket = null; S.mkMarketKind = null; S.mkSelected = {}; S.inputBuf = "";
       S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0;
       return;
     }
@@ -278,6 +278,15 @@ export function handlePluginKey(key) {
               render();
             }, forceMethod);
             return;
+          } else if (action === "install-app") {
+            S.mkMode = "browse";
+            var installAppFn = S.capabilities && S.capabilities.installAppPlugin;
+            var iares = typeof installAppFn === "function" ? installAppFn(mitem.id, S.mkMarket) : { ok: false, error: "not available" };
+            flash(iares && iares.ok ? ("Installing " + mitem.name + "… restart to activate") : ("Failed: " + ((iares && iares.error) || "")));
+            S.marketplaceItems = buildMarketplaceList();
+            if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
+            render();
+            return;
           } else if (action === "browser" && mitem.url) {
             try {
               var openCmd = process.platform === "win32" ? "start \"\" \"" + mitem.url + "\"" : process.platform === "darwin" ? "open \"" + mitem.url + "\"" : "xdg-open \"" + mitem.url + "\"";
@@ -309,6 +318,7 @@ export function handlePluginKey(key) {
           // handled above and never reach here.
           if (!curItem) return;
           S.mkMarket = curItem.name;
+          S.mkMarketKind = curItem.builtin || (curItem.capability ? "capability" : null);
           S.mkLevel = "plugins";
           S.mkCursor = 0;
           S.mkScrollOff = 0;
@@ -380,8 +390,16 @@ export function handlePluginKey(key) {
         } else if (S.marketplaceItems.length > 0) {
           var quickItem = S.marketplaceItems[S.mkCursor];
           if (quickItem.isAction) { return; }   // 'i' is a no-op on the leading action rows
-          if (quickItem.capability) { flash("Not installable from here yet."); return; }
-          if (quickItem.installed) { flash(quickItem.name + " is already installed."); return; }
+          if (quickItem.installed) { flash((quickItem.name || quickItem.repoName) + " is already installed."); return; }
+          if (quickItem.capability) {
+            var installAppFn2 = S.capabilities && S.capabilities.installAppPlugin;
+            if (typeof installAppFn2 !== "function") { flash("Not installable from here yet."); return; }
+            var iares2 = installAppFn2(quickItem.id, S.mkMarket);
+            flash(iares2 && iares2.ok ? ("Installing " + quickItem.name + "… restart to activate") : ("Failed: " + ((iares2 && iares2.error) || "")));
+            S.marketplaceItems = buildMarketplaceList();
+            if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
+            return;
+          }
           S.busy = true;
           setBusyMessage("Installing " + (quickItem.name || quickItem.repoName) + "...");
           render();
