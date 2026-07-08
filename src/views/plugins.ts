@@ -9,7 +9,7 @@ import { loadPlugins } from "../config.js";
 import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath } from "../updater.js";
 import { getPluginActions } from "../plugins.js";
 import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
-import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR } from "../env.js";
+import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR, APP_NAME } from "../env.js";
 import { hints, messageLine, spinnerFrame, marketplaceRow } from "./common.js";
 
 export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
@@ -390,6 +390,25 @@ export function buildPlugins(pushBody, pushFoot, cols, barW) {
     pushBody("", false);
     pushBody("  " + BOLD + WHITE + "npm plugins" + RST, false);
     pushBody("  " + DIM + "none installed — add from the Marketplace" + RST, false);
+  }
+
+  // Generic read-only "App plugins" section: shows the host app's own plugins when
+  // it registered the foreignPlugins capability (e.g. Claude Code's own plugin list).
+  // Purely informational — non-selectable rows, no S.pluginItems/cursor involvement.
+  var fp = S.capabilities && S.capabilities.foreignPlugins;
+  if (S.pluginSubPage === "installed" && typeof fp === "function") {
+    var foreign = [];
+    try { foreign = fp() || []; } catch (e) { foreign = []; }
+    if (foreign.length) {
+      pushBody("", false);
+      pushBody("  " + BOLD + WHITE + "App plugins" + RST + GRAY + " (managed by " + APP_NAME + ")" + RST, false);
+      for (var fi = 0; fi < foreign.length; fi++) {
+        var it = foreign[fi];
+        var state = it.enabled === false ? (BAD + "disabled" + RST) : (OK + "enabled" + RST);
+        var ver = it.version ? (GRAY + " v" + it.version + RST) : "";
+        pushBody("    " + DIM + trunc(it.name, cols - 24) + RST + "  " + state + ver, false);
+      }
+    }
   }
 
   pushBody("", false);
