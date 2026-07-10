@@ -83,7 +83,11 @@ export function createAccountMenu() {
       return;
     }
     if (a.push) { nav.stack.push(a.push); const m = curMenu(); nav.cur = m ? selectableIdx(m.items, -1, 1) : 0; }
-    else if (a.pop) { if (nav.stack.length > 1) { nav.stack.pop(); nav.cur = 0; } else exit(tuiApi); }
+    else if (a.pop) {
+      // pop may be a count (e.g. a confirm menu unwinding itself + the deleted subject's menu)
+      const n = a.pop === true ? 1 : Math.max(1, a.pop | 0);
+      for (let i = 0; i < n; i++) { if (nav.stack.length > 1) { nav.stack.pop(); nav.cur = 0; } else { exit(tuiApi); break; } }
+    }
     else if (a.close) exit(tuiApi);
     // refresh / void: stay (render rebuilds)
   }
@@ -204,18 +208,21 @@ export function createAccountMenu() {
         } catch (e) {}
       };
       var fail = function (e) { try { tuiApi.flash("Failed: " + (e && e.message || e)); } catch (x) {} };
+      if (item.suspend) {
+        // suspend items (provider login(), proxy pickers, confirm) need a clean terminal.
+        // run() must start INSIDE runBlocking: an async run() executes up to its first await
+        // synchronously, and a confirm()/select() there grabs raw stdin — which runBlocking
+        // would then clobber (setRawMode(false) + pause), freezing the prompt.
+        tuiApi.runBlocking(async function () { try { const a = await item.run(); applyAction(a, tuiApi); ack(a); } catch (e) { fail(e); } });
+        return true;
+      }
       let r; try { r = item.run(); } catch (e) { fail(e); return true; }
       if (r && typeof r.then === "function") {
-        if (item.suspend) {
-          // suspend items (provider login(), proxy pickers, confirm) need a clean terminal
-          tuiApi.runBlocking(async function () { try { const a = await r; applyAction(a, tuiApi); ack(a); } catch (e) { fail(e); } });
-        } else {
-          // async non-suspend (refresh/verify/build-login-input) resolves live, in chrome.
-          // Animated busy spinner while it runs (own interval) so a slow network call never
-          // looks dead; on settle stopBusy() + ack() shows the result flash (or clears it).
-          startBusy(item.label || "Working", tuiApi);
-          r.then(function (a) { stopBusy(); applyAction(a, tuiApi); ack(a); if (tuiApi.refresh) tuiApi.refresh(); }).catch(function (e) { stopBusy(); fail(e); if (tuiApi.refresh) tuiApi.refresh(); });
-        }
+        // async non-suspend (refresh/verify/build-login-input) resolves live, in chrome.
+        // Animated busy spinner while it runs (own interval) so a slow network call never
+        // looks dead; on settle stopBusy() + ack() shows the result flash (or clears it).
+        startBusy(item.label || "Working", tuiApi);
+        r.then(function (a) { stopBusy(); applyAction(a, tuiApi); ack(a); if (tuiApi.refresh) tuiApi.refresh(); }).catch(function (e) { stopBusy(); fail(e); if (tuiApi.refresh) tuiApi.refresh(); });
       } else { applyAction(r, tuiApi); ack(r); }
       return true;
     }
