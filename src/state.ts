@@ -83,6 +83,17 @@ export const S = {
   settingsCursor: 0,
   settingsScrollOff: 0,
 
+  // config-git (Phase 2) -- cached lib module + git-data caches for the Settings tab
+  CONFIG_GIT_MODULE: null,   // resolved dist/lib.js module, or null when absent
+  cgDiffRows: [],            // last diffAgainstHead() rows (markers + review screen)
+  cgHistory: [],             // last keyHistory() rows (history sub-screen)
+  cgHistoryFile: "",         // file the history sub-screen is showing
+  cgHistoryKey: "",          // key the history sub-screen is showing
+  cgHistoryCursor: 0,
+  cgProfiles: [],            // profiles.list() snapshot
+  cgProfileCurrent: "",      // profiles.current()
+  cgProfileCursor: 0,
+
   // Marketplace sub-page
   marketplaceItems: [],
   mkCursor: 0,

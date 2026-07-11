@@ -38,13 +38,14 @@ export const SEED_CACHE_PATH = join(CACHE_DIR, "seed-marketplaces.json");
 
 // anything printed to the terminal corrupts the TUI — diagnostics go to a file
 export const TUI_START_TIME = new Date().toISOString().replace(/:/g, "-").split(".")[0];
-export function tuiLog(msg) {
+// isError just tags the line for grep-ability -- never mirrored to stderr (see above).
+export function tuiLog(msg, isError?) {
   try {
     var dateStr = new Date().toISOString().split("T")[0];
     var logsDir = join(CONFIG_DIR, "logs", dateStr);
     if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true });
     require("fs").appendFileSync(join(logsDir, "loader-tui-" + TUI_START_TIME + ".log"),
-      "[" + new Date().toISOString() + "] " + msg + "\n");
+      "[" + new Date().toISOString() + "]" + (isError ? " [ERROR]" : "") + " " + msg + "\n");
   } catch {}
 }
 
