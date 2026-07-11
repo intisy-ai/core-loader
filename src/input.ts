@@ -1106,18 +1106,29 @@ export function handleSettingsKey(key) {
     return;
   }
 
-  // --- list mode: a compact list of setting GROUPS (Global + one row per plugin).
-  // Enter drills into a group's editor (pconfig). g/p are repo-wide git actions;
-  // i installs config-ledger when absent (non-blocking — the list stays usable). ---
+  // --- list mode: a "Global"/"Plugins" grouped list (headers skipped by nav). Enter on a
+  // group drills into its editor (pconfig); Enter on the config-ledger install row installs
+  // it (select+Enter, like the rest of the app). g/p are repo-wide git actions. ---
   if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
-  if (!S.settingsSections || !S.settingsSections.length) refreshSettings();
+  if (!S.settingsEntries || !S.settingsEntries.length) refreshSettings();
 
-  if (key === "up" || key === "w") { S.settingsCursor = Math.max(0, S.settingsCursor - 1); return; }
-  if (key === "down" || key === "s") { S.settingsCursor = Math.min(S.settingsSections.length - 1, S.settingsCursor + 1); return; }
+  function stepEntry(dir) {
+    var n = S.settingsEntries.length;
+    var i = S.settingsCursor;
+    for (var step = 0; step < n; step++) {
+      i += dir;
+      if (i < 0 || i >= n) return;                        // clamp at ends
+      if (S.settingsEntries[i] && S.settingsEntries[i].type !== "header") { S.settingsCursor = i; return; }
+    }
+  }
+  if (key === "up" || key === "w") { stepEntry(-1); return; }
+  if (key === "down" || key === "s") { stepEntry(1); return; }
 
   if (key === "enter" || key === "space") {
-    var sec = S.settingsSections[S.settingsCursor];
-    if (!sec) return;
+    var en = S.settingsEntries[S.settingsCursor];
+    if (!en || en.type === "header") return;
+    if (en.type === "install") { installConfigLedger(); return; }
+    var sec = en.section;
     S.configTarget = (sec.kind === "global")
       ? { name: "settings", global: true, file: sec.file, items: sec.items }
       : { name: sec.label, bundle: sec.bundle, file: sec.file, items: sec.items };
@@ -1127,7 +1138,6 @@ export function handleSettingsKey(key) {
     S.mode = "pconfig";
     return;
   }
-  if (key === "i" && !configLedgerInstalled()) { installConfigLedger(); return; }
   if (key === "g" && configLedgerReady()) { S.mode = "sgmenu"; S.sgMenuCursor = 0; return; }
   if (key === "g" && configLedgerInstalled() && !configLedgerReady()) { runGitMenuAction("setup"); return; }
   if (key === "p" && configLedgerReady()) { openProfiles(); return; }

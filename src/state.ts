@@ -82,7 +82,8 @@ export const S = {
   // Settings page (unified global + per-plugin settings editor)
   settingsCursor: 0,
   settingsScrollOff: 0,
-  settingsSections: [],  // SettingsSection[] (Global + one per plugin); drill-in group list
+  settingsSections: [],  // SettingsSection[] (Global + one per plugin)
+  settingsEntries: [],   // SettingsEntry[] the renderer + key handler walk (headers + groups + install)
 
   // config-ledger (Phase 2) -- cached lib module + git-data caches for the Settings tab
   CONFIG_LEDGER_MODULE: null,   // resolved dist/lib.js module, or null when absent

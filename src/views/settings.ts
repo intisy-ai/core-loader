@@ -6,7 +6,7 @@
 
 import { RST, BOLD, DIM, GRAY, WHITE, OK, BAD, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
-import { buildGlobalSection, buildPluginSections, annotateModified } from "../settings-model.js";
+import { buildGlobalSection, buildPluginSections, annotateModified, buildSettingsEntries, firstSelectableIndex } from "../settings-model.js";
 import { configLedgerInstalled, configLedgerReady, getConfigLedger, buildDiffSet, diffKeyId } from "../config-ledger.js";
 import { hints, messageLine } from "./common.js";
 import { buildSettingsGit } from "./settings-git.js";
@@ -31,8 +31,11 @@ export function refreshSettings(): void {
   }
   annotateModified(sections, diffSet);   // stamp each group's modified-key count for its badge
   S.settingsSections = sections;
-  // clamp the group cursor to a valid section row
-  if (S.settingsCursor >= sections.length) S.settingsCursor = Math.max(0, sections.length - 1);
+  // entries = the flat list both the renderer and key handler walk (headers + groups +
+  // an install entry when config-ledger is absent). Headers aren't selectable.
+  S.settingsEntries = buildSettingsEntries(sections, !configLedgerInstalled());
+  var cur = S.settingsEntries[S.settingsCursor];
+  if (!cur || cur.type === "header") S.settingsCursor = firstSelectableIndex(S.settingsEntries);
 }
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
@@ -81,9 +84,11 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     return;
   }
 
-  // Group list: Global + one row per plugin. Enter drills into a group's editor
-  // (the pconfig overlay above) — no more one giant flat scroll of every setting.
-  if (!S.settingsSections || !S.settingsSections.length) refreshSettings();
+  // Group list: "Global" and "Plugins" sections (BOLD headers, nav skips them), each
+  // group Enter-drills into its editor. When config-ledger is absent a "Versioning"
+  // section holds a selectable install row — select + Enter installs it, matching how
+  // the rest of the app installs things (no bespoke key). No giant flat scroll.
+  if (!S.settingsEntries || !S.settingsEntries.length) refreshSettings();
 
   var cg = configLedgerInstalled();
   if (cg && S.clReady) {
@@ -96,24 +101,40 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   } else if (cg) {
     pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  config-ledger installed — press " + RST + ACCENT + "g" + RST + DIM + " to set up the repo" + RST);
   } else {
-    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  config-ledger not installed — press " + RST + ACCENT + "i" + RST + DIM + " to install (adds versioning, history, profiles)" + RST);
+    pushSticky("  " + BOLD + WHITE + "Settings" + RST);
   }
   pushSticky("");
 
   var nameW = 6;
-  for (var wi = 0; wi < S.settingsSections.length; wi++) nameW = Math.max(nameW, stringWidth(S.settingsSections[wi].label));
+  for (var wi = 0; wi < S.settingsEntries.length; wi++) {
+    var we = S.settingsEntries[wi];
+    if (we.type === "group") nameW = Math.max(nameW, stringWidth(we.section.label));
+    else if (we.type === "install") nameW = Math.max(nameW, stringWidth("config-ledger"));
+  }
   nameW = Math.min(nameW, Math.max(16, Math.floor(cols / 2)));
 
-  for (var i = 0; i < S.settingsSections.length; i++) {
-    var sec = S.settingsSections[i];
+  for (var i = 0; i < S.settingsEntries.length; i++) {
+    var en = S.settingsEntries[i];
+    if (en.type === "header") {
+      if (i > 0) pushBody("", false);   // blank line before each section header (except the first)
+      pushBody("  " + BOLD + WHITE + en.label + RST, false);
+      continue;
+    }
     var sel = i === S.settingsCursor;
     var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
     var bg = sel ? BG_SEL : "";
     var nameStyle = sel ? (BOLD + WHITE) : DIM;
-    var n = sec.items.length;
-    var count = n + (n === 1 ? " setting" : " settings");
-    var badge = (cg && S.clReady && sec.modifiedCount) ? ("  " + BAD + "● " + sec.modifiedCount + RST) : "";
-    pushBody("  " + bg + arrow + nameStyle + pad(trunc(sec.label, nameW), nameW) + RST + bg + "  " + GRAY + pad(count, 12) + RST + badge + RST, sel);
+    if (en.type === "group") {
+      var sec = en.section;
+      var n = sec.items.length;
+      var count = n + (n === 1 ? " setting" : " settings");
+      var badge = (cg && S.clReady && sec.modifiedCount) ? ("  " + BAD + "● " + sec.modifiedCount + RST) : "";
+      pushBody("  " + bg + arrow + nameStyle + pad(trunc(sec.label, nameW), nameW) + RST + bg + "  " + GRAY + pad(count, 12) + RST + badge + RST, sel);
+    } else {
+      // install row (config-ledger absent): status icon + name + hint, with a selected sub-line
+      pushBody("  " + bg + arrow + GRAY + "○ " + RST + nameStyle + pad(trunc("config-ledger", nameW), nameW) + RST + bg + "  " + DIM + "not installed · enter to install" + RST, sel);
+      if (sel) pushBody("  " + GRAY + "       versioned config snapshots · history · rollback · profiles" + RST, sel);
+    }
   }
 
   pushBody("", false);
@@ -124,6 +145,6 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   } else if (cg) {
     pushFoot(hints([["↑↓", "move"], ["enter", "open"], ["g", "setup"], ["?", "help"], ["q", "quit"]]));
   } else {
-    pushFoot(hints([["↑↓", "move"], ["enter", "open"], ["i", "install config-ledger"], ["?", "help"], ["q", "quit"]]));
+    pushFoot(hints([["↑↓", "move"], ["enter", "select"], ["?", "help"], ["q", "quit"]]));
   }
 }

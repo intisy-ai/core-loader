@@ -45,3 +45,37 @@ export function annotateModified(sections: SettingsSection[], diffSet: Set<strin
   }
   return sections;
 }
+
+// One flat, ordered list the renderer AND the key handler both walk (the loader's
+// parallel-array convention). Sections are split under "Global" / "Plugins" headers so
+// the two kinds read distinctly; when config-ledger is absent an "install" entry is
+// appended under a "Versioning" header (select it + Enter to install). Headers are not
+// selectable — nav skips them (see firstSelectableIndex).
+export type SettingsEntry =
+  | { type: "header"; label: string }
+  | { type: "group"; section: SettingsSection }
+  | { type: "install" };
+
+export function buildSettingsEntries(sections: SettingsSection[], installable: boolean): SettingsEntry[] {
+  const entries: SettingsEntry[] = [];
+  const globals = sections.filter((s) => s.kind === "global");
+  const plugins = sections.filter((s) => s.kind === "plugin");
+  if (globals.length) {
+    entries.push({ type: "header", label: "Global" });
+    for (const s of globals) entries.push({ type: "group", section: s });
+  }
+  if (plugins.length) {
+    entries.push({ type: "header", label: "Plugins" });
+    for (const s of plugins) entries.push({ type: "group", section: s });
+  }
+  if (installable) {
+    entries.push({ type: "header", label: "Versioning" });
+    entries.push({ type: "install" });
+  }
+  return entries;
+}
+
+export function firstSelectableIndex(entries: SettingsEntry[]): number {
+  for (let i = 0; i < entries.length; i++) if (entries[i].type !== "header") return i;
+  return 0;
+}
