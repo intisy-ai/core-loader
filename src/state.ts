@@ -79,9 +79,11 @@ export const S = {
   mcpAddStep: 0,
   mcpAddDraft: null,
 
-  // Settings page (global settings editor)
+  // Settings page (unified global + per-plugin settings editor)
   settingsCursor: 0,
   settingsScrollOff: 0,
+  settingsSections: [],  // SettingsSection[] built on tab entry / refresh
+  settingsRows: [],      // SettingsRow[] flattened for rendering + nav
 
   // config-git (Phase 2) -- cached lib module + git-data caches for the Settings tab
   CONFIG_GIT_MODULE: null,   // resolved dist/lib.js module, or null when absent

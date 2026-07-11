@@ -17,6 +17,8 @@ import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectIn
 import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
+import { refreshSettings } from "./views/settings.js";
+import { configGitReady } from "./config-git.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
 
@@ -969,23 +971,37 @@ export function handleSettingsKey(key) {
     return;
   }
 
-  // list mode: cursor + enter to open the config editor for global settings
+  // --- list mode: nav walks the unified rows (skipping headers); enter opens the
+  // shared pconfig editor scoped to the selected row's section ---
   if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
-  if (key === "up" || key === "w") { S.settingsCursor = Math.max(0, S.settingsCursor - 1); }
-  else if (key === "down" || key === "s") {
-    var items = buildConfigItems({ defaults: GLOBAL_SETTINGS_DEFAULTS, current: loadGlobalSettings() });
-    S.settingsCursor = Math.min(items.length - 1, S.settingsCursor + 1);
-  }
-  else if (key === "enter" || key === "space") {
-    var sitems = buildConfigItems({ defaults: GLOBAL_SETTINGS_DEFAULTS, current: loadGlobalSettings() });
-    if (sitems.length > 0) {
-      S.configTarget = { name: "settings", global: true, items: sitems };
-      S.configItems = sitems;
-      S.cfgcursor = S.settingsCursor;
-      S.cfgScrollOff = 0;
-      S.mode = "pconfig";
+  if (!S.settingsRows || !S.settingsRows.length) refreshSettings();
+
+  function stepCursor(dir) {
+    var n = S.settingsRows.length;
+    var i = S.settingsCursor;
+    for (var step = 0; step < n; step++) {
+      i += dir;
+      if (i < 0 || i >= n) return;                 // clamp at ends
+      if (S.settingsRows[i] && S.settingsRows[i].type === "item") { S.settingsCursor = i; return; }
     }
   }
+  if (key === "up" || key === "w") { stepCursor(-1); return; }
+  if (key === "down" || key === "s") { stepCursor(1); return; }
+
+  var row = S.settingsRows[S.settingsCursor];
+  if ((key === "enter" || key === "space") && row && row.type === "item") {
+    var sec = S.settingsSections[row.sectionIndex];
+    S.configTarget = (sec.kind === "global")
+      ? { name: "settings", global: true, file: sec.file, items: sec.items }
+      : { name: sec.label, bundle: sec.bundle, file: sec.file, items: sec.items };
+    S.configItems = sec.items;
+    S.cfgcursor = row.itemIndex;
+    S.cfgScrollOff = 0;
+    S.mode = "pconfig";
+    return;
+  }
+  // git sub-mode keys (g/h/p) are wired in later tasks; no-op here so the list
+  // works standalone.
 }
 
 export function handleMcpKey(key) {
@@ -1120,9 +1136,17 @@ function refreshConfigItems() {
       var data = JSON.parse(String(out).trim());
       S.configItems = buildConfigItems(data);
       S.configTarget.items = S.configItems;
+      // Keep the Settings tab's cached plugin section in sync so its rebuilt rows
+      // show the freshly saved value (buildPluginSections reuses the cached probe).
+      for (var pi = 0; pi < (S.pluginItems || []).length; pi++) {
+        var pit = S.pluginItems[pi];
+        if (pit && pit._cfg && pit._cfg.bundle === S.configTarget.bundle) { pit._cfg.items = S.configItems; break; }
+      }
     } catch { /* keep stale view */ }
   }
   if (S.cfgcursor >= S.configItems.length) S.cfgcursor = Math.max(0, S.configItems.length - 1);
+  // On the Settings tab, rebuild the unified rows so values + modified markers refresh.
+  if (S.page === "settings") { try { refreshSettings(); } catch (e) {} }
 }
 
 // Free-text entry for a non-boolean config value; Enter saves via `config set`.

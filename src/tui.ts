@@ -10,6 +10,7 @@ import { S } from "./state.js";
 import { APP_NAME, CLI_CMD, NPM_PKG, CONFIG_DIR, CACHE_DIR, UPDATE_CHECK_PATH, REPOS_DIR, PLUGINS_DIR, tuiLog } from "./env.js";
 import { hideCur, showCur, cleanup } from "./out.js";
 import { getFolderName, installUpdater, clearUpdaterCache, preloadUpdater } from "./updater.js";
+import { preloadConfigGit } from "./config-git.js";
 import { loadConfig, saveConfig, migrateConfigs, loadPlugins, autoUpdateCheck, updateCheckDelayMs, updateCheckIntervalHours, defaultTab } from "./config.js";
 import { flash } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
@@ -277,7 +278,10 @@ async function boot() {
   // disable any mouse reporting a previous program left enabled — pointer
   // movement otherwise arrives as input bytes and triggers random key handlers
   process.stderr.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l");
-  await preloadUpdater().catch(function () {});
+  await Promise.all([
+    preloadUpdater().catch(function () {}),
+    preloadConfigGit().catch(function () {}),
+  ]);
   hideCur();
   render();
   process.stdin.setRawMode(true);

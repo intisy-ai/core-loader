@@ -1,13 +1,37 @@
 // @ts-nocheck
-// Settings page rendering: global ecosystem settings editor (config/settings.json).
-// Mirrors the mcp.ts structure: list view with cursor, delegates to the shared
-// pconfig/pcfginput overlay (already rendered by plugins.ts buildPlugins) for editing.
+// Settings page rendering: unified editor for the global ecosystem settings
+// (config/settings.json) PLUS every plugin's own settings, grouped into sections
+// with config-git modified-vs-repo markers when config-git is installed. Delegates
+// to the shared pconfig/pcfginput overlay (also used by plugins.ts) for editing.
 
-import { RST, BOLD, DIM, GRAY, WHITE, GREEN, RED, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, OK, BAD, INFO, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
-import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "../config.js";
-import { buildConfigItems } from "../plugins.js";
+import { buildGlobalSection, buildPluginSections, flattenRows, firstItemIndex } from "../settings-model.js";
+import { configGitInstalled, configGitReady, getConfigGit, buildDiffSet } from "../config-git.js";
 import { hints, messageLine } from "./common.js";
+
+// Rebuild the unified section/row model: the global section plus one section per
+// plugin that answers `config schema`, flattened into header+item rows with
+// modified-vs-repo flags (recomputed from config-git's diff when the repo is ready).
+export function refreshSettings(): void {
+  const sections = [buildGlobalSection()];
+  const plugins = (S.pluginItems && S.pluginItems.length) ? S.pluginItems : [];
+  for (const sec of buildPluginSections(plugins)) sections.push(sec);
+  S.settingsSections = sections;
+
+  let diffSet = new Set<string>();
+  if (configGitReady()) {
+    try { S.cgDiffRows = getConfigGit().diffAgainstHead() || []; } catch { S.cgDiffRows = []; }
+    diffSet = buildDiffSet(S.cgDiffRows);
+  } else {
+    S.cgDiffRows = [];
+  }
+  S.settingsRows = flattenRows(sections, diffSet);
+  // clamp cursor to a valid item row
+  if (!S.settingsRows[S.settingsCursor] || S.settingsRows[S.settingsCursor].type !== "item") {
+    S.settingsCursor = firstItemIndex(S.settingsRows);
+  }
+}
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   // The pconfig/pcfginput overlay is rendered here (same markup as plugin configure).
@@ -43,35 +67,58 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     return;
   }
 
-  // List view: show every global setting key with its current value.
-  var items = buildConfigItems({ defaults: GLOBAL_SETTINGS_DEFAULTS, current: loadGlobalSettings() });
+  // List view: unified global + per-plugin settings rows.
+  if (!S.settingsRows || !S.settingsRows.length) refreshSettings();
 
-  pushSticky("  " + BOLD + WHITE + "Global Settings" + RST);
-  pushSticky("  " + DIM + "Ecosystem-wide settings stored in config/settings.json" + RST);
+  var cg = configGitInstalled();
+  if (cg && configGitReady()) {
+    var m = getConfigGit();
+    var branch = "", remote = "";
+    try { branch = m.repo.currentBranch(); } catch (e) {}
+    try { remote = m.repo.hasRemote() ? m.repo.getRemote() : "(no remote)"; } catch (e) { remote = "(no remote)"; }
+    var dirty = (S.cgDiffRows && S.cgDiffRows.length) ? (BAD + S.cgDiffRows.length + " uncommitted" + RST) : (OK + "clean" + RST);
+    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  config-git " + RST + ACCENT + branch + RST + DIM + "  " + RST + remote + DIM + "  " + RST + dirty);
+  } else if (cg) {
+    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  config-git installed — press " + RST + ACCENT + "g" + RST + DIM + " to set up the repo" + RST);
+  } else {
+    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  global + plugin settings (install config-git for versioning)" + RST);
+  }
   pushSticky("");
 
-  if (items.length === 0) {
-    pushBody("  " + GRAY + "No global settings defined." + RST, false);
-  } else {
-    var keyW = 6;
-    for (var ki = 0; ki < items.length; ki++) keyW = Math.max(keyW, stringWidth(items[ki].key));
-    keyW = Math.min(keyW, Math.max(12, Math.floor(cols / 2)));
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      var sel = i === S.settingsCursor;
-      var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
-      var bg = sel ? BG_SEL : "";
-      var nameStyle = sel ? (BOLD + WHITE) : DIM;
-      var valStr;
-      if (it.type === "boolean") valStr = (it.value ? OK + "true" : GRAY + "false") + RST;
-      else valStr = WHITE + JSON.stringify(it.value) + RST;
-      var mark = it.isSet ? "" : (GRAY + " (default)" + RST);
-      pushBody("  " + bg + arrow + nameStyle + pad(trunc(it.key, keyW), keyW) + RST + bg + "  " + valStr + mark + RST, sel);
+  // column width from the widest key across all sections
+  var keyW = 6;
+  for (var wi = 0; wi < S.settingsRows.length; wi++) {
+    var wr = S.settingsRows[wi];
+    if (wr.type === "item") keyW = Math.max(keyW, stringWidth(wr.item.key));
+  }
+  keyW = Math.min(keyW, Math.max(12, Math.floor(cols / 2)));
+
+  for (var i = 0; i < S.settingsRows.length; i++) {
+    var r = S.settingsRows[i];
+    if (r.type === "header") {
+      pushBody("  " + BOLD + INFO + r.label + RST, false);
+      continue;
     }
+    var it = r.item;
+    var sel = i === S.settingsCursor;
+    var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
+    var bg = sel ? BG_SEL : "";
+    var nameStyle = sel ? (BOLD + WHITE) : DIM;
+    var valStr;
+    if (it.type === "boolean") valStr = (it.value ? OK + "true" : GRAY + "false") + RST;
+    else valStr = WHITE + JSON.stringify(it.value) + RST;
+    var marker = r.modified ? (BAD + " ●" + RST) : (it.isSet ? "" : (GRAY + " (default)" + RST));
+    pushBody("    " + bg + arrow + nameStyle + pad(trunc(it.key, keyW), keyW) + RST + bg + "  " + valStr + marker + RST, sel);
   }
 
   pushBody("", false);
   if (S.message) pushFoot(messageLine(cols));
   pushFoot("  " + rule(barW));
-  pushFoot(hints([["↑↓", "move"], ["enter", "edit/toggle"], ["?", "help"], ["q", "quit"]]));
+  if (cg && configGitReady()) {
+    pushFoot(hints([["↑↓", "move"], ["enter", "edit"], ["h", "history"], ["g", "git"], ["p", "profiles"], ["?", "help"], ["q", "quit"]]));
+  } else if (cg) {
+    pushFoot(hints([["↑↓", "move"], ["enter", "edit"], ["g", "setup"], ["?", "help"], ["q", "quit"]]));
+  } else {
+    pushFoot(hints([["↑↓", "move"], ["enter", "edit"], ["?", "help"], ["q", "quit"]]));
+  }
 }
