@@ -51,8 +51,9 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   if (S.mode === "pconfig" || S.mode === "pcfginput") {
     var ct = S.configTarget;
     var cname = (ct && ct.name) || "settings";
+    var cfile = (ct && ct.file) || "settings.json";
     pushBody("  " + BOLD + WHITE + "Configure " + trunc(cname, cols - 16) + RST, false);
-    pushBody("  " + GRAY + "changes save to config/settings.json (restart to apply)" + RST, false);
+    pushBody("  " + GRAY + "changes save to config/" + cfile + " (restart to apply)" + RST, false);
     pushBody("", false);
     var keyW = 6;
     for (var ck = 0; ck < S.configItems.length; ck++) keyW = Math.max(keyW, stringWidth(S.configItems[ck].key));
