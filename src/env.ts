@@ -123,6 +123,7 @@ export const OFFICIAL_PLUGINS = [
   { name: "metric-dashboard",  repoName: "metric-dashboard",  full_name: "intisy-ai/metric-dashboard",  url: "https://github.com/intisy-ai/metric-dashboard.git",  desc: "Local usage & metrics dashboard with a web UI",                                author: "intisy-ai", category: "Official" },
   { name: "sync-bridge",       repoName: "sync-bridge",       full_name: "intisy-ai/sync-bridge",       url: "https://github.com/intisy-ai/sync-bridge.git",       desc: "Sync config & accounts across opencode and Claude Code",                       author: "intisy-ai", category: "Official" },
   { name: "wakatime-sync",     repoName: "wakatime-sync",     full_name: "intisy-ai/wakatime-sync",     url: "https://github.com/intisy-ai/wakatime-sync.git",     desc: "WakaTime time-tracking heartbeats for opencode & Claude Code",                 author: "intisy-ai", category: "Official" },
+  { name: "config-git",        repoName: "config-git",        full_name: "intisy-ai/config-git",        url: "https://github.com/intisy-ai/config-git.git",        desc: "Git-backed config: versioned sanitized snapshots with history, rollback & profiles", author: "intisy-ai", category: "Official" },
 ];
 // mark every entry so downstream code can test e.official without string comparisons
 OFFICIAL_PLUGINS.forEach(function(e) { e.official = true; });
