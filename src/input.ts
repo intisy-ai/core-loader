@@ -888,7 +888,7 @@ export function parseKey(buf) {
   var ch = String.fromCharCode(buf[0]).toLowerCase();
   // NB: every actionable letter key MUST be listed here or parseKey drops it before
   // any handler sees it (this is why "E to update" silently did nothing — 'e' was missing).
-  if ("wsadqpchofuximynregl/?[]".indexOf(ch) !== -1) return ch;
+  if ("wsadqpchofuximynreg/?[]".indexOf(ch) !== -1) return ch;
   return null;
 }
 
@@ -1025,7 +1025,9 @@ export function handleSettingsKey(key) {
     else if ((key === "enter" || key === "space") && citem) {
       if (citem.type === "boolean") {
         var nv = !citem.value;
-        var berr = setGlobalSetting(citem.key, nv ? "true" : "false");
+        var berr = S.configTarget.global
+          ? setGlobalSetting(citem.key, nv ? "true" : "false")
+          : setPluginConfig(S.configTarget.bundle, citem.key, nv ? "true" : "false");
         if (berr) { flash(citem.key + ": " + berr); }
         else { refreshConfigItems(); flash(citem.key + " = " + nv + " (restart to apply)"); }
       } else {
@@ -1049,6 +1051,13 @@ export function handleSettingsKey(key) {
   if (S.mode === "sgdiff") {
     if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
     if (key === "c") { runGitMenuAction("commit"); return; }
+    if (key === "i") {
+      var im = getConfigGit();
+      if (!im) { flash("config-git not installed."); S.mode = "list"; return; }
+      try { var n = im.importFromHead(); flash("Imported " + n + " file(s) from repo (restart to apply)"); }
+      catch (e) { flash("Import failed: " + ((e && e.message) || e)); }
+      refreshSettings(); S.mode = "list"; return;
+    }
     return;
   }
   if (S.mode === "sghistory") {

@@ -46,7 +46,7 @@ export function buildSettingsGit(pushBody, pushFoot, cols, barW, pushSticky) {
       }
     }
     pushFoot("  " + rule(barW));
-    pushFoot(hints([["c", "commit"], ["esc", "back"]]));
+    pushFoot(hints([["c", "commit (live → repo)"], ["i", "import (repo → live)"], ["esc", "back"]]));
     return;
   }
   if (S.mode === "sghistory") {

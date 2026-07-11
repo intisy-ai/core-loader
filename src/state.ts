@@ -87,6 +87,7 @@ export const S = {
 
   // config-git (Phase 2) -- cached lib module + git-data caches for the Settings tab
   CONFIG_GIT_MODULE: null,   // resolved dist/lib.js module, or null when absent
+  cgReady: false,            // cached configGitReady() (repo.isRepo spawns git; recomputed in refreshSettings, never per render frame)
   cgDiffRows: [],            // last diffAgainstHead() rows (markers + review screen)
   cgHistory: [],             // last keyHistory() rows (history sub-screen)
   cgHistoryFile: "",         // file the history sub-screen is showing

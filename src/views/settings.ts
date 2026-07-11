@@ -20,8 +20,11 @@ export function refreshSettings(): void {
   for (const sec of buildPluginSections(plugins)) sections.push(sec);
   S.settingsSections = sections;
 
+  // Cache readiness once here (git subprocess) so the render path never spawns git per frame.
+  S.cgReady = configGitReady();
+
   let diffSet = new Set<string>();
-  if (configGitReady()) {
+  if (S.cgReady) {
     try { S.cgDiffRows = getConfigGit().diffAgainstHead() || []; } catch { S.cgDiffRows = []; }
     diffSet = buildDiffSet(S.cgDiffRows);
   } else {
@@ -80,7 +83,7 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   if (!S.settingsRows || !S.settingsRows.length) refreshSettings();
 
   var cg = configGitInstalled();
-  if (cg && configGitReady()) {
+  if (cg && S.cgReady) {
     var m = getConfigGit();
     var branch = "", remote = "";
     try { branch = m.repo.currentBranch(); } catch (e) {}
@@ -123,7 +126,7 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   pushBody("", false);
   if (S.message) pushFoot(messageLine(cols));
   pushFoot("  " + rule(barW));
-  if (cg && configGitReady()) {
+  if (cg && S.cgReady) {
     pushFoot(hints([["↑↓", "move"], ["enter", "edit"], ["h", "history"], ["g", "git"], ["p", "profiles"], ["?", "help"], ["q", "quit"]]));
   } else if (cg) {
     pushFoot(hints([["↑↓", "move"], ["enter", "edit"], ["g", "setup"], ["?", "help"], ["q", "quit"]]));
