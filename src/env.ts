@@ -185,6 +185,8 @@ FEATURED_PLUGINS.forEach(function(e) {
   e.url = "https://github.com/" + e.repo + ".git";
   e.desc = e.description;
   e.featured = true;
+  // categories double as section headings in the list — capitalize for display
+  e.category = e.category.charAt(0).toUpperCase() + e.category.slice(1);
 });
 
 export const MCP_CATEGORIES = ["All", "Search", "Development", "Files", "Database", "Cloud", "Communication", "Productivity", "Data", "AI", "Plugin"];

@@ -187,18 +187,39 @@ function seedOfficialPlugins() {
   }
 }
 
+// Claude's community catalog gets a Curated section like opencode's (whose Curated
+// entries come from the awesome-opencode scrape): seed the VERIFIED FEATURED_PLUGINS
+// repos as category "Curated" — one hand-checked source of truth, no new unverified
+// repos. full_name matching mirrors seedOfficialPlugins; stars ride in via the
+// existing enrichment passes.
+function seedCuratedPlugins() {
+  if (!IS_CLAUDE) return;   // opencode's Curated section is scraped, not seeded
+  for (var ci = 0; ci < FEATURED_PLUGINS.length; ci++) {
+    var cur = FEATURED_PLUGINS[ci];
+    var curKey = (cur.full_name || "").toLowerCase();
+    var existingCur = S.MARKETPLACE_CATALOG.find(function(e) { return (e.full_name || "").toLowerCase() === curKey; });
+    if (existingCur) {
+      if (!existingCur.official && existingCur.category !== "Official") existingCur.category = "Curated";
+      if (!existingCur.desc) existingCur.desc = cur.desc;
+    } else {
+      S.MARKETPLACE_CATALOG.push({ name: cur.name, desc: cur.desc, category: "Curated", author: cur.author, repoName: cur.repoName, full_name: cur.full_name, url: cur.url });
+    }
+  }
+}
+
 export function fetchCatalogsAsync() {
   if (S.catalogFetched) return;
   S.catalogFetched = true;
   var curlCmd = process.platform === "win32" ? "curl.exe" : "curl";
   // even with a warm cache the curated MCP entries still need their stars derived
   // (the cache predates them) — run that enrichment, then skip the cold registry search
-  if (loadCatalogCache()) { seedOfficialPlugins(); enrichCuratedMcpStars(); return; }
+  if (loadCatalogCache()) { seedOfficialPlugins(); seedCuratedPlugins(); enrichCuratedMcpStars(); return; }
 
   var enrichedOnce = false;
 
-  // seed official entries immediately so they appear even before remote fetches finish
+  // seed official + curated entries immediately so they appear even before remote fetches finish
   seedOfficialPlugins();
+  seedCuratedPlugins();
 
   function saveCatalog() {
     try {
@@ -640,6 +661,11 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
       res = res.filter(function(m) { return (m.name || "").toLowerCase().indexOf(q) !== -1 || (m.desc || "").toLowerCase().indexOf(q) !== -1; });
     }
     res.sort(function(a, b) {
+      // Sections must be CONTIGUOUS — the renderer emits a heading on every group
+      // change, so a pure star sort interleaves Curated/Community headings over
+      // and over. Curated first, then Community; stars order within each group.
+      var rank = function(e) { return e.category === "Curated" ? 0 : 1; };
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
       var aSt = a.stars != null ? a.stars : -1;
       var bSt = b.stars != null ? b.stars : -1;
       if (bSt !== aSt) return bSt - aSt;
@@ -664,7 +690,9 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
       var qFt = S.inputBuf.toLowerCase();
       resFt = resFt.filter(function(m) { return (m.name || "").toLowerCase().indexOf(qFt) !== -1 || (m.desc || "").toLowerCase().indexOf(qFt) !== -1; });
     }
-    resFt.sort(function(a, b) { return (a.name || "").localeCompare(b.name || ""); });
+    // group by category (the renderer emits one heading per contiguous group);
+    // alphabetical order made almost every row its own single-item section
+    resFt.sort(function(a, b) { return (a.category || "").localeCompare(b.category || "") || (a.name || "").localeCompare(b.name || ""); });
     return resFt;
   }
   // A seeded default marketplace (env.ts DEFAULT_MARKETPLACES) not yet added to
