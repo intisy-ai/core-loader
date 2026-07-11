@@ -18,7 +18,8 @@ import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
 import { refreshSettings } from "./views/settings.js";
-import { configGitReady } from "./config-git.js";
+import { getConfigGit, configGitReady, configGitInstalled } from "./config-git.js";
+import { SG_MENU_ITEMS } from "./views/settings-git.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
 
@@ -887,7 +888,7 @@ export function parseKey(buf) {
   var ch = String.fromCharCode(buf[0]).toLowerCase();
   // NB: every actionable letter key MUST be listed here or parseKey drops it before
   // any handler sees it (this is why "E to update" silently did nothing — 'e' was missing).
-  if ("wsadqpchofuximynre/?[]".indexOf(ch) !== -1) return ch;
+  if ("wsadqpchofuximynregl/?[]".indexOf(ch) !== -1) return ch;
   return null;
 }
 
@@ -947,6 +948,38 @@ export function handleConfirmKey(key) {
   }
 }
 
+// Run a config-git action chosen from the git action menu (sgmenu) or, when the
+// repo isn't set up yet, the "press g to set up" shortcut in list mode. Always
+// leaves S.mode in a valid state (list, or sgdiff for the review screen) so a
+// caller never has to clean up after it.
+function runGitMenuAction(action) {
+  var m = getConfigGit();
+  if (!m) { flash("config-git not installed."); S.mode = "list"; return; }
+  if (action === "commit") {
+    try { var made = m.autoCommit("manual"); flash(made ? "Committed." : "Nothing to commit."); }
+    catch (e) { flash("Commit failed: " + ((e && e.message) || e)); }
+    refreshSettings(); S.mode = "list"; return;
+  }
+  if (action === "diff") {
+    try { S.cgDiffRows = m.diffAgainstHead() || []; } catch { S.cgDiffRows = []; }
+    S.mode = "sgdiff"; return;
+  }
+  if (action === "push") {
+    flash("Pushing...");
+    try { var pr = m.repo.push(); flash(pr && pr.message ? pr.message : (pr && pr.ok ? "Pushed." : "Push failed.")); }
+    catch (e) { flash("Push failed: " + ((e && e.message) || e)); }
+    S.mode = "list"; return;
+  }
+  if (action === "pull") {
+    flash("Pulling...");
+    try { var lr = m.repo.pull(); flash(lr && lr.message ? lr.message : (lr && lr.ok ? "Pulled." : "Pull failed.")); }
+    catch (e) { flash("Pull failed: " + ((e && e.message) || e)); }
+    refreshSettings(); S.mode = "list"; return;
+  }
+  // "profiles" and "setup" are wired in Task 6 -- friendly stub until then.
+  flash("Not available yet."); S.mode = "list";
+}
+
 export function handleSettingsKey(key) {
   if (S.mode === "pconfig" || S.mode === "pcfginput") {
     // Delegate to the shared config editor handler (same UX as plugin configure).
@@ -968,6 +1001,21 @@ export function handleSettingsKey(key) {
         S.mode = "pcfginput";
       }
     }
+    return;
+  }
+
+  // --- config-git sub-modes: the git action menu and the setting-level diff review ---
+  if (S.mode === "sgmenu") {
+    var sgItems = SG_MENU_ITEMS;
+    if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
+    if (key === "up" || key === "w") { S.sgMenuCursor = Math.max(0, S.sgMenuCursor - 1); return; }
+    if (key === "down" || key === "s") { S.sgMenuCursor = Math.min(sgItems.length - 1, S.sgMenuCursor + 1); return; }
+    if (key === "enter" || key === "space") { runGitMenuAction(sgItems[S.sgMenuCursor].key); return; }
+    return;
+  }
+  if (S.mode === "sgdiff") {
+    if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
+    if (key === "c") { runGitMenuAction("commit"); return; }
     return;
   }
 
@@ -1000,7 +1048,9 @@ export function handleSettingsKey(key) {
     S.mode = "pconfig";
     return;
   }
-  // git sub-mode keys (g/h/p) are wired in later tasks; no-op here so the list
+  if (key === "g" && configGitReady()) { S.mode = "sgmenu"; S.sgMenuCursor = 0; return; }
+  if (key === "g" && configGitInstalled() && !configGitReady()) { runGitMenuAction("setup"); return; }
+  // h (history) / p (profiles) are wired in Tasks 5-6; no-op here so the list
   // works standalone.
 }
 

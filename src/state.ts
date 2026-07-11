@@ -95,6 +95,7 @@ export const S = {
   cgProfiles: [],            // profiles.list() snapshot
   cgProfileCurrent: "",      // profiles.current()
   cgProfileCursor: 0,
+  sgMenuCursor: 0,           // cursor in the config-git action menu (sgmenu)
 
   // Marketplace sub-page
   marketplaceItems: [],

@@ -213,4 +213,10 @@ export const HELP_BINDINGS = {
     ["I", "Install selected"], ["X", "Uninstall selected"], ["R", "Refresh catalog"],
     ["/", "Search"], ["<- ->", "Switch page"], ["Q / Esc", "Quit"],
   ],
+  settings: [
+    ["^v / WS", "Move"], ["Enter", "Edit / toggle a setting"],
+    ["G", "config-git actions (commit / push / pull / diff)"],
+    ["H", "History of the selected setting"], ["P", "Switch profile (branch)"],
+    ["<- ->", "Switch page"], ["Q / Esc", "Quit"],
+  ],
 };

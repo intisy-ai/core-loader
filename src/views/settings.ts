@@ -9,6 +9,7 @@ import { S } from "../state.js";
 import { buildGlobalSection, buildPluginSections, flattenRows, firstItemIndex } from "../settings-model.js";
 import { configGitInstalled, configGitReady, getConfigGit, buildDiffSet } from "../config-git.js";
 import { hints, messageLine } from "./common.js";
+import { buildSettingsGit } from "./settings-git.js";
 
 // Rebuild the unified section/row model: the global section plus one section per
 // plugin that answers `config schema`, flattened into header+item rows with
@@ -34,6 +35,13 @@ export function refreshSettings(): void {
 }
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
+  // config-git sub-screens reached from the Settings tab (git action menu, setting-
+  // level diff review). History/profiles/setup modes join this dispatch in Tasks 5-6.
+  if (S.mode === "sgmenu" || S.mode === "sgdiff") {
+    buildSettingsGit(pushBody, pushFoot, cols, barW, pushSticky);
+    return;
+  }
+
   // The pconfig/pcfginput overlay is rendered here (same markup as plugin configure).
   // handleSettingsKey enters "pconfig" mode and sets S.configTarget = { global: true }.
   if (S.mode === "pconfig" || S.mode === "pcfginput") {
