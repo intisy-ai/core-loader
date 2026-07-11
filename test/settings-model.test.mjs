@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { flattenRows, firstItemIndex } from "../dist/settings-model.js";
+import { annotateModified } from "../dist/settings-model.js";
 import { diffKeyId } from "../dist/config-ledger.js";
 
 const sections = [
@@ -9,27 +9,30 @@ const sections = [
   ]},
   { label: "core-auth", kind: "plugin", file: "core-auth.json", bundle: "/x/core-auth.js", items: [
     { key: "leaderboard.enabled", value: true, def: false, isSet: true, type: "boolean" },
+    { key: "leaderboard.apiKey", value: "x", def: "", isSet: true, type: "string" },
   ]},
 ];
-const diffSet = new Set([diffKeyId("core-auth.json", "leaderboard.enabled")]);
-const rows = flattenRows(sections, diffSet);
 
-// header, 2 items, header, 1 item = 5 rows
-assert.equal(rows.length, 5);
-assert.equal(rows[0].type, "header");
-assert.equal(rows[0].label, "Global");
-assert.equal(rows[1].type, "item");
-assert.equal(rows[1].file, "settings.json");
-assert.equal(rows[1].modified, false);
-assert.equal(rows[3].type, "header");
-assert.equal(rows[3].label, "core-auth");
-assert.equal(rows[4].type, "item");
-assert.equal(rows[4].modified, true);          // in the diff set
-assert.equal(rows[4].bundle, "/x/core-auth.js");
+// two changed keys, both in core-auth
+const diffSet = new Set([
+  diffKeyId("core-auth.json", "leaderboard.enabled"),
+  diffKeyId("core-auth.json", "leaderboard.apiKey"),
+]);
+const out = annotateModified(sections, diffSet);
 
-// first item row is index 1 (index 0 is a header)
-assert.equal(firstItemIndex(rows), 1);
-// all-headers -> 0
-assert.equal(firstItemIndex([{ type: "header", label: "x", sectionIndex: 0, modified: false }]), 0);
+// returns the same array, mutated in place
+assert.strictEqual(out, sections);
+// Global has no modified keys; core-auth has 2
+assert.equal(sections[0].modifiedCount, 0);
+assert.equal(sections[1].modifiedCount, 2);
+
+// empty diff set -> all zero
+annotateModified(sections, new Set());
+assert.equal(sections[0].modifiedCount, 0);
+assert.equal(sections[1].modifiedCount, 0);
+
+// partial: only one key in the set
+annotateModified(sections, new Set([diffKeyId("core-auth.json", "leaderboard.apiKey")]));
+assert.equal(sections[1].modifiedCount, 1);
 
 console.log("settings-model.test.mjs OK");

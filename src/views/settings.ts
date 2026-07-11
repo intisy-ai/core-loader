@@ -4,10 +4,10 @@
 // with config-ledger modified-vs-repo markers when config-ledger is installed. Delegates
 // to the shared pconfig/pcfginput overlay (also used by plugins.ts) for editing.
 
-import { RST, BOLD, DIM, GRAY, WHITE, OK, BAD, INFO, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, OK, BAD, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
-import { buildGlobalSection, buildPluginSections, flattenRows, firstItemIndex } from "../settings-model.js";
-import { configLedgerInstalled, configLedgerReady, getConfigLedger, buildDiffSet } from "../config-ledger.js";
+import { buildGlobalSection, buildPluginSections, annotateModified } from "../settings-model.js";
+import { configLedgerInstalled, configLedgerReady, getConfigLedger, buildDiffSet, diffKeyId } from "../config-ledger.js";
 import { hints, messageLine } from "./common.js";
 import { buildSettingsGit } from "./settings-git.js";
 
@@ -18,7 +18,6 @@ export function refreshSettings(): void {
   const sections = [buildGlobalSection()];
   const plugins = (S.pluginItems && S.pluginItems.length) ? S.pluginItems : [];
   for (const sec of buildPluginSections(plugins)) sections.push(sec);
-  S.settingsSections = sections;
 
   // Cache readiness once here (git subprocess) so the render path never spawns git per frame.
   S.clReady = configLedgerReady();
@@ -30,11 +29,10 @@ export function refreshSettings(): void {
   } else {
     S.clDiffRows = [];
   }
-  S.settingsRows = flattenRows(sections, diffSet);
-  // clamp cursor to a valid item row
-  if (!S.settingsRows[S.settingsCursor] || S.settingsRows[S.settingsCursor].type !== "item") {
-    S.settingsCursor = firstItemIndex(S.settingsRows);
-  }
+  annotateModified(sections, diffSet);   // stamp each group's modified-key count for its badge
+  S.settingsSections = sections;
+  // clamp the group cursor to a valid section row
+  if (S.settingsCursor >= sections.length) S.settingsCursor = Math.max(0, sections.length - 1);
 }
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
@@ -55,6 +53,7 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     pushBody("  " + BOLD + WHITE + "Configure " + trunc(cname, cols - 16) + RST, false);
     pushBody("  " + GRAY + "changes save to config/" + cfile + " (restart to apply)" + RST, false);
     pushBody("", false);
+    var dset = (S.clReady && S.clDiffRows && S.clDiffRows.length) ? buildDiffSet(S.clDiffRows) : null;
     var keyW = 6;
     for (var ck = 0; ck < S.configItems.length; ck++) keyW = Math.max(keyW, stringWidth(S.configItems[ck].key));
     keyW = Math.min(keyW, Math.max(12, Math.floor(cols / 2)));
@@ -66,7 +65,8 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
       if (editing) valStr = BG_SEL + " " + S.inputBuf + BOLD + "|" + RST;
       else if (it.type === "boolean") valStr = (it.value ? OK + "true" : GRAY + "false") + RST;
       else valStr = WHITE + JSON.stringify(it.value) + RST;
-      var mark = it.isSet ? "" : (GRAY + " (default)" + RST);
+      var modified = dset && dset.has(diffKeyId(cfile, it.key));
+      var mark = modified ? (BAD + " ●" + RST) : (it.isSet ? "" : (GRAY + " (default)" + RST));
       var carrow = csel ? (ACCENT + " ❯ " + RST) : "   ";
       var cbg = csel ? BG_SEL : "";
       var cNameStyle = csel ? (BOLD + WHITE) : DIM;
@@ -76,12 +76,14 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     if (S.message) pushFoot(messageLine(cols));
     pushFoot("  " + rule(barW));
     if (S.mode === "pcfginput") pushFoot(hints([["enter", "save"], ["esc", "cancel"]]));
+    else if (S.clReady) pushFoot(hints([["↑↓", "move"], ["enter", "edit/toggle"], ["h", "history"], ["esc", "back"]]));
     else pushFoot(hints([["↑↓", "move"], ["enter", "edit/toggle"], ["esc", "back"]]));
     return;
   }
 
-  // List view: unified global + per-plugin settings rows.
-  if (!S.settingsRows || !S.settingsRows.length) refreshSettings();
+  // Group list: Global + one row per plugin. Enter drills into a group's editor
+  // (the pconfig overlay above) — no more one giant flat scroll of every setting.
+  if (!S.settingsSections || !S.settingsSections.length) refreshSettings();
 
   var cg = configLedgerInstalled();
   if (cg && S.clReady) {
@@ -94,44 +96,34 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   } else if (cg) {
     pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  config-ledger installed — press " + RST + ACCENT + "g" + RST + DIM + " to set up the repo" + RST);
   } else {
-    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  global + plugin settings (install config-ledger for versioning)" + RST);
+    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  config-ledger not installed — press " + RST + ACCENT + "i" + RST + DIM + " to install (adds versioning, history, profiles)" + RST);
   }
   pushSticky("");
 
-  // column width from the widest key across all sections
-  var keyW = 6;
-  for (var wi = 0; wi < S.settingsRows.length; wi++) {
-    var wr = S.settingsRows[wi];
-    if (wr.type === "item") keyW = Math.max(keyW, stringWidth(wr.item.key));
-  }
-  keyW = Math.min(keyW, Math.max(12, Math.floor(cols / 2)));
+  var nameW = 6;
+  for (var wi = 0; wi < S.settingsSections.length; wi++) nameW = Math.max(nameW, stringWidth(S.settingsSections[wi].label));
+  nameW = Math.min(nameW, Math.max(16, Math.floor(cols / 2)));
 
-  for (var i = 0; i < S.settingsRows.length; i++) {
-    var r = S.settingsRows[i];
-    if (r.type === "header") {
-      pushBody("  " + BOLD + INFO + r.label + RST, false);
-      continue;
-    }
-    var it = r.item;
+  for (var i = 0; i < S.settingsSections.length; i++) {
+    var sec = S.settingsSections[i];
     var sel = i === S.settingsCursor;
     var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
     var bg = sel ? BG_SEL : "";
     var nameStyle = sel ? (BOLD + WHITE) : DIM;
-    var valStr;
-    if (it.type === "boolean") valStr = (it.value ? OK + "true" : GRAY + "false") + RST;
-    else valStr = WHITE + JSON.stringify(it.value) + RST;
-    var marker = r.modified ? (BAD + " ●" + RST) : (it.isSet ? "" : (GRAY + " (default)" + RST));
-    pushBody("    " + bg + arrow + nameStyle + pad(trunc(it.key, keyW), keyW) + RST + bg + "  " + valStr + marker + RST, sel);
+    var n = sec.items.length;
+    var count = n + (n === 1 ? " setting" : " settings");
+    var badge = (cg && S.clReady && sec.modifiedCount) ? ("  " + BAD + "● " + sec.modifiedCount + RST) : "";
+    pushBody("  " + bg + arrow + nameStyle + pad(trunc(sec.label, nameW), nameW) + RST + bg + "  " + GRAY + pad(count, 12) + RST + badge + RST, sel);
   }
 
   pushBody("", false);
   if (S.message) pushFoot(messageLine(cols));
   pushFoot("  " + rule(barW));
   if (cg && S.clReady) {
-    pushFoot(hints([["↑↓", "move"], ["enter", "edit"], ["h", "history"], ["g", "git"], ["p", "profiles"], ["?", "help"], ["q", "quit"]]));
+    pushFoot(hints([["↑↓", "move"], ["enter", "open"], ["g", "git"], ["p", "profiles"], ["?", "help"], ["q", "quit"]]));
   } else if (cg) {
-    pushFoot(hints([["↑↓", "move"], ["enter", "edit"], ["g", "setup"], ["?", "help"], ["q", "quit"]]));
+    pushFoot(hints([["↑↓", "move"], ["enter", "open"], ["g", "setup"], ["?", "help"], ["q", "quit"]]));
   } else {
-    pushFoot(hints([["↑↓", "move"], ["enter", "edit"], ["?", "help"], ["q", "quit"]]));
+    pushFoot(hints([["↑↓", "move"], ["enter", "open"], ["i", "install config-ledger"], ["?", "help"], ["q", "quit"]]));
   }
 }

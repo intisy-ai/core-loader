@@ -6,7 +6,7 @@ import { existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
 import { RST, BOLD, WHITE, RED } from "./format.js";
-import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH } from "./env.js";
+import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH, OFFICIAL_PLUGINS } from "./env.js";
 import { S } from "./state.js";
 import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
@@ -18,7 +18,7 @@ import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
 import { refreshSettings } from "./views/settings.js";
-import { getConfigLedger, configLedgerReady, configLedgerInstalled } from "./config-ledger.js";
+import { getConfigLedger, configLedgerReady, configLedgerInstalled, preloadConfigLedger } from "./config-ledger.js";
 import { SG_MENU_ITEMS } from "./views/settings-git.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
@@ -1022,6 +1022,15 @@ export function handleSettingsKey(key) {
     if (key === "up" || key === "w") { S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
     else if (key === "down" || key === "s") { S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
     else if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; }
+    else if (key === "h" && S.mode === "pconfig" && configLedgerReady() && citem && S.configTarget) {
+      // per-setting history lives in the section editor (this is where the settings are)
+      var hm2 = getConfigLedger();
+      S.clHistoryFile = S.configTarget.file;
+      S.clHistoryKey = citem.key;
+      try { S.clHistory = hm2.keyHistory(S.configTarget.file, citem.key) || []; } catch { S.clHistory = []; }
+      S.clHistoryCursor = 0;
+      S.mode = "sghistory";
+    }
     else if ((key === "enter" || key === "space") && citem) {
       if (citem.type === "boolean") {
         var nv = !citem.value;
@@ -1097,50 +1106,52 @@ export function handleSettingsKey(key) {
     return;
   }
 
-  // --- list mode: nav walks the unified rows (skipping headers); enter opens the
-  // shared pconfig editor scoped to the selected row's section ---
+  // --- list mode: a compact list of setting GROUPS (Global + one row per plugin).
+  // Enter drills into a group's editor (pconfig). g/p are repo-wide git actions;
+  // i installs config-ledger when absent (non-blocking — the list stays usable). ---
   if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
-  if (!S.settingsRows || !S.settingsRows.length) refreshSettings();
+  if (!S.settingsSections || !S.settingsSections.length) refreshSettings();
 
-  function stepCursor(dir) {
-    var n = S.settingsRows.length;
-    var i = S.settingsCursor;
-    for (var step = 0; step < n; step++) {
-      i += dir;
-      if (i < 0 || i >= n) return;                 // clamp at ends
-      if (S.settingsRows[i] && S.settingsRows[i].type === "item") { S.settingsCursor = i; return; }
-    }
-  }
-  if (key === "up" || key === "w") { stepCursor(-1); return; }
-  if (key === "down" || key === "s") { stepCursor(1); return; }
+  if (key === "up" || key === "w") { S.settingsCursor = Math.max(0, S.settingsCursor - 1); return; }
+  if (key === "down" || key === "s") { S.settingsCursor = Math.min(S.settingsSections.length - 1, S.settingsCursor + 1); return; }
 
-  var row = S.settingsRows[S.settingsCursor];
-  if ((key === "enter" || key === "space") && row && row.type === "item") {
-    var sec = S.settingsSections[row.sectionIndex];
+  if (key === "enter" || key === "space") {
+    var sec = S.settingsSections[S.settingsCursor];
+    if (!sec) return;
     S.configTarget = (sec.kind === "global")
       ? { name: "settings", global: true, file: sec.file, items: sec.items }
       : { name: sec.label, bundle: sec.bundle, file: sec.file, items: sec.items };
     S.configItems = sec.items;
-    S.cfgcursor = row.itemIndex;
+    S.cfgcursor = 0;
     S.cfgScrollOff = 0;
     S.mode = "pconfig";
     return;
   }
+  if (key === "i" && !configLedgerInstalled()) { installConfigLedger(); return; }
   if (key === "g" && configLedgerReady()) { S.mode = "sgmenu"; S.sgMenuCursor = 0; return; }
   if (key === "g" && configLedgerInstalled() && !configLedgerReady()) { runGitMenuAction("setup"); return; }
-  if (key === "h" && configLedgerReady()) {
-    var hrow = S.settingsRows[S.settingsCursor];
-    if (hrow && hrow.type === "item") {
-      var hm = getConfigLedger();
-      S.clHistoryFile = hrow.file;
-      S.clHistoryKey = hrow.item.key;
-      try { S.clHistory = hm.keyHistory(hrow.file, hrow.item.key) || []; } catch { S.clHistory = []; }
-      S.clHistoryCursor = 0;
-      S.mode = "sghistory";
-    }
-    return;
-  }
   if (key === "p" && configLedgerReady()) { openProfiles(); return; }
+}
+
+// Install config-ledger on demand from the Settings tab (non-blocking: the tab stays
+// usable without it). Uses the same marketplace install path as the Plugins tab, then
+// re-imports the freshly cloned lib so git features light up without a restart.
+function installConfigLedger() {
+  var entry = (OFFICIAL_PLUGINS || []).find(function (p) { return p.name === "config-ledger"; });
+  if (!entry) { flash("config-ledger not found in the official catalog."); return; }
+  S.busy = true;
+  setBusyMessage("Installing config-ledger...");
+  render();
+  marketplaceInstall({ name: entry.name, repoName: entry.repoName, url: entry.url, install: "git" }, function (err) {
+    S.busy = false;
+    if (err) { flash(err); render(); return; }
+    preloadConfigLedger().catch(function () {}).then(function () {
+      try { S.pluginItems = buildCombinedPluginList(); } catch (e) {}
+      refreshSettings();
+      flash(configLedgerInstalled() ? "config-ledger installed! Press g to set up versioning." : "Installed — restart to activate.");
+      render();
+    });
+  }, "git");
 }
 
 export function handleMcpKey(key) {

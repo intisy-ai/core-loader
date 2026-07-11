@@ -1,22 +1,20 @@
 // Pure builder for the unified Settings tab: assembles the global settings section
-// plus one section per plugin that has a config schema, and flattens them into
-// render rows (headers + items) with modified-vs-repo flags. No I/O in flattenRows.
+// plus one section per plugin that has a config schema. The Settings tab renders
+// these sections as a drill-in list (Global + one row per plugin); Enter opens a
+// section's own editor. annotateModified stamps each section with the count of keys
+// that differ from the config-ledger repo HEAD (for the per-group modified badge).
 import { probeConfigSchema, buildConfigItems } from "./plugins.js";
 import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "./config.js";
 import { diffKeyId } from "./config-ledger.js";
 
 export type SettingsItem = { key: string; value: unknown; def: unknown; isSet: boolean; type: string };
-export type SettingsSection = { label: string; kind: "global" | "plugin"; file: string; bundle: string | null; items: SettingsItem[] };
-export type SettingsRow = {
-  type: "header" | "item";
-  label?: string;
-  sectionIndex: number;
-  itemIndex?: number;
-  item?: SettingsItem;
-  file?: string;
-  bundle?: string | null;
-  kind?: "global" | "plugin";
-  modified: boolean;
+export type SettingsSection = {
+  label: string;
+  kind: "global" | "plugin";
+  file: string;
+  bundle: string | null;
+  items: SettingsItem[];
+  modifiedCount?: number;   // # of items differing from repo HEAD (0 when config-ledger absent)
 };
 
 export function buildGlobalSection(): SettingsSection {
@@ -37,24 +35,13 @@ export function buildPluginSections(pluginItems: any[]): SettingsSection[] {
   return out;
 }
 
-export function flattenRows(sections: SettingsSection[], diffSet: Set<string>): SettingsRow[] {
-  const rows: SettingsRow[] = [];
-  for (let s = 0; s < sections.length; s++) {
-    const sec = sections[s];
-    rows.push({ type: "header", label: sec.label, sectionIndex: s, modified: false });
-    for (let i = 0; i < sec.items.length; i++) {
-      const it = sec.items[i];
-      rows.push({
-        type: "item", sectionIndex: s, itemIndex: i, item: it,
-        file: sec.file, bundle: sec.bundle, kind: sec.kind,
-        modified: diffSet.has(diffKeyId(sec.file, it.key)),
-      });
-    }
+// Count, per section, how many of its keys appear in the config-ledger diff set.
+// Mutates each section's modifiedCount and returns the same array.
+export function annotateModified(sections: SettingsSection[], diffSet: Set<string>): SettingsSection[] {
+  for (const sec of sections) {
+    let n = 0;
+    for (const it of sec.items) if (diffSet.has(diffKeyId(sec.file, it.key))) n++;
+    sec.modifiedCount = n;
   }
-  return rows;
-}
-
-export function firstItemIndex(rows: SettingsRow[]): number {
-  for (let i = 0; i < rows.length; i++) if (rows[i].type === "item") return i;
-  return 0;
+  return sections;
 }
