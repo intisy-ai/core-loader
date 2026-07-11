@@ -96,6 +96,8 @@ export const S = {
   cgProfileCurrent: "",      // profiles.current()
   cgProfileCursor: 0,
   sgMenuCursor: 0,           // cursor in the config-git action menu (sgmenu)
+  sgSetupCursor: 0,          // cursor in the repo-setup menu (sgsetup)
+  _sgSetupOpts: [],          // setup-screen options stashed by the renderer for the input handler
 
   // Marketplace sub-page
   marketplaceItems: [],

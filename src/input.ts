@@ -976,8 +976,41 @@ function runGitMenuAction(action) {
     catch (e) { flash("Pull failed: " + ((e && e.message) || e)); }
     refreshSettings(); S.mode = "list"; return;
   }
-  // "profiles" and "setup" are wired in Task 6 -- friendly stub until then.
-  flash("Not available yet."); S.mode = "list";
+  if (action === "profiles") { openProfiles(); return; }
+  if (action === "setup") { S.mode = "sgsetup"; S.sgSetupCursor = 0; return; }
+  flash("Unknown git action."); S.mode = "list";
+}
+
+// Snapshot profiles.list()/current() into state and enter the picker (also used
+// by the "g" setup-not-ready shortcut and the "p" list-mode key below).
+function openProfiles() {
+  var m = getConfigGit();
+  if (!m) { flash("config-git not installed."); return; }
+  try { S.cgProfiles = m.profiles.list() || []; } catch { S.cgProfiles = []; }
+  try { S.cgProfileCurrent = m.profiles.current() || ""; } catch { S.cgProfileCurrent = ""; }
+  S.cgProfileCursor = Math.max(0, S.cgProfiles.indexOf(S.cgProfileCurrent));
+  S.mode = "sgprofiles";
+}
+
+// Repo-setup actions (S.mode === "sgsetup"): initialize+seed, open the remote-URL
+// input, or create a private GitHub repo via `gh` and set it as the remote.
+function runSetupAction(action) {
+  var m = getConfigGit();
+  if (!m) { flash("config-git not installed."); S.mode = "list"; return; }
+  if (action === "init") {
+    try { m.setup.initAndSeed(); flash("Repo initialized + seeded."); }
+    catch (e) { flash("Init failed: " + ((e && e.message) || e)); }
+    refreshSettings(); S.mode = "list"; return;
+  }
+  if (action === "remote") { S.inputBuf = ""; S.mode = "sgurlinput"; return; }
+  if (action === "gh") {
+    try {
+      var r = m.setup.ghCreatePrivate("config-git-" + (process.env.HUB_APP || "loader"));
+      flash(r && r.ok ? ("Created + set remote: " + r.url) : ("gh failed: " + (r && r.message)));
+    } catch (e) { flash("gh failed: " + ((e && e.message) || e)); }
+    refreshSettings(); S.mode = "list"; return;
+  }
+  flash("Unknown setup action."); S.mode = "list";
 }
 
 export function handleSettingsKey(key) {
@@ -1031,6 +1064,29 @@ export function handleSettingsKey(key) {
     }
     return;
   }
+  if (S.mode === "sgprofiles") {
+    if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
+    if (key === "up" || key === "w") { S.cgProfileCursor = Math.max(0, S.cgProfileCursor - 1); return; }
+    if (key === "down" || key === "s") { S.cgProfileCursor = Math.min((S.cgProfiles.length || 1) - 1, S.cgProfileCursor + 1); return; }
+    if (key === "n") { S.inputBuf = ""; S.mode = "sgprofinput"; return; }
+    if ((key === "enter" || key === "space") && S.cgProfiles[S.cgProfileCursor]) {
+      var pm = getConfigGit();
+      try { pm.profiles.switchTo(S.cgProfiles[S.cgProfileCursor]); } catch (e) { flash("Switch failed: " + ((e && e.message) || e)); S.mode = "list"; return; }
+      // review-gated import: show the diff of the switched-to branch vs live; commit/import stays manual
+      try { S.cgDiffRows = pm.diffAgainstHead() || []; } catch { S.cgDiffRows = []; }
+      flash("Switched to " + S.cgProfiles[S.cgProfileCursor] + " -- review from the diff screen");
+      S.mode = "sgdiff"; return;
+    }
+    return;
+  }
+  if (S.mode === "sgsetup") {
+    var setupOpts = S._sgSetupOpts || [];
+    if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
+    if (key === "up" || key === "w") { S.sgSetupCursor = Math.max(0, S.sgSetupCursor - 1); return; }
+    if (key === "down" || key === "s") { S.sgSetupCursor = Math.min(setupOpts.length - 1, S.sgSetupCursor + 1); return; }
+    if (key === "enter" || key === "space") { runSetupAction(setupOpts[S.sgSetupCursor] && setupOpts[S.sgSetupCursor].key); return; }
+    return;
+  }
 
   // --- list mode: nav walks the unified rows (skipping headers); enter opens the
   // shared pconfig editor scoped to the selected row's section ---
@@ -1075,7 +1131,7 @@ export function handleSettingsKey(key) {
     }
     return;
   }
-  // p (profiles) is wired in Task 6; no-op here so the list works standalone.
+  if (key === "p" && configGitReady()) { openProfiles(); return; }
 }
 
 export function handleMcpKey(key) {
@@ -1240,6 +1296,38 @@ export function handleConfigInputData(buf) {
   }
   if (buf[0] === 127 || buf[0] === 8) { S.inputBuf = S.inputBuf.slice(0, -1); return; }
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
+}
+
+// Free-text entry for the two config-git sub-modes reached from Settings:
+// "sgprofinput" (new profile/branch name) and "sgurlinput" (remote URL). Mirrors
+// handleConfigInputData's buf[0] byte-code convention (esc/enter/backspace/printable).
+export function handleSettingsGitInputData(buf) {
+  var m = getConfigGit();
+  if (buf[0] === 27) {   // esc cancels
+    S.inputBuf = "";
+    S.mode = (S.mode === "sgurlinput") ? "sgsetup" : "list";
+    return;
+  }
+  if (buf[0] === 13 || buf[0] === 10) {   // enter commits
+    var val = (S.inputBuf || "").trim();
+    S.inputBuf = "";
+    if (S.mode === "sgprofinput") {
+      if (val && m) {
+        try { m.profiles.create(val); m.profiles.switchTo(val); flash("Created profile " + val); }
+        catch (e) { flash("Create failed: " + ((e && e.message) || e)); }
+      }
+      S.mode = "list"; refreshSettings();
+    } else {   // sgurlinput
+      if (val && m) {
+        try { m.setup.setRemote(val); flash("Remote set: " + val); }
+        catch (e) { flash("Set remote failed: " + ((e && e.message) || e)); }
+      }
+      S.mode = "sgsetup";
+    }
+    return;
+  }
+  if (buf[0] === 127 || buf[0] === 8) { S.inputBuf = S.inputBuf.slice(0, -1); return; }   // backspace
+  if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);            // printable
 }
 
 export function handlePluginInputData(buf) {

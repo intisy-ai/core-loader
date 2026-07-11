@@ -36,9 +36,9 @@ export function refreshSettings(): void {
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   // config-git sub-screens reached from the Settings tab (git action menu, setting-
-  // level diff review, per-setting history). Profiles/setup modes join this dispatch
-  // in Task 6.
-  if (S.mode === "sgmenu" || S.mode === "sgdiff" || S.mode === "sghistory") {
+  // level diff review, per-setting history, profiles picker, repo setup).
+  if (S.mode === "sgmenu" || S.mode === "sgdiff" || S.mode === "sghistory" ||
+      S.mode === "sgprofiles" || S.mode === "sgprofinput" || S.mode === "sgsetup" || S.mode === "sgurlinput") {
     buildSettingsGit(pushBody, pushFoot, cols, barW, pushSticky);
     return;
   }
