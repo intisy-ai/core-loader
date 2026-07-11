@@ -49,4 +49,24 @@ export function buildSettingsGit(pushBody, pushFoot, cols, barW, pushSticky) {
     pushFoot(hints([["c", "commit"], ["esc", "back"]]));
     return;
   }
+  if (S.mode === "sghistory") {
+    pushSticky("  " + BOLD + WHITE + "History" + RST + DIM + "  " + S.cgHistoryFile + " " + S.cgHistoryKey + RST);
+    pushSticky("");
+    const hist = S.cgHistory || [];
+    if (!hist.length) {
+      pushBody("  " + GRAY + "No recorded history for this setting." + RST, false);
+    } else {
+      for (let i = 0; i < hist.length; i++) {
+        const h = hist[i];
+        const sel = i === S.cgHistoryCursor;
+        const arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
+        const bg = sel ? BG_SEL : "";
+        const val = (h.value === undefined || h.value === null) ? "(unset)" : JSON.stringify(h.value);
+        pushBody("  " + bg + arrow + DIM + String(h.date) + RST + bg + "  " + GRAY + String(h.hash).slice(0, 7) + RST + bg + "  " + WHITE + trunc(val, Math.max(20, cols - 40)) + RST, sel);
+      }
+    }
+    pushFoot("  " + rule(barW));
+    pushFoot(hints([["↑↓", "move"], ["enter", "roll back to this value"], ["esc", "back"]]));
+    return;
+  }
 }

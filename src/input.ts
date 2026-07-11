@@ -1018,6 +1018,19 @@ export function handleSettingsKey(key) {
     if (key === "c") { runGitMenuAction("commit"); return; }
     return;
   }
+  if (S.mode === "sghistory") {
+    if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
+    if (key === "up" || key === "w") { S.cgHistoryCursor = Math.max(0, S.cgHistoryCursor - 1); return; }
+    if (key === "down" || key === "s") { S.cgHistoryCursor = Math.min((S.cgHistory.length || 1) - 1, S.cgHistoryCursor + 1); return; }
+    if ((key === "enter" || key === "space") && S.cgHistory[S.cgHistoryCursor]) {
+      var hh = S.cgHistory[S.cgHistoryCursor];
+      var rm = getConfigGit();
+      try { rm.rollbackKey(S.cgHistoryFile, S.cgHistoryKey, hh.hash); flash("Rolled back " + S.cgHistoryKey + " to " + String(hh.hash).slice(0, 7)); }
+      catch (e) { flash("Rollback failed: " + ((e && e.message) || e)); }
+      refreshSettings(); S.mode = "list"; return;
+    }
+    return;
+  }
 
   // --- list mode: nav walks the unified rows (skipping headers); enter opens the
   // shared pconfig editor scoped to the selected row's section ---
@@ -1050,8 +1063,19 @@ export function handleSettingsKey(key) {
   }
   if (key === "g" && configGitReady()) { S.mode = "sgmenu"; S.sgMenuCursor = 0; return; }
   if (key === "g" && configGitInstalled() && !configGitReady()) { runGitMenuAction("setup"); return; }
-  // h (history) / p (profiles) are wired in Tasks 5-6; no-op here so the list
-  // works standalone.
+  if (key === "h" && configGitReady()) {
+    var hrow = S.settingsRows[S.settingsCursor];
+    if (hrow && hrow.type === "item") {
+      var hm = getConfigGit();
+      S.cgHistoryFile = hrow.file;
+      S.cgHistoryKey = hrow.item.key;
+      try { S.cgHistory = hm.keyHistory(hrow.file, hrow.item.key) || []; } catch { S.cgHistory = []; }
+      S.cgHistoryCursor = 0;
+      S.mode = "sghistory";
+    }
+    return;
+  }
+  // p (profiles) is wired in Task 6; no-op here so the list works standalone.
 }
 
 export function handleMcpKey(key) {
