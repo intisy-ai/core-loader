@@ -18,7 +18,7 @@ import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
 import { refreshSettings } from "./views/settings.js";
-import { getConfigGit, configGitReady, configGitInstalled } from "./config-git.js";
+import { getConfigLedger, configLedgerReady, configLedgerInstalled } from "./config-ledger.js";
 import { SG_MENU_ITEMS } from "./views/settings-git.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
@@ -948,20 +948,20 @@ export function handleConfirmKey(key) {
   }
 }
 
-// Run a config-git action chosen from the git action menu (sgmenu) or, when the
+// Run a config-ledger action chosen from the git action menu (sgmenu) or, when the
 // repo isn't set up yet, the "press g to set up" shortcut in list mode. Always
 // leaves S.mode in a valid state (list, or sgdiff for the review screen) so a
 // caller never has to clean up after it.
 function runGitMenuAction(action) {
-  var m = getConfigGit();
-  if (!m) { flash("config-git not installed."); S.mode = "list"; return; }
+  var m = getConfigLedger();
+  if (!m) { flash("config-ledger not installed."); S.mode = "list"; return; }
   if (action === "commit") {
     try { var made = m.autoCommit("manual"); flash(made ? "Committed." : "Nothing to commit."); }
     catch (e) { flash("Commit failed: " + ((e && e.message) || e)); }
     refreshSettings(); S.mode = "list"; return;
   }
   if (action === "diff") {
-    try { S.cgDiffRows = m.diffAgainstHead() || []; } catch { S.cgDiffRows = []; }
+    try { S.clDiffRows = m.diffAgainstHead() || []; } catch { S.clDiffRows = []; }
     S.mode = "sgdiff"; return;
   }
   if (action === "push") {
@@ -984,19 +984,19 @@ function runGitMenuAction(action) {
 // Snapshot profiles.list()/current() into state and enter the picker (also used
 // by the "g" setup-not-ready shortcut and the "p" list-mode key below).
 function openProfiles() {
-  var m = getConfigGit();
-  if (!m) { flash("config-git not installed."); return; }
-  try { S.cgProfiles = m.profiles.list() || []; } catch { S.cgProfiles = []; }
-  try { S.cgProfileCurrent = m.profiles.current() || ""; } catch { S.cgProfileCurrent = ""; }
-  S.cgProfileCursor = Math.max(0, S.cgProfiles.indexOf(S.cgProfileCurrent));
+  var m = getConfigLedger();
+  if (!m) { flash("config-ledger not installed."); return; }
+  try { S.clProfiles = m.profiles.list() || []; } catch { S.clProfiles = []; }
+  try { S.clProfileCurrent = m.profiles.current() || ""; } catch { S.clProfileCurrent = ""; }
+  S.clProfileCursor = Math.max(0, S.clProfiles.indexOf(S.clProfileCurrent));
   S.mode = "sgprofiles";
 }
 
 // Repo-setup actions (S.mode === "sgsetup"): initialize+seed, open the remote-URL
 // input, or create a private GitHub repo via `gh` and set it as the remote.
 function runSetupAction(action) {
-  var m = getConfigGit();
-  if (!m) { flash("config-git not installed."); S.mode = "list"; return; }
+  var m = getConfigLedger();
+  if (!m) { flash("config-ledger not installed."); S.mode = "list"; return; }
   if (action === "init") {
     try { m.setup.initAndSeed(); flash("Repo initialized + seeded."); }
     catch (e) { flash("Init failed: " + ((e && e.message) || e)); }
@@ -1005,7 +1005,7 @@ function runSetupAction(action) {
   if (action === "remote") { S.inputBuf = ""; S.mode = "sgurlinput"; return; }
   if (action === "gh") {
     try {
-      var r = m.setup.ghCreatePrivate("config-git-" + (process.env.HUB_APP || "loader"));
+      var r = m.setup.ghCreatePrivate("config-ledger-" + (process.env.HUB_APP || "loader"));
       flash(r && r.ok ? ("Created + set remote: " + r.url) : ("gh failed: " + (r && r.message)));
     } catch (e) { flash("gh failed: " + ((e && e.message) || e)); }
     refreshSettings(); S.mode = "list"; return;
@@ -1039,7 +1039,7 @@ export function handleSettingsKey(key) {
     return;
   }
 
-  // --- config-git sub-modes: the git action menu and the setting-level diff review ---
+  // --- config-ledger sub-modes: the git action menu and the setting-level diff review ---
   if (S.mode === "sgmenu") {
     var sgItems = SG_MENU_ITEMS;
     if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
@@ -1052,8 +1052,8 @@ export function handleSettingsKey(key) {
     if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
     if (key === "c") { runGitMenuAction("commit"); return; }
     if (key === "i") {
-      var im = getConfigGit();
-      if (!im) { flash("config-git not installed."); S.mode = "list"; return; }
+      var im = getConfigLedger();
+      if (!im) { flash("config-ledger not installed."); S.mode = "list"; return; }
       try { var n = im.importFromHead(); flash("Imported " + n + " file(s) from repo (restart to apply)"); }
       catch (e) { flash("Import failed: " + ((e && e.message) || e)); }
       refreshSettings(); S.mode = "list"; return;
@@ -1062,12 +1062,12 @@ export function handleSettingsKey(key) {
   }
   if (S.mode === "sghistory") {
     if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
-    if (key === "up" || key === "w") { S.cgHistoryCursor = Math.max(0, S.cgHistoryCursor - 1); return; }
-    if (key === "down" || key === "s") { S.cgHistoryCursor = Math.min((S.cgHistory.length || 1) - 1, S.cgHistoryCursor + 1); return; }
-    if ((key === "enter" || key === "space") && S.cgHistory[S.cgHistoryCursor]) {
-      var hh = S.cgHistory[S.cgHistoryCursor];
-      var rm = getConfigGit();
-      try { rm.rollbackKey(S.cgHistoryFile, S.cgHistoryKey, hh.hash); flash("Rolled back " + S.cgHistoryKey + " to " + String(hh.hash).slice(0, 7)); }
+    if (key === "up" || key === "w") { S.clHistoryCursor = Math.max(0, S.clHistoryCursor - 1); return; }
+    if (key === "down" || key === "s") { S.clHistoryCursor = Math.min((S.clHistory.length || 1) - 1, S.clHistoryCursor + 1); return; }
+    if ((key === "enter" || key === "space") && S.clHistory[S.clHistoryCursor]) {
+      var hh = S.clHistory[S.clHistoryCursor];
+      var rm = getConfigLedger();
+      try { rm.rollbackKey(S.clHistoryFile, S.clHistoryKey, hh.hash); flash("Rolled back " + S.clHistoryKey + " to " + String(hh.hash).slice(0, 7)); }
       catch (e) { flash("Rollback failed: " + ((e && e.message) || e)); }
       refreshSettings(); S.mode = "list"; return;
     }
@@ -1075,15 +1075,15 @@ export function handleSettingsKey(key) {
   }
   if (S.mode === "sgprofiles") {
     if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
-    if (key === "up" || key === "w") { S.cgProfileCursor = Math.max(0, S.cgProfileCursor - 1); return; }
-    if (key === "down" || key === "s") { S.cgProfileCursor = Math.min((S.cgProfiles.length || 1) - 1, S.cgProfileCursor + 1); return; }
+    if (key === "up" || key === "w") { S.clProfileCursor = Math.max(0, S.clProfileCursor - 1); return; }
+    if (key === "down" || key === "s") { S.clProfileCursor = Math.min((S.clProfiles.length || 1) - 1, S.clProfileCursor + 1); return; }
     if (key === "n") { S.inputBuf = ""; S.mode = "sgprofinput"; return; }
-    if ((key === "enter" || key === "space") && S.cgProfiles[S.cgProfileCursor]) {
-      var pm = getConfigGit();
-      try { pm.profiles.switchTo(S.cgProfiles[S.cgProfileCursor]); } catch (e) { flash("Switch failed: " + ((e && e.message) || e)); S.mode = "list"; return; }
+    if ((key === "enter" || key === "space") && S.clProfiles[S.clProfileCursor]) {
+      var pm = getConfigLedger();
+      try { pm.profiles.switchTo(S.clProfiles[S.clProfileCursor]); } catch (e) { flash("Switch failed: " + ((e && e.message) || e)); S.mode = "list"; return; }
       // review-gated import: show the diff of the switched-to branch vs live; commit/import stays manual
-      try { S.cgDiffRows = pm.diffAgainstHead() || []; } catch { S.cgDiffRows = []; }
-      flash("Switched to " + S.cgProfiles[S.cgProfileCursor] + " -- review from the diff screen");
+      try { S.clDiffRows = pm.diffAgainstHead() || []; } catch { S.clDiffRows = []; }
+      flash("Switched to " + S.clProfiles[S.clProfileCursor] + " -- review from the diff screen");
       S.mode = "sgdiff"; return;
     }
     return;
@@ -1126,21 +1126,21 @@ export function handleSettingsKey(key) {
     S.mode = "pconfig";
     return;
   }
-  if (key === "g" && configGitReady()) { S.mode = "sgmenu"; S.sgMenuCursor = 0; return; }
-  if (key === "g" && configGitInstalled() && !configGitReady()) { runGitMenuAction("setup"); return; }
-  if (key === "h" && configGitReady()) {
+  if (key === "g" && configLedgerReady()) { S.mode = "sgmenu"; S.sgMenuCursor = 0; return; }
+  if (key === "g" && configLedgerInstalled() && !configLedgerReady()) { runGitMenuAction("setup"); return; }
+  if (key === "h" && configLedgerReady()) {
     var hrow = S.settingsRows[S.settingsCursor];
     if (hrow && hrow.type === "item") {
-      var hm = getConfigGit();
-      S.cgHistoryFile = hrow.file;
-      S.cgHistoryKey = hrow.item.key;
-      try { S.cgHistory = hm.keyHistory(hrow.file, hrow.item.key) || []; } catch { S.cgHistory = []; }
-      S.cgHistoryCursor = 0;
+      var hm = getConfigLedger();
+      S.clHistoryFile = hrow.file;
+      S.clHistoryKey = hrow.item.key;
+      try { S.clHistory = hm.keyHistory(hrow.file, hrow.item.key) || []; } catch { S.clHistory = []; }
+      S.clHistoryCursor = 0;
       S.mode = "sghistory";
     }
     return;
   }
-  if (key === "p" && configGitReady()) { openProfiles(); return; }
+  if (key === "p" && configLedgerReady()) { openProfiles(); return; }
 }
 
 export function handleMcpKey(key) {
@@ -1307,11 +1307,11 @@ export function handleConfigInputData(buf) {
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }
 
-// Free-text entry for the two config-git sub-modes reached from Settings:
+// Free-text entry for the two config-ledger sub-modes reached from Settings:
 // "sgprofinput" (new profile/branch name) and "sgurlinput" (remote URL). Mirrors
 // handleConfigInputData's buf[0] byte-code convention (esc/enter/backspace/printable).
 export function handleSettingsGitInputData(buf) {
-  var m = getConfigGit();
+  var m = getConfigLedger();
   if (buf[0] === 27) {   // esc cancels
     S.inputBuf = "";
     S.mode = (S.mode === "sgurlinput") ? "sgsetup" : "list";

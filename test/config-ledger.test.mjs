@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { diffKeyId, buildDiffSet, resolveConfigGitLib } from "../dist/config-git.js";
+import { diffKeyId, buildDiffSet, resolveConfigLedgerLib } from "../dist/config-ledger.js";
 
 // diffKeyId joins file+key with a NUL separator (collision-proof)
 const SEP = String.fromCharCode(0);
@@ -15,8 +15,8 @@ assert.equal(set.has(diffKeyId("core-auth.json", "leaderboard.enabled")), true);
 assert.equal(set.has(diffKeyId("settings.json", "logColor")), false);
 assert.equal(buildDiffSet([]).size, 0);
 
-// resolveConfigGitLib returns a string|null and never throws
-const r = resolveConfigGitLib();
+// resolveConfigLedgerLib returns a string|null and never throws
+const r = resolveConfigLedgerLib();
 assert.ok(r === null || typeof r === "string");
 
-console.log("config-git.test.mjs OK");
+console.log("config-ledger.test.mjs OK");

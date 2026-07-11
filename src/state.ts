@@ -85,18 +85,18 @@ export const S = {
   settingsSections: [],  // SettingsSection[] built on tab entry / refresh
   settingsRows: [],      // SettingsRow[] flattened for rendering + nav
 
-  // config-git (Phase 2) -- cached lib module + git-data caches for the Settings tab
-  CONFIG_GIT_MODULE: null,   // resolved dist/lib.js module, or null when absent
-  cgReady: false,            // cached configGitReady() (repo.isRepo spawns git; recomputed in refreshSettings, never per render frame)
-  cgDiffRows: [],            // last diffAgainstHead() rows (markers + review screen)
-  cgHistory: [],             // last keyHistory() rows (history sub-screen)
-  cgHistoryFile: "",         // file the history sub-screen is showing
-  cgHistoryKey: "",          // key the history sub-screen is showing
-  cgHistoryCursor: 0,
-  cgProfiles: [],            // profiles.list() snapshot
-  cgProfileCurrent: "",      // profiles.current()
-  cgProfileCursor: 0,
-  sgMenuCursor: 0,           // cursor in the config-git action menu (sgmenu)
+  // config-ledger (Phase 2) -- cached lib module + git-data caches for the Settings tab
+  CONFIG_LEDGER_MODULE: null,   // resolved dist/lib.js module, or null when absent
+  clReady: false,            // cached configLedgerReady() (repo.isRepo spawns git; recomputed in refreshSettings, never per render frame)
+  clDiffRows: [],            // last diffAgainstHead() rows (markers + review screen)
+  clHistory: [],             // last keyHistory() rows (history sub-screen)
+  clHistoryFile: "",         // file the history sub-screen is showing
+  clHistoryKey: "",          // key the history sub-screen is showing
+  clHistoryCursor: 0,
+  clProfiles: [],            // profiles.list() snapshot
+  clProfileCurrent: "",      // profiles.current()
+  clProfileCursor: 0,
+  sgMenuCursor: 0,           // cursor in the config-ledger action menu (sgmenu)
   sgSetupCursor: 0,          // cursor in the repo-setup menu (sgsetup)
   _sgSetupOpts: [],          // setup-screen options stashed by the renderer for the input handler
 

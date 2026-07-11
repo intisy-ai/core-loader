@@ -1,19 +1,19 @@
 // @ts-nocheck
 // Settings page rendering: unified editor for the global ecosystem settings
 // (config/settings.json) PLUS every plugin's own settings, grouped into sections
-// with config-git modified-vs-repo markers when config-git is installed. Delegates
+// with config-ledger modified-vs-repo markers when config-ledger is installed. Delegates
 // to the shared pconfig/pcfginput overlay (also used by plugins.ts) for editing.
 
 import { RST, BOLD, DIM, GRAY, WHITE, OK, BAD, INFO, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
 import { buildGlobalSection, buildPluginSections, flattenRows, firstItemIndex } from "../settings-model.js";
-import { configGitInstalled, configGitReady, getConfigGit, buildDiffSet } from "../config-git.js";
+import { configLedgerInstalled, configLedgerReady, getConfigLedger, buildDiffSet } from "../config-ledger.js";
 import { hints, messageLine } from "./common.js";
 import { buildSettingsGit } from "./settings-git.js";
 
 // Rebuild the unified section/row model: the global section plus one section per
 // plugin that answers `config schema`, flattened into header+item rows with
-// modified-vs-repo flags (recomputed from config-git's diff when the repo is ready).
+// modified-vs-repo flags (recomputed from config-ledger's diff when the repo is ready).
 export function refreshSettings(): void {
   const sections = [buildGlobalSection()];
   const plugins = (S.pluginItems && S.pluginItems.length) ? S.pluginItems : [];
@@ -21,14 +21,14 @@ export function refreshSettings(): void {
   S.settingsSections = sections;
 
   // Cache readiness once here (git subprocess) so the render path never spawns git per frame.
-  S.cgReady = configGitReady();
+  S.clReady = configLedgerReady();
 
   let diffSet = new Set<string>();
-  if (S.cgReady) {
-    try { S.cgDiffRows = getConfigGit().diffAgainstHead() || []; } catch { S.cgDiffRows = []; }
-    diffSet = buildDiffSet(S.cgDiffRows);
+  if (S.clReady) {
+    try { S.clDiffRows = getConfigLedger().diffAgainstHead() || []; } catch { S.clDiffRows = []; }
+    diffSet = buildDiffSet(S.clDiffRows);
   } else {
-    S.cgDiffRows = [];
+    S.clDiffRows = [];
   }
   S.settingsRows = flattenRows(sections, diffSet);
   // clamp cursor to a valid item row
@@ -38,7 +38,7 @@ export function refreshSettings(): void {
 }
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
-  // config-git sub-screens reached from the Settings tab (git action menu, setting-
+  // config-ledger sub-screens reached from the Settings tab (git action menu, setting-
   // level diff review, per-setting history, profiles picker, repo setup).
   if (S.mode === "sgmenu" || S.mode === "sgdiff" || S.mode === "sghistory" ||
       S.mode === "sgprofiles" || S.mode === "sgprofinput" || S.mode === "sgsetup" || S.mode === "sgurlinput") {
@@ -83,18 +83,18 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   // List view: unified global + per-plugin settings rows.
   if (!S.settingsRows || !S.settingsRows.length) refreshSettings();
 
-  var cg = configGitInstalled();
-  if (cg && S.cgReady) {
-    var m = getConfigGit();
+  var cg = configLedgerInstalled();
+  if (cg && S.clReady) {
+    var m = getConfigLedger();
     var branch = "", remote = "";
     try { branch = m.repo.currentBranch(); } catch (e) {}
     try { remote = m.repo.hasRemote() ? m.repo.getRemote() : "(no remote)"; } catch (e) { remote = "(no remote)"; }
-    var dirty = (S.cgDiffRows && S.cgDiffRows.length) ? (BAD + S.cgDiffRows.length + " uncommitted" + RST) : (OK + "clean" + RST);
-    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  config-git " + RST + ACCENT + branch + RST + DIM + "  " + RST + remote + DIM + "  " + RST + dirty);
+    var dirty = (S.clDiffRows && S.clDiffRows.length) ? (BAD + S.clDiffRows.length + " uncommitted" + RST) : (OK + "clean" + RST);
+    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  config-ledger " + RST + ACCENT + branch + RST + DIM + "  " + RST + remote + DIM + "  " + RST + dirty);
   } else if (cg) {
-    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  config-git installed — press " + RST + ACCENT + "g" + RST + DIM + " to set up the repo" + RST);
+    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  config-ledger installed — press " + RST + ACCENT + "g" + RST + DIM + " to set up the repo" + RST);
   } else {
-    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  global + plugin settings (install config-git for versioning)" + RST);
+    pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  global + plugin settings (install config-ledger for versioning)" + RST);
   }
   pushSticky("");
 
@@ -127,7 +127,7 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   pushBody("", false);
   if (S.message) pushFoot(messageLine(cols));
   pushFoot("  " + rule(barW));
-  if (cg && S.cgReady) {
+  if (cg && S.clReady) {
     pushFoot(hints([["↑↓", "move"], ["enter", "edit"], ["h", "history"], ["g", "git"], ["p", "profiles"], ["?", "help"], ["q", "quit"]]));
   } else if (cg) {
     pushFoot(hints([["↑↓", "move"], ["enter", "edit"], ["g", "setup"], ["?", "help"], ["q", "quit"]]));

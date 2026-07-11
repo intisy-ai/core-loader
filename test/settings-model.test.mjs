@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { flattenRows, firstItemIndex } from "../dist/settings-model.js";
-import { diffKeyId } from "../dist/config-git.js";
+import { diffKeyId } from "../dist/config-ledger.js";
 
 const sections = [
   { label: "Global", kind: "global", file: "settings.json", bundle: null, items: [

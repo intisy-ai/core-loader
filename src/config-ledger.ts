@@ -1,4 +1,4 @@
-// config-git delegation: dynamically import the plugin's dist/lib.js when present,
+// config-ledger delegation: dynamically import the plugin's dist/lib.js when present,
 // return null when absent. Mirrors src/updater.ts (preloadUpdater/getUpdater) and
 // plugin-updater's syncbridge.ts resolver. Loaders delegate; hide features if absent.
 import { existsSync } from "node:fs";
@@ -11,38 +11,38 @@ import { S } from "./state.js";
 const SEP = String.fromCharCode(0);
 
 // The plugin clone (not the data repo) holds the library entry point.
-export function resolveConfigGitLib(): string | null {
-  const p = join(REPOS_DIR, "config-git", "dist", "lib.js");
+export function resolveConfigLedgerLib(): string | null {
+  const p = join(REPOS_DIR, "config-ledger", "dist", "lib.js");
   return existsSync(p) ? p : null;
 }
 
-export async function preloadConfigGit(): Promise<void> {
-  const libPath = resolveConfigGitLib();
-  if (!libPath) { tuiLog("config-git not installed; git settings features disabled"); return; }
-  // Pin config-git to the same app home the loader manages.
+export async function preloadConfigLedger(): Promise<void> {
+  const libPath = resolveConfigLedgerLib();
+  if (!libPath) { tuiLog("config-ledger not installed; git settings features disabled"); return; }
+  // Pin config-ledger to the same app home the loader manages.
   process.env.HUB_CONFIG_DIR = CONFIG_DIR;
   try {
     const mod: any = await import(pathToFileURL(libPath).href);
     if (typeof mod.diffAgainstHead !== "function" || !mod.repo || typeof mod.repo.isRepo !== "function") {
-      tuiLog("config-git lib present but missing expected exports (older version); disabling", true);
+      tuiLog("config-ledger lib present but missing expected exports (older version); disabling", true);
       return;
     }
-    S.CONFIG_GIT_MODULE = mod;
+    S.CONFIG_LEDGER_MODULE = mod;
   } catch (e: any) {
-    tuiLog("config-git lib import failed: " + ((e && e.message) || e), true);
+    tuiLog("config-ledger lib import failed: " + ((e && e.message) || e), true);
   }
 }
 
-export function getConfigGit(): any | null {
-  return S.CONFIG_GIT_MODULE;
+export function getConfigLedger(): any | null {
+  return S.CONFIG_LEDGER_MODULE;
 }
 
-export function configGitInstalled(): boolean {
-  return !!S.CONFIG_GIT_MODULE;
+export function configLedgerInstalled(): boolean {
+  return !!S.CONFIG_LEDGER_MODULE;
 }
 
-export function configGitReady(): boolean {
-  const m = S.CONFIG_GIT_MODULE;
+export function configLedgerReady(): boolean {
+  const m = S.CONFIG_LEDGER_MODULE;
   if (!m) return false;
   try { return m.repo.isRepo() === true; } catch { return false; }
 }

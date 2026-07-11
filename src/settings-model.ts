@@ -3,7 +3,7 @@
 // render rows (headers + items) with modified-vs-repo flags. No I/O in flattenRows.
 import { probeConfigSchema, buildConfigItems } from "./plugins.js";
 import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "./config.js";
-import { diffKeyId } from "./config-git.js";
+import { diffKeyId } from "./config-ledger.js";
 
 export type SettingsItem = { key: string; value: unknown; def: unknown; isSet: boolean; type: string };
 export type SettingsSection = { label: string; kind: "global" | "plugin"; file: string; bundle: string | null; items: SettingsItem[] };

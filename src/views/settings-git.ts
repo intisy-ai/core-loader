@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Renderers for the config-git sub-screens reached from the Settings tab:
+// Renderers for the config-ledger sub-screens reached from the Settings tab:
 // the git action menu (sgmenu) and the setting-level diff review (sgdiff).
 import { S } from "../state.js";
 import { RST, BOLD, DIM, GRAY, WHITE, ACCENT, INFO, OK, BG_SEL, pad, trunc, rule } from "../format.js";
@@ -16,7 +16,7 @@ export const SG_MENU_ITEMS = [
 
 export function buildSettingsGit(pushBody, pushFoot, cols, barW, pushSticky) {
   if (S.mode === "sgmenu") {
-    pushSticky("  " + BOLD + WHITE + "config-git" + RST);
+    pushSticky("  " + BOLD + WHITE + "config-ledger" + RST);
     pushSticky("");
     for (var i = 0; i < SG_MENU_ITEMS.length; i++) {
       var sel = i === S.sgMenuCursor;
@@ -30,7 +30,7 @@ export function buildSettingsGit(pushBody, pushFoot, cols, barW, pushSticky) {
     return;
   }
   if (S.mode === "sgdiff") {
-    var rows = S.cgDiffRows || [];
+    var rows = S.clDiffRows || [];
     pushSticky("  " + BOLD + WHITE + "Uncommitted changes" + RST + DIM + "  " + rows.length + " setting(s)" + RST);
     pushSticky("");
     if (!rows.length) {
@@ -50,15 +50,15 @@ export function buildSettingsGit(pushBody, pushFoot, cols, barW, pushSticky) {
     return;
   }
   if (S.mode === "sghistory") {
-    pushSticky("  " + BOLD + WHITE + "History" + RST + DIM + "  " + S.cgHistoryFile + " " + S.cgHistoryKey + RST);
+    pushSticky("  " + BOLD + WHITE + "History" + RST + DIM + "  " + S.clHistoryFile + " " + S.clHistoryKey + RST);
     pushSticky("");
-    const hist = S.cgHistory || [];
+    const hist = S.clHistory || [];
     if (!hist.length) {
       pushBody("  " + GRAY + "No recorded history for this setting." + RST, false);
     } else {
       for (let i = 0; i < hist.length; i++) {
         const h = hist[i];
-        const sel = i === S.cgHistoryCursor;
+        const sel = i === S.clHistoryCursor;
         const arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
         const bg = sel ? BG_SEL : "";
         const val = (h.value === undefined || h.value === null) ? "(unset)" : JSON.stringify(h.value);
@@ -72,12 +72,12 @@ export function buildSettingsGit(pushBody, pushFoot, cols, barW, pushSticky) {
   if (S.mode === "sgprofiles" || S.mode === "sgprofinput") {
     pushSticky("  " + BOLD + WHITE + "Profiles" + RST + DIM + "  branches of the config repo" + RST);
     pushSticky("");
-    const profs = S.cgProfiles || [];
+    const profs = S.clProfiles || [];
     for (let i = 0; i < profs.length; i++) {
-      const sel = i === S.cgProfileCursor && S.mode === "sgprofiles";
+      const sel = i === S.clProfileCursor && S.mode === "sgprofiles";
       const arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
       const bg = sel ? BG_SEL : "";
-      const cur = profs[i] === S.cgProfileCurrent ? (OK + " (current)" + RST) : "";
+      const cur = profs[i] === S.clProfileCurrent ? (OK + " (current)" + RST) : "";
       pushBody("  " + bg + arrow + (sel ? BOLD + WHITE : DIM) + profs[i] + RST + cur, sel);
     }
     if (S.mode === "sgprofinput") {
@@ -91,7 +91,7 @@ export function buildSettingsGit(pushBody, pushFoot, cols, barW, pushSticky) {
     return;
   }
   if (S.mode === "sgsetup" || S.mode === "sgurlinput") {
-    const m = S.CONFIG_GIT_MODULE;
+    const m = S.CONFIG_LEDGER_MODULE;
     let ready = false, remote = "", gh = false;
     try { ready = m && m.repo.isRepo(); } catch {}
     try { remote = m && m.repo.hasRemote() ? m.repo.getRemote() : "(none)"; } catch { remote = "(none)"; }
