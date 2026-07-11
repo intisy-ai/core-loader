@@ -8,7 +8,7 @@ import { RST, BOLD, DIM, GRAY, WHITE, OK, BAD, BG_SEL, stringWidth, pad, trunc, 
 import { S } from "../state.js";
 import { buildGlobalSection, buildPluginSections, annotateModified, buildSettingsEntries, firstSelectableIndex } from "../settings-model.js";
 import { configLedgerInstalled, configLedgerReady, getConfigLedger, buildDiffSet, diffKeyId } from "../config-ledger.js";
-import { hints, messageLine } from "./common.js";
+import { hints, messageLine, updaterInstallProgress } from "./common.js";
 import { buildSettingsGit } from "./settings-git.js";
 
 // Rebuild the unified section/row model: the global section plus one section per
@@ -39,6 +39,10 @@ export function refreshSettings(): void {
 }
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
+  // Installing plugin-updater as a prerequisite for config-ledger — same screen as the
+  // Plugins tab (installUpdater's onStep re-renders between its synchronous steps).
+  if (S.updaterInstalling) { updaterInstallProgress(pushBody, pushFoot, barW); return; }
+
   // config-ledger sub-screens reached from the Settings tab (git action menu, setting-
   // level diff review, per-setting history, profiles picker, repo setup).
   if (S.mode === "sgmenu" || S.mode === "sgdiff" || S.mode === "sghistory" ||
@@ -109,7 +113,6 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   for (var wi = 0; wi < S.settingsEntries.length; wi++) {
     var we = S.settingsEntries[wi];
     if (we.type === "group") nameW = Math.max(nameW, stringWidth(we.section.label));
-    else if (we.type === "install") nameW = Math.max(nameW, stringWidth("config-ledger"));
   }
   nameW = Math.min(nameW, Math.max(16, Math.floor(cols / 2)));
 
@@ -121,20 +124,25 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
       continue;
     }
     var sel = i === S.settingsCursor;
+    if (en.type === "install") {
+      // Single install prompt — same shape as the Plugins tab's updater prompt: plain
+      // text + "press enter to install", no cursor arrow / status icon. One Enter installs
+      // config-ledger (and plugin-updater first if it's missing). Highlighted when focused.
+      var head = "Config versioning is not installed. Press " + ACCENT + "Enter" + RST + " to install it.";
+      if (sel) pushBody("  " + BG_SEL + BOLD + WHITE + head + RST, true);
+      else pushBody("  " + BOLD + WHITE + head + RST, false);
+      pushBody("  " + DIM + "config-ledger — versioned config snapshots, history, rollback & profiles" + RST, false);
+      pushBody("", false);
+      continue;
+    }
     var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
     var bg = sel ? BG_SEL : "";
     var nameStyle = sel ? (BOLD + WHITE) : DIM;
-    if (en.type === "group") {
-      var sec = en.section;
-      var n = sec.items.length;
-      var count = n + (n === 1 ? " setting" : " settings");
-      var badge = (cg && S.clReady && sec.modifiedCount) ? ("  " + BAD + "● " + sec.modifiedCount + RST) : "";
-      pushBody("  " + bg + arrow + nameStyle + pad(trunc(sec.label, nameW), nameW) + RST + bg + "  " + GRAY + pad(count, 12) + RST + badge + RST, sel);
-    } else {
-      // install row (config-ledger absent): status icon + name + hint, with a selected sub-line
-      pushBody("  " + bg + arrow + GRAY + "○ " + RST + nameStyle + pad(trunc("config-ledger", nameW), nameW) + RST + bg + "  " + DIM + "not installed · enter to install" + RST, sel);
-      if (sel) pushBody("  " + GRAY + "       versioned config snapshots · history · rollback · profiles" + RST, sel);
-    }
+    var sec = en.section;
+    var n = sec.items.length;
+    var count = n + (n === 1 ? " setting" : " settings");
+    var badge = (cg && S.clReady && sec.modifiedCount) ? ("  " + BAD + "● " + sec.modifiedCount + RST) : "";
+    pushBody("  " + bg + arrow + nameStyle + pad(trunc(sec.label, nameW), nameW) + RST + bg + "  " + GRAY + pad(count, 12) + RST + badge + RST, sel);
   }
 
   pushBody("", false);

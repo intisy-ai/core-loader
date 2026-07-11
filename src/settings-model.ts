@@ -47,10 +47,10 @@ export function annotateModified(sections: SettingsSection[], diffSet: Set<strin
 }
 
 // One flat, ordered list the renderer AND the key handler both walk (the loader's
-// parallel-array convention). Sections are split under "Global" / "Plugins" headers so
-// the two kinds read distinctly; when config-ledger is absent an "install" entry is
-// appended under a "Versioning" header (select it + Enter to install). Headers are not
-// selectable — nav skips them (see firstSelectableIndex).
+// parallel-array convention). When config-ledger is absent a single "install" prompt
+// leads (styled like the Plugins tab's updater prompt — one Enter installs it, pulling
+// in plugin-updater first if needed). Settings then split under "Global" / "Plugins"
+// headers so the two kinds read distinctly. Headers are not selectable — nav skips them.
 export type SettingsEntry =
   | { type: "header"; label: string }
   | { type: "group"; section: SettingsSection }
@@ -58,6 +58,7 @@ export type SettingsEntry =
 
 export function buildSettingsEntries(sections: SettingsSection[], installable: boolean): SettingsEntry[] {
   const entries: SettingsEntry[] = [];
+  if (installable) entries.push({ type: "install" });   // single top prompt, no category
   const globals = sections.filter((s) => s.kind === "global");
   const plugins = sections.filter((s) => s.kind === "plugin");
   if (globals.length) {
@@ -67,10 +68,6 @@ export function buildSettingsEntries(sections: SettingsSection[], installable: b
   if (plugins.length) {
     entries.push({ type: "header", label: "Plugins" });
     for (const s of plugins) entries.push({ type: "group", section: s });
-  }
-  if (installable) {
-    entries.push({ type: "header", label: "Versioning" });
-    entries.push({ type: "install" });
   }
   return entries;
 }

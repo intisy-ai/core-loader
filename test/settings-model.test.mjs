@@ -51,11 +51,12 @@ assert.equal(e1[1].section.label, "Global");
 // first selectable skips the leading header
 assert.equal(firstSelectableIndex(e1), 1);
 
-// absent (installable=true): adds a Versioning header + install entry
+// absent (installable=true): a single install prompt LEADS (no header), then the settings
 const e2 = buildSettingsEntries(secs, true);
-assert.deepEqual(e2.map((e) => e.type), ["header", "group", "header", "group", "group", "header", "install"]);
-assert.equal(e2[5].label, "Versioning");
-assert.equal(e2[6].type, "install");
+assert.deepEqual(e2.map((e) => e.type), ["install", "header", "group", "header", "group", "group"]);
+assert.equal(e2[0].type, "install");
+// the install prompt is the first selectable entry (default cursor lands on it)
+assert.equal(firstSelectableIndex(e2), 0);
 
 // no plugins -> no Plugins header
 const e3 = buildSettingsEntries([secs[0]], false);

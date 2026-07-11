@@ -10,7 +10,7 @@ import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH, OF
 import { S } from "./state.js";
 import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
-import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater } from "./updater.js";
+import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater, clearUpdaterCache } from "./updater.js";
 import { openProject, openProjectSession, listSessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
 import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync } from "./marketplace.js";
@@ -1149,6 +1149,20 @@ export function handleSettingsKey(key) {
 function installConfigLedger() {
   var entry = (OFFICIAL_PLUGINS || []).find(function (p) { return p.name === "config-ledger"; });
   if (!entry) { flash("config-ledger not found in the official catalog."); return; }
+  // plugin-updater is the engine that installs & manages every git plugin — it is a
+  // prerequisite. Install it first (if not already) with the same step-checklist screen
+  // the Plugins tab uses, then continue to config-ledger. One Enter does both.
+  var upd = getUpdater();
+  if (upd && typeof upd.updatePluginPublic === "function") { doInstallConfigLedger(entry); return; }
+  S.updaterInstalling = true; S.updaterSteps = []; render();
+  var uerr = installUpdater(CONFIG_DIR, APP_NAME, function (label) { S.updaterSteps.push(label); render(); });
+  S.updaterInstalling = false;
+  clearUpdaterCache();   // installUpdater ran the engine; re-import it so getUpdater() sees it
+  if (uerr) { flash(uerr); render(); return; }
+  preloadUpdater().catch(function () {}).then(function () { S.hasUpdater = false; doInstallConfigLedger(entry); });
+}
+
+function doInstallConfigLedger(entry) {
   S.busy = true;
   setBusyMessage("Installing config-ledger...");
   render();

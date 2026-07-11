@@ -10,7 +10,7 @@ import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath } from ".
 import { getPluginActions } from "../plugins.js";
 import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
 import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR, APP_NAME } from "../env.js";
-import { hints, messageLine, spinnerFrame, marketplaceRow } from "./common.js";
+import { hints, messageLine, spinnerFrame, marketplaceRow, updaterInstallProgress } from "./common.js";
 
 export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
   var sel = i === S.pcursor;
@@ -101,19 +101,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
   // While installUpdater runs, show a step checklist in the BODY (its onStep callback
   // re-renders between the synchronous steps) instead of a raw write under the footer.
   if (S.updaterInstalling) {
-    pushBody("  " + BOLD + WHITE + "Installing the updater engine" + RST, false);
-    pushBody("", false);
-    var usteps = S.updaterSteps || [];
-    for (var ui = 0; ui < usteps.length; ui++) {
-      var last = ui === usteps.length - 1;
-      var mark = last ? (ACCENT + "•" + RST) : (OK + "✓" + RST);
-      pushBody("    " + mark + " " + (last ? WHITE : DIM) + usteps[ui] + RST, false);
-    }
-    if (usteps.length === 0) pushBody("    " + DIM + "starting…" + RST, false);
-    pushBody("", false);
-    pushBody("  " + DIM + "This can take up to a minute (clone + build)…" + RST, false);
-    pushFoot("  " + rule(barW));
-    pushFoot("  " + DIM + "Please wait…" + RST);
+    updaterInstallProgress(pushBody, pushFoot, barW);
     return;
   }
 
