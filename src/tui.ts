@@ -294,8 +294,9 @@ function onData(buf) {
   var key = parseKey(buf);
 
   if (S.globalKeyHandler === "updater_install") {
-    // The updater is the foundation — nothing else is available until it's installed,
-    // so there is NO tab escape to Providers/Marketplace here (only install or quit).
+    // The updater gate offers install-or-quit, but must NOT trap the arrow keys: ← →
+    // still switch tabs (the other tabs don't need the updater). Everything else is
+    // swallowed here so stray keys don't act on the hidden list behind the gate.
     if (key === "enter" || key === "space") {
       // Show progress IN the TUI body (a step checklist), not a raw write below the
       // footer. installUpdater is synchronous, so onStep re-renders between steps.
@@ -312,7 +313,7 @@ function onData(buf) {
       return;
     }
     if (key === "escape" || key === "q" || buf[0] === 3) process.exit(0);
-    return;
+    if (key !== "left" && key !== "right") return;   // ← → fall through to tab switching
   }
   
   if (S.mode === "input") { handleInputData(buf); render(); return; }

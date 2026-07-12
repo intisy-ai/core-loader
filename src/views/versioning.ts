@@ -77,17 +77,16 @@ export function buildVersioning(pushBody, pushFoot, cols, barW, pushSticky) {
     return;
   }
 
-  // ① Not installed → single install gate (like the Plugins tab's updater gate).
+  // ① Not installed → a full-tab install gate, same shape as the Plugins tab's updater
+  // gate. Arrow keys still switch tabs (handled in handleKey before this handler) — the
+  // gate is scoped to this tab, it doesn't trap the whole UI.
   if (!configLedgerInstalled()) {
-    pushSticky("  " + BOLD + WHITE + "Versioning" + RST + DIM + "  ·  not set up" + RST);
-    pushSticky("");
-    pushBody("  " + GRAY + "Track your configuration in git — history, rollback, profiles, and sync" + RST, false);
-    pushBody("  " + GRAY + "across machines. Provided by the config-ledger plugin." + RST, false);
+    pushBody("  " + BOLD + WHITE + "Config Versioning Not Installed" + RST, false);
+    pushBody("  Track your configuration in git — history, rollback, profiles, and sync across machines.", false);
     pushBody("", false);
-    pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install config-ledger.", false);
-    pushBody("  " + DIM + "(plugin-updater is installed first if it's missing)" + RST, false);
+    pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install it (config-ledger). Nothing else here is available until it is.", false);
     pushFoot("  " + rule(barW));
-    pushFoot(hints([["enter", "install"], ["?", "help"], ["q", "quit"]]));
+    pushFoot(hints([["enter", "install"], ["q", "quit"]]));
     return;
   }
 
