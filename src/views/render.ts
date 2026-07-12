@@ -10,6 +10,7 @@ import { buildProjects } from "./projects.js";
 import { buildPlugins } from "./plugins.js";
 import { buildMcp } from "./mcp.js";
 import { buildSettings } from "./settings.js";
+import { buildVersioning } from "./versioning.js";
 
 export function render() {
   // Prefer the stream we draw to (stderr), but fall back to stdout — depending on how
@@ -48,7 +49,8 @@ export function render() {
   var plugTab = showPluginsTab ? (S.page === "plugins" ? (BOLD + ACCENT + BG_SEL + " Plugins " + RST) : (GRAY + " Plugins " + RST)) : "";
   var mcpTab = S.page === "mcp" ? (BOLD + ACCENT + BG_SEL + " MCP " + RST) : (GRAY + " MCP " + RST);
   var settingsTab = S.page === "settings" ? (BOLD + ACCENT + BG_SEL + " Settings " + RST) : (GRAY + " Settings " + RST);
-  pushHead("  " + projTab + "  " + plugTab + "  " + mcpTab + "  " + settingsTab + "    " + DIM + "← →" + RST);
+  var versioningTab = S.page === "versioning" ? (BOLD + ACCENT + BG_SEL + " Versioning " + RST) : (GRAY + " Versioning " + RST);
+  pushHead("  " + projTab + "  " + plugTab + "  " + mcpTab + "  " + settingsTab + "  " + versioningTab + "    " + DIM + "← →" + RST);
   pushHead("");
 
   if (S.helpOpen) {
@@ -61,6 +63,8 @@ export function render() {
     buildMcp(pushBody, pushFoot, cols, barW, pushSticky);
   } else if (S.page === "settings") {
     buildSettings(pushBody, pushFoot, cols, barW, pushSticky);
+  } else if (S.page === "versioning") {
+    buildVersioning(pushBody, pushFoot, cols, barW, pushSticky);
   } else {
     buildPlugins(pushBody, pushFoot, cols, barW, pushSticky);
   }
@@ -79,6 +83,7 @@ export function render() {
   if (S.page === "projects") activeScroll = S.scrollOff;
   else if (S.page === "mcp") activeScroll = S.mcpScrollOff;
   else if (S.page === "settings") activeScroll = S.settingsScrollOff;
+  else if (S.page === "versioning") activeScroll = S.versioningScrollOff;
   else if (S.mode === "pcommits") activeScroll = S.cscrollOff;
   else if (S.page === "plugins" && S.pluginSubPage === "marketplace") activeScroll = S.mkScrollOff;
   else activeScroll = S.pscrollOff;
@@ -100,6 +105,7 @@ export function render() {
     if (S.page === "projects") S.scrollOff = activeScroll;
     else if (S.page === "mcp") S.mcpScrollOff = activeScroll;
     else if (S.page === "settings") S.settingsScrollOff = activeScroll;
+    else if (S.page === "versioning") S.versioningScrollOff = activeScroll;
     else if (S.mode === "pcommits") S.cscrollOff = activeScroll;
     else if (S.page === "plugins" && S.pluginSubPage === "marketplace") S.mkScrollOff = activeScroll;
     else S.pscrollOff = activeScroll;

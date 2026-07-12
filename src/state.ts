@@ -83,7 +83,17 @@ export const S = {
   settingsCursor: 0,
   settingsScrollOff: 0,
   settingsSections: [],  // SettingsSection[] (Global + one per plugin)
-  settingsEntries: [],   // SettingsEntry[] the renderer + key handler walk (headers + groups + install)
+  settingsEntries: [],   // SettingsEntry[] the renderer + key handler walk (headers + groups)
+
+  // Versioning tab (config-ledger git UI). versioningCursor drives the home/setup menus;
+  // the history file→key pickers use vg* fields; git sub-screens reuse the sg*/cl* fields.
+  versioningCursor: 0,
+  versioningScrollOff: 0,
+  vgSections: [],        // sections (file + keys) for the history pickers
+  vgFileCursor: 0,
+  vgKeys: [],            // keys of the file chosen in the history picker
+  vgKeyCursor: 0,
+  vgHistFile: "",
 
   // config-ledger (Phase 2) -- cached lib module + git-data caches for the Settings tab
   CONFIG_LEDGER_MODULE: null,   // resolved dist/lib.js module, or null when absent

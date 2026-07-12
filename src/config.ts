@@ -64,7 +64,7 @@ export function catalogCacheHours() {
 export function defaultTab() {
   var t = loadLoaderConfig().default_tab;
   // validate against the real page names; fall back to "projects" if invalid
-  return (t === "projects" || t === "plugins" || t === "mcp" || t === "settings") ? t : "projects";
+  return (t === "projects" || t === "plugins" || t === "mcp" || t === "settings" || t === "versioning") ? t : "projects";
 }
 
 export function loadConfig() {
