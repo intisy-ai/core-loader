@@ -90,6 +90,7 @@ export const S = {
   // the history file→key pickers use vg* fields; git sub-screens reuse the sg*/cl* fields.
   versioningCursor: 0,
   versioningScrollOff: 0,
+  clInstalling: false,   // config-ledger install in progress → Versioning shows a spinner screen
   vgSections: [],        // sections (file + keys) for the history pickers
   vgFileCursor: 0,
   vgKeys: [],            // keys of the file chosen in the history picker

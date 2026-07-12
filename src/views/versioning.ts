@@ -8,7 +8,7 @@
 // are rendered here too, keyed by S.mode.
 import { S } from "../state.js";
 import { RST, BOLD, DIM, GRAY, WHITE, ACCENT, INFO, OK, BAD, BG_SEL, pad, trunc, stringWidth, rule } from "../format.js";
-import { hints, updaterInstallProgress } from "./common.js";
+import { hints, updaterInstallProgress, spinnerFrame } from "./common.js";
 import { configLedgerInstalled, configLedgerReady, getConfigLedger, resolveConfigLedgerLib, preloadConfigLedger } from "../config-ledger.js";
 import { render } from "./render.js";
 
@@ -22,7 +22,13 @@ export const VG_MENU_ITEMS = [
   { key: "setup", label: "Repo setup / remote", desc: "re-seed, set remote, create GitHub repo" },
 ];
 
-// Setup options — shared by the not-initialized default view and the "setup" sub-mode.
+// Two simple choices for a fresh (not-initialized) repo: local-only, or synced to a remote.
+export const VG_INIT_OPTS = [
+  { key: "init-local", label: "Local repository", desc: "version your config on this machine only" },
+  { key: "init-remote", label: "Remote repository", desc: "also sync across machines (GitHub via gh, or paste a URL)" },
+];
+
+// Setup/management options for an ALREADY-initialized repo (the "Repo setup" sub-mode).
 export function versioningSetupOpts() {
   const m = S.CONFIG_LEDGER_MODULE;
   let ready = false, gh = false;
@@ -92,6 +98,19 @@ export function buildVersioning(pushBody, pushFoot, cols, barW, pushSticky) {
   // Installing plugin-updater (the prerequisite) — identical screen to the Plugins tab.
   if (S.updaterInstalling) { updaterInstallProgress(pushBody, pushFoot, barW); return; }
 
+  // Installing config-ledger itself — a spinner + live status (the async `plugin-updater
+  // add` gives no step callbacks, so we show a single animated line, never a frozen screen).
+  if (S.clInstalling) {
+    pushBody("  " + BOLD + WHITE + "Installing config versioning" + RST, false);
+    pushBody("", false);
+    pushBody("  " + spinnerFrame() + " " + DIM + (S.message || "Installing config-ledger…") + RST, false);
+    pushBody("", false);
+    pushBody("  " + DIM + "This can take up to a minute (clone + build)…" + RST, false);
+    pushFoot("  " + rule(barW));
+    pushFoot("  " + DIM + "Please wait…" + RST);
+    return;
+  }
+
   // Drill-in sub-screens.
   if (S.mode === "sgdiff" || S.mode === "sghistory" || S.mode === "sgprofiles" || S.mode === "sgprofinput"
       || S.mode === "sgsetup" || S.mode === "sgurlinput" || S.mode === "vghfiles" || S.mode === "vghkeys") {
@@ -120,9 +139,7 @@ export function buildVersioning(pushBody, pushFoot, cols, barW, pushSticky) {
     pushBody("  " + GRAY + "to sync across machines (optional)." + RST, false);
     pushBody("", false);
     pushBody("  " + BOLD + WHITE + "Setup" + RST, false);
-    var sopts = versioningSetupOpts();
-    S._sgSetupOpts = sopts;
-    renderMenu(pushBody, sopts, S.versioningCursor);
+    renderMenu(pushBody, VG_INIT_OPTS, S.versioningCursor);
     pushBody("", false);
     pushFoot("  " + rule(barW));
     pushFoot(hints([["↑↓", "move"], ["enter", "select"], ["tab", "switch"], ["?", "help"], ["q", "quit"]]));

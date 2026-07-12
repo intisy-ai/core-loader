@@ -19,7 +19,7 @@ import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buil
 import { flash } from "./views/common.js";
 import { refreshSettings } from "./views/settings.js";
 import { getConfigLedger, configLedgerReady, configLedgerInstalled, preloadConfigLedger } from "./config-ledger.js";
-import { refreshVersioning, reconcileConfigLedger, versioningSetupOpts, VG_MENU_ITEMS } from "./views/versioning.js";
+import { refreshVersioning, reconcileConfigLedger, VG_INIT_OPTS, VG_MENU_ITEMS } from "./views/versioning.js";
 import { buildGlobalSection, buildPluginSections } from "./settings-model.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
@@ -1015,9 +1015,30 @@ function openProfiles() {
 function runSetupAction(action) {
   var m = getConfigLedger();
   if (!m) { flash("config-ledger not installed."); S.mode = "list"; return; }
-  if (action === "init") {
-    try { m.setup.initAndSeed(); flash("Repo initialized + seeded."); }
+  // Fresh-repo buttons (2): local-only, or initialize + connect a remote.
+  if (action === "init-local") {
+    try { m.setup.initAndSeed(); flash("Local repo initialized + seeded."); }
     catch (e) { flash("Init failed: " + ((e && e.message) || e)); }
+    S.versioningCursor = 0; refreshVersioning(); S.mode = "list"; return;
+  }
+  if (action === "init-remote") {
+    try { m.setup.initAndSeed(); }
+    catch (e) { flash("Init failed: " + ((e && e.message) || e)); refreshVersioning(); S.mode = "list"; return; }
+    var gh = false; try { gh = m.setup.ghAvailable(); } catch {}
+    if (gh) {
+      try {
+        var gr = m.setup.ghCreatePrivate("config-ledger-" + (process.env.HUB_APP || "loader"));
+        flash(gr && gr.ok ? ("Created + connected: " + gr.url) : ("gh failed: " + (gr && gr.message)));
+      } catch (e) { flash("gh failed: " + ((e && e.message) || e)); }
+      S.versioningCursor = 0; refreshVersioning(); S.mode = "list";
+    } else {
+      S.inputBuf = ""; S.mode = "sgurlinput";   // no gh → paste a remote URL
+    }
+    return;
+  }
+  if (action === "init") {   // (still reachable from the managed "Repo setup" sub-menu as "Re-seed")
+    try { m.setup.initAndSeed(); flash("Repo re-seeded."); }
+    catch (e) { flash("Re-seed failed: " + ((e && e.message) || e)); }
     S.versioningCursor = 0; refreshVersioning(); S.mode = "list"; return;
   }
   if (action === "remote") { S.inputBuf = ""; S.mode = "sgurlinput"; return; }
@@ -1186,10 +1207,9 @@ export function handleVersioningKey(key) {
     return;
   }
   if (!configLedgerReady()) {
-    var sopts = versioningSetupOpts();
     if (key === "up" || key === "w") { S.versioningCursor = Math.max(0, S.versioningCursor - 1); return; }
-    if (key === "down" || key === "s") { S.versioningCursor = Math.min(sopts.length - 1, S.versioningCursor + 1); return; }
-    if (key === "enter" || key === "space") { runSetupAction(sopts[S.versioningCursor] && sopts[S.versioningCursor].key); return; }
+    if (key === "down" || key === "s") { S.versioningCursor = Math.min(VG_INIT_OPTS.length - 1, S.versioningCursor + 1); return; }
+    if (key === "enter" || key === "space") { runSetupAction(VG_INIT_OPTS[S.versioningCursor] && VG_INIT_OPTS[S.versioningCursor].key); return; }
     return;
   }
   // ready → actions home
@@ -1220,10 +1240,12 @@ function installConfigLedger() {
 
 function doInstallConfigLedger(entry) {
   S.busy = true;
-  setBusyMessage("Installing config-ledger...");
+  S.clInstalling = true;               // Versioning shows a spinner progress screen while this runs
+  setBusyMessage("Installing config-ledger... (clone + build)");
   render();
   marketplaceInstall({ name: entry.name, repoName: entry.repoName, url: entry.url, install: "git" }, function (err) {
     S.busy = false;
+    S.clInstalling = false;
     if (err) { flash(err); render(); return; }
     preloadConfigLedger().catch(function () {}).then(function () {
       try { S.pluginItems = buildCombinedPluginList(); } catch (e) {}
