@@ -248,6 +248,26 @@ export function probeConfigSchema(pitem) {
   } catch { return null; }
 }
 
+// Async twin of probeConfigSchema (uses exec, not execSync) so the Settings tab can probe
+// plugin schemas in the background without blocking the render — never resolves rejected.
+export function probeConfigSchemaAsync(pitem) {
+  return new Promise(function (resolve) {
+    if (!pitem || !pitem.deployed || pitem.foreign) { resolve(null); return; }
+    var bundle = join(PLUGINS_DIR, (pitem.pluginFile || pitem.name + ".js"));
+    if (!existsSync(bundle)) { resolve(null); return; }
+    exec('node "' + bundle + '" config schema', { timeout: 8000 }, function (err, stdout) {
+      if (err) { resolve(null); return; }
+      try {
+        var data = JSON.parse(String(stdout).trim());
+        if (!data || typeof data !== "object") { resolve(null); return; }
+        var items = buildConfigItems(data);
+        if (!items.length) { resolve(null); return; }
+        resolve({ name: data.name || pitem.name, bundle: bundle, items: items });
+      } catch (e) { resolve(null); }
+    });
+  });
+}
+
 // Flatten a schema into editable rows: every key (declared default or on-disk),
 // its effective value, whether it is explicitly set, and its inferred type.
 export function buildConfigItems(schema) {

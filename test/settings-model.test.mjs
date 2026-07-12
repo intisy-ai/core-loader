@@ -27,4 +27,13 @@ const e3 = buildSettingsEntries([secs[1], secs[2]]);
 assert.deepEqual(e3.map((e) => e.type), ["header", "group", "group"]);
 assert.equal(e3[0].label, "Plugins");
 
+// loading placeholders: appended under the Plugins header; not selectable (nav skips them)
+const e4 = buildSettingsEntries([secs[0]], ["antigravity", "sync-bridge"]);
+assert.deepEqual(e4.map((e) => e.type), ["header", "group", "header", "loading", "loading"]);
+assert.equal(e4[3].label, "antigravity");
+assert.equal(firstSelectableIndex(e4), 1);   // the Global group, skipping headers + loading
+// only-loading (no probed plugins yet) still shows the Plugins header
+const e5 = buildSettingsEntries([secs[0]], ["x"]);
+assert.deepEqual(e5.map((e) => e.type), ["header", "group", "header", "loading"]);
+
 console.log("settings-model.test.mjs OK");

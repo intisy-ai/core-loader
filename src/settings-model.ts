@@ -35,9 +35,12 @@ export function buildPluginSections(pluginItems: any[]): SettingsSection[] {
 
 export type SettingsEntry =
   | { type: "header"; label: string }
-  | { type: "group"; section: SettingsSection };
+  | { type: "group"; section: SettingsSection }
+  | { type: "loading"; label: string };   // a plugin whose config schema is still being probed
 
-export function buildSettingsEntries(sections: SettingsSection[]): SettingsEntry[] {
+// `sections` holds only fully-probed groups (Global + plugins with settings); `loading`
+// holds the names of plugins still being probed in the background (rendered with a spinner).
+export function buildSettingsEntries(sections: SettingsSection[], loading: string[] = []): SettingsEntry[] {
   const entries: SettingsEntry[] = [];
   const globals = sections.filter((s) => s.kind === "global");
   const plugins = sections.filter((s) => s.kind === "plugin");
@@ -45,14 +48,16 @@ export function buildSettingsEntries(sections: SettingsSection[]): SettingsEntry
     entries.push({ type: "header", label: "Global" });
     for (const s of globals) entries.push({ type: "group", section: s });
   }
-  if (plugins.length) {
+  if (plugins.length || loading.length) {
     entries.push({ type: "header", label: "Plugins" });
     for (const s of plugins) entries.push({ type: "group", section: s });
+    for (const l of loading) entries.push({ type: "loading", label: l });
   }
   return entries;
 }
 
+// Only "group" rows are selectable — nav skips headers AND loading placeholders.
 export function firstSelectableIndex(entries: SettingsEntry[]): number {
-  for (let i = 0; i < entries.length; i++) if (entries[i].type !== "header") return i;
+  for (let i = 0; i < entries.length; i++) if (entries[i].type === "group") return i;
   return 0;
 }

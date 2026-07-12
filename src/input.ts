@@ -1077,7 +1077,7 @@ export function handleSettingsKey(key) {
     for (var step = 0; step < n; step++) {
       i += dir;
       if (i < 0 || i >= n) return;                        // clamp at ends
-      if (S.settingsEntries[i] && S.settingsEntries[i].type !== "header") { S.settingsCursor = i; return; }
+      if (S.settingsEntries[i] && S.settingsEntries[i].type === "group") { S.settingsCursor = i; return; }
     }
   }
   if (key === "up" || key === "w") { stepEntry(-1); return; }

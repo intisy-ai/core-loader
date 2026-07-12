@@ -1,43 +1,75 @@
 // @ts-nocheck
-// Settings tab — two sub-tabs (like the Plugins tab's Installed/Marketplace): "Settings"
-// (global + plugin settings, this file) and "Versioning" (config-ledger git UI, delegated
-// to views/versioning.ts). Tab switches between them; the sub-tab bar shows only at the
-// list level (deep editors/sub-screens hide it, matching the Plugins tab).
+// Settings tab — two sub-tabs (Tab switches): "Settings" (global + plugin settings, here)
+// and "Versioning" (config-ledger git UI, delegated to views/versioning.ts).
+// Plugin config schemas are probed in the BACKGROUND (async) with a spinner, so entering
+// the tab never blocks — plugin rows show "loading…" until their schema resolves.
 
 import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
-import { buildGlobalSection, buildPluginSections, buildSettingsEntries, firstSelectableIndex } from "../settings-model.js";
-import { hints, messageLine } from "./common.js";
+import { buildGlobalSection, buildSettingsEntries, firstSelectableIndex } from "../settings-model.js";
+import { probeConfigSchemaAsync } from "../plugins.js";
+import { hints, messageLine, spinnerFrame, scheduleRender } from "./common.js";
 import { buildVersioning } from "./versioning.js";
 
-// Rebuild the section model (Global + one section per plugin that answers `config schema`)
-// and the flat entry list (headers + group rows) the renderer and key handler both walk.
-export function refreshSettings(): void {
+// Rebuild the section model + entry list from ALREADY-PROBED schemas only (no spawning).
+// Un-probed plugins become "loading" placeholders; buildSectionsFromCache never blocks.
+function buildSectionsFromCache() {
   const sections = [buildGlobalSection()];
+  const loading = [];
   const plugins = (S.pluginItems && S.pluginItems.length) ? S.pluginItems : [];
-  for (const sec of buildPluginSections(plugins)) sections.push(sec);
+  for (const p of plugins) {
+    if (p._cfgProbed === true) {
+      const cfg = p._cfg;
+      if (cfg && cfg.items && cfg.items.length) {
+        const name = cfg.name || p.name;
+        sections.push({ label: name, kind: "plugin", file: name + ".json", bundle: cfg.bundle, items: cfg.items });
+      }
+    } else {
+      loading.push(p.name);
+    }
+  }
   S.settingsSections = sections;
-  S.settingsEntries = buildSettingsEntries(sections);
+  S.settingsEntries = buildSettingsEntries(sections, loading);
   var cur = S.settingsEntries[S.settingsCursor];
-  if (!cur || cur.type === "header") S.settingsCursor = firstSelectableIndex(S.settingsEntries);
+  if (!cur || cur.type !== "group") S.settingsCursor = firstSelectableIndex(S.settingsEntries);
+}
+
+// Kick off async schema probes for any plugin not yet probed. S.catalogPending drives the
+// shared spinner (updateSpinner in render); scheduleRender coalesces the burst of redraws.
+function probeSettingsSchemas() {
+  const plugins = (S.pluginItems && S.pluginItems.length) ? S.pluginItems : [];
+  for (const p of plugins) {
+    if (p._cfgProbed === true || p._cfgProbing === true) continue;
+    p._cfgProbing = true;
+    S.catalogPending++;
+    probeConfigSchemaAsync(p).then(function (cfg) {
+      p._cfg = cfg; p._cfgProbed = true; p._cfgProbing = false;
+      S.catalogPending = Math.max(0, S.catalogPending - 1);
+      buildSectionsFromCache();
+      scheduleRender();
+    });
+  }
+}
+
+export function refreshSettings(): void {
+  buildSectionsFromCache();
+  probeSettingsSchemas();
 }
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   var sub = S.settingsSubPage || "settings";
 
-  // Sub-tab bar (Settings | Versioning), shown only at the list level.
+  // Sub-tab bar (Settings | Versioning) + a blank line, shown only at the list level.
   if (S.mode === "list") {
     var t1 = sub === "settings" ? (BOLD + ACCENT + BG_SEL + " Settings " + RST) : (GRAY + " Settings " + RST);
     var t2 = sub === "versioning" ? (BOLD + ACCENT + BG_SEL + " Versioning " + RST) : (GRAY + " Versioning " + RST);
     pushSticky("  " + t1 + "  " + t2 + "    " + DIM + "tab switch" + RST);
+    pushSticky("");
   }
 
-  // Versioning sub-tab is rendered entirely by views/versioning.ts (gate / setup / home /
-  // sub-screens), keyed by S.mode.
   if (sub === "versioning") { buildVersioning(pushBody, pushFoot, cols, barW, pushSticky); return; }
 
   // --- Settings sub-tab ---
-  // The pconfig/pcfginput editor overlay (same markup as plugin configure).
   if (S.mode === "pconfig" || S.mode === "pcfginput") {
     var ct = S.configTarget;
     var cname = (ct && ct.name) || "settings";
@@ -70,15 +102,14 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     return;
   }
 
-  // Group list: "Global" and "Plugins" sections (BOLD headers, nav skips them).
+  // Group list.
   if (!S.settingsEntries || !S.settingsEntries.length) refreshSettings();
-
-  pushSticky("");
 
   var nameW = 6;
   for (var wi = 0; wi < S.settingsEntries.length; wi++) {
     var we = S.settingsEntries[wi];
     if (we.type === "group") nameW = Math.max(nameW, stringWidth(we.section.label));
+    else if (we.type === "loading") nameW = Math.max(nameW, stringWidth(we.label));
   }
   nameW = Math.min(nameW, Math.max(16, Math.floor(cols / 2)));
 
@@ -87,6 +118,10 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     if (en.type === "header") {
       if (i > 0) pushBody("", false);   // blank line before each section header (except the first)
       pushBody("  " + BOLD + WHITE + en.label + RST, false);
+      continue;
+    }
+    if (en.type === "loading") {
+      pushBody("     " + spinnerFrame() + " " + DIM + pad(trunc(en.label, nameW), nameW) + RST + "  " + GRAY + "loading…" + RST, false);
       continue;
     }
     var sel = i === S.settingsCursor;
