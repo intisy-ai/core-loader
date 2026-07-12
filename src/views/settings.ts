@@ -1,13 +1,14 @@
 // @ts-nocheck
-// Settings page: editor for the global ecosystem settings (config/settings.json) PLUS
-// every plugin's own settings, grouped under "Global" / "Plugins" headers. Enter drills
-// into a group's editor (the shared pconfig/pcfginput overlay, also used by plugins.ts).
-// Git/versioning is NOT here — it lives in its own Versioning tab (views/versioning.ts).
+// Settings tab — two sub-tabs (like the Plugins tab's Installed/Marketplace): "Settings"
+// (global + plugin settings, this file) and "Versioning" (config-ledger git UI, delegated
+// to views/versioning.ts). Tab switches between them; the sub-tab bar shows only at the
+// list level (deep editors/sub-screens hide it, matching the Plugins tab).
 
 import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
 import { buildGlobalSection, buildPluginSections, buildSettingsEntries, firstSelectableIndex } from "../settings-model.js";
 import { hints, messageLine } from "./common.js";
+import { buildVersioning } from "./versioning.js";
 
 // Rebuild the section model (Global + one section per plugin that answers `config schema`)
 // and the flat entry list (headers + group rows) the renderer and key handler both walk.
@@ -22,8 +23,21 @@ export function refreshSettings(): void {
 }
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
-  // The pconfig/pcfginput editor overlay (same markup as plugin configure). handleSettingsKey
-  // enters "pconfig" and sets S.configTarget for the chosen group (global or a plugin).
+  var sub = S.settingsSubPage || "settings";
+
+  // Sub-tab bar (Settings | Versioning), shown only at the list level.
+  if (S.mode === "list") {
+    var t1 = sub === "settings" ? (BOLD + ACCENT + BG_SEL + " Settings " + RST) : (GRAY + " Settings " + RST);
+    var t2 = sub === "versioning" ? (BOLD + ACCENT + BG_SEL + " Versioning " + RST) : (GRAY + " Versioning " + RST);
+    pushSticky("  " + t1 + "  " + t2 + "    " + DIM + "tab switch" + RST);
+  }
+
+  // Versioning sub-tab is rendered entirely by views/versioning.ts (gate / setup / home /
+  // sub-screens), keyed by S.mode.
+  if (sub === "versioning") { buildVersioning(pushBody, pushFoot, cols, barW, pushSticky); return; }
+
+  // --- Settings sub-tab ---
+  // The pconfig/pcfginput editor overlay (same markup as plugin configure).
   if (S.mode === "pconfig" || S.mode === "pcfginput") {
     var ct = S.configTarget;
     var cname = (ct && ct.name) || "settings";
@@ -56,11 +70,9 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     return;
   }
 
-  // Group list: "Global" and "Plugins" sections (BOLD headers, nav skips them); each group
-  // Enter-drills into its editor.
+  // Group list: "Global" and "Plugins" sections (BOLD headers, nav skips them).
   if (!S.settingsEntries || !S.settingsEntries.length) refreshSettings();
 
-  pushSticky("  " + BOLD + WHITE + "Settings" + RST + DIM + "  global + plugin settings" + RST);
   pushSticky("");
 
   var nameW = 6;
@@ -90,5 +102,5 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   pushBody("", false);
   if (S.message) pushFoot(messageLine(cols));
   pushFoot("  " + rule(barW));
-  pushFoot(hints([["↑↓", "move"], ["enter", "open"], ["?", "help"], ["q", "quit"]]));
+  pushFoot(hints([["↑↓", "move"], ["enter", "open"], ["tab", "switch"], ["?", "help"], ["q", "quit"]]));
 }

@@ -9,7 +9,8 @@
 import { S } from "../state.js";
 import { RST, BOLD, DIM, GRAY, WHITE, ACCENT, INFO, OK, BAD, BG_SEL, pad, trunc, stringWidth, rule } from "../format.js";
 import { hints, updaterInstallProgress } from "./common.js";
-import { configLedgerInstalled, configLedgerReady, getConfigLedger } from "../config-ledger.js";
+import { configLedgerInstalled, configLedgerReady, getConfigLedger, resolveConfigLedgerLib, preloadConfigLedger } from "../config-ledger.js";
+import { render } from "./render.js";
 
 // The version-control home actions. `diff` also drives commit/import (the review screen).
 export const VG_MENU_ITEMS = [
@@ -43,6 +44,27 @@ export function refreshVersioning() {
   S.clReady = configLedgerReady();
   if (S.clReady) { try { S.clDiffRows = getConfigLedger().diffAgainstHead() || []; } catch { S.clDiffRows = []; } }
   else S.clDiffRows = [];
+}
+
+// Live install/uninstall detection: config-ledger can be added/removed from the Plugins
+// tab (or externally) while the TUI is open. Reconcile the cached lib module against what
+// is actually on disk so the Versioning sub-tab flips between gate ⇄ setup/home without a
+// restart. Called on entering the sub-tab; async because (re)importing the lib is async.
+export async function reconcileConfigLedger() {
+  const libPath = resolveConfigLedgerLib();
+  if (!libPath && S.CONFIG_LEDGER_MODULE) {
+    S.CONFIG_LEDGER_MODULE = null;   // uninstalled while open → fall back to the gate
+    refreshVersioning();
+    render();
+    return;
+  }
+  if (libPath && !S.CONFIG_LEDGER_MODULE) {
+    await preloadConfigLedger();      // freshly installed while open → light up the tab
+    refreshVersioning();
+    render();
+    return;
+  }
+  refreshVersioning();
 }
 
 function renderMenu(pushBody, items, cursor) {
@@ -86,7 +108,7 @@ export function buildVersioning(pushBody, pushFoot, cols, barW, pushSticky) {
     pushBody("", false);
     pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install it (config-ledger). Nothing else here is available until it is.", false);
     pushFoot("  " + rule(barW));
-    pushFoot(hints([["enter", "install"], ["q", "quit"]]));
+    pushFoot(hints([["enter", "install"], ["tab", "switch"], ["q", "quit"]]));
     return;
   }
 
@@ -103,7 +125,7 @@ export function buildVersioning(pushBody, pushFoot, cols, barW, pushSticky) {
     renderMenu(pushBody, sopts, S.versioningCursor);
     pushBody("", false);
     pushFoot("  " + rule(barW));
-    pushFoot(hints([["↑↓", "move"], ["enter", "select"], ["?", "help"], ["q", "quit"]]));
+    pushFoot(hints([["↑↓", "move"], ["enter", "select"], ["tab", "switch"], ["?", "help"], ["q", "quit"]]));
     return;
   }
 
@@ -120,7 +142,7 @@ export function buildVersioning(pushBody, pushFoot, cols, barW, pushSticky) {
   renderMenu(pushBody, items, S.versioningCursor);
   pushBody("", false);
   pushFoot("  " + rule(barW));
-  pushFoot(hints([["↑↓", "move"], ["enter", "select"], ["?", "help"], ["q", "quit"]]));
+  pushFoot(hints([["↑↓", "move"], ["enter", "select"], ["tab", "switch"], ["?", "help"], ["q", "quit"]]));
 }
 
 function buildVersioningSub(pushBody, pushFoot, cols, barW, pushSticky) {

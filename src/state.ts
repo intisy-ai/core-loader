@@ -82,6 +82,7 @@ export const S = {
   // Settings page (unified global + per-plugin settings editor)
   settingsCursor: 0,
   settingsScrollOff: 0,
+  settingsSubPage: "settings",  // "settings" | "versioning" — sub-tabs of the Settings tab (Tab switches)
   settingsSections: [],  // SettingsSection[] (Global + one per plugin)
   settingsEntries: [],   // SettingsEntry[] the renderer + key handler walk (headers + groups)
 

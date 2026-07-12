@@ -214,12 +214,9 @@ export const HELP_BINDINGS = {
     ["/", "Search"], ["<- ->", "Switch page"], ["Q / Esc", "Quit"],
   ],
   settings: [
-    ["^v / WS", "Move between settings groups"], ["Enter", "Open a group / edit a setting"],
-    ["<- ->", "Switch page"], ["Q / Esc", "Quit"],
-  ],
-  versioning: [
-    ["^v / WS", "Move"], ["Enter", "Select / install"],
-    ["C", "Commit changes"], ["I", "Import from repo"],
+    ["^v / WS", "Move"], ["Enter", "Open a group / edit a setting"],
+    ["Tab", "Switch sub-tab (Settings / Versioning)"],
+    ["C", "Commit (Versioning)"], ["I", "Import from repo (Versioning)"],
     ["<- ->", "Switch page"], ["Q / Esc", "Quit"],
   ],
 };

@@ -19,7 +19,7 @@ import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buil
 import { flash } from "./views/common.js";
 import { refreshSettings } from "./views/settings.js";
 import { getConfigLedger, configLedgerReady, configLedgerInstalled, preloadConfigLedger } from "./config-ledger.js";
-import { refreshVersioning, versioningSetupOpts, VG_MENU_ITEMS } from "./views/versioning.js";
+import { refreshVersioning, reconcileConfigLedger, versioningSetupOpts, VG_MENU_ITEMS } from "./views/versioning.js";
 import { buildGlobalSection, buildPluginSections } from "./settings-model.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
@@ -196,12 +196,13 @@ export function handleKey(key) {
   if (key === "?" && S.mode === "list") { S.helpOpen = true; return; }
   // Page switching with left/right (only in list mode, not in actions/input)
   if ((S.mode === "list") && (key === "left" || key === "right")) {
-    var pages = ["projects", "plugins", "mcp", "settings", "versioning"];
+    var pages = ["projects", "plugins", "mcp", "settings"];
     var pi = pages.indexOf(S.page);
     var switchTo = function (np) {
       S.page = np; S.mode = "list";
       S.globalKeyHandler = null;   // leaving the updater gate: don't let it intercept keys on the new tab
-      if (np === "versioning") { S.versioningCursor = 0; try { refreshVersioning(); } catch (e) {} }
+      // landing on Settings with the Versioning sub-tab active → re-detect config-ledger
+      if (np === "settings" && S.settingsSubPage === "versioning") { try { reconcileConfigLedger(); } catch (e) {} }
       render();
     };
     if (key === "left" && pi > 0) { switchTo(pages[pi - 1]); return; }
@@ -217,8 +218,6 @@ export function handleKey(key) {
     handleMcpKey(key);
   } else if (S.page === "settings") {
     handleSettingsKey(key);
-  } else if (S.page === "versioning") {
-    handleVersioningKey(key);
   } else {
     handlePluginKey(key);
   }
@@ -1033,6 +1032,13 @@ function runSetupAction(action) {
 }
 
 export function handleSettingsKey(key) {
+  // The Settings tab has two sub-tabs (Tab switches). Versioning owns all of its own keys.
+  if ((S.settingsSubPage || "settings") === "versioning") {
+    if (key === "tab" && S.mode === "list") { S.settingsSubPage = "settings"; S.mode = "list"; refreshSettings(); return; }
+    handleVersioningKey(key);
+    return;
+  }
+
   if (S.mode === "pconfig" || S.mode === "pcfginput") {
     // Shared config editor: cursor nav + boolean toggle / open text input.
     // pcfginput text is captured by handleConfigInputData in the onData router.
@@ -1057,8 +1063,11 @@ export function handleSettingsKey(key) {
     return;
   }
 
+  // Tab → Versioning sub-tab (and re-detect config-ledger, in case it was just installed).
+  if (key === "tab" && S.mode === "list") { S.settingsSubPage = "versioning"; S.mode = "list"; S.versioningCursor = 0; try { reconcileConfigLedger(); } catch (e) {} return; }
+
   // list mode: "Global"/"Plugins" grouped list (nav skips headers). Enter drills into a
-  // group's editor. Versioning/git lives entirely in the Versioning tab — Settings is pure.
+  // group's editor. Versioning/git lives in the Versioning sub-tab.
   if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
   if (!S.settingsEntries || !S.settingsEntries.length) refreshSettings();
 
