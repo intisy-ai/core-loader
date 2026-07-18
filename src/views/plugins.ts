@@ -2,15 +2,29 @@
 // Plugins page rendering: plugin rows (git + npm + engine), the installed /
 // marketplace / custom sub-pages, and the action/commit menus.
 
-import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL, stringWidth, pad, trunc, ACCENT, OK, BAD, INFO, rule } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL, stringWidth, pad, trunc, timeAgo, ACCENT, OK, BAD, INFO, rule } from "../format.js";
 import { selectionKey } from "../selection.js";
 import { S } from "../state.js";
 import { loadPlugins } from "../config.js";
 import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath } from "../updater.js";
-import { getPluginActions } from "../plugins.js";
+import { getPluginActions, readUpdateCache } from "../plugins.js";
 import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
 import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR, APP_NAME } from "../env.js";
 import { hints, messageLine, spinnerFrame, marketplaceRow, updaterInstallProgress } from "./common.js";
+
+// Normalizes any rendered version/tag to a single "vX.Y.Z" form: strips a
+// leading v/V (if present) then re-adds exactly one "v" — so a git tag, an npm
+// registry version, and a foreign-plugin version all display consistently.
+// A trailing git "(shortsha)" suffix (added by buildPluginList) is preserved.
+function vlabel(v) {
+  if (!v) return v;
+  var s = String(v);
+  var suffixMatch = s.match(/(\s\([0-9a-fA-F]{4,40}\))$/);
+  var suffix = suffixMatch ? suffixMatch[1] : "";
+  var base = suffix ? s.slice(0, s.length - suffix.length) : s;
+  base = base.replace(/^[vV]/, "");
+  return "v" + base + suffix;
+}
 
 export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
   var sel = i === S.pcursor;
@@ -23,7 +37,7 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
   // whichever capabilities getPluginActions() finds registered.
   if (pitem.type === "foreign") {
     var fstate = pitem.enabled === false ? (BAD + "disabled" + RST) : (OK + "enabled" + RST);
-    var fver = pitem.version ? (GRAY + "v" + pitem.version + RST) : (GRAY + "---" + RST);
+    var fver = pitem.version ? (GRAY + vlabel(pitem.version) + RST) : (GRAY + "---" + RST);
     pushBody("  " + bg + arrow + nameStyle + pad(trunc(pitem.name, nameW), nameW) + RST + bg + " " + fstate + "  " + fver + RST, isSelected);
     if (sel) {
       var fsubInfo = GRAY + "     " + (pitem.source ? "marketplace: " + pitem.source : "app-managed plugin") + RST;
@@ -35,8 +49,8 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
   // NPM plugins: simpler read-only row
   if (pitem.type === "npm") {
     var nvstr = pitem.engine
-      ? (pitem.version ? (GRAY + "v" + pitem.version + RST + " " + OK + "active" + RST) : (OK + "active" + RST))
-      : pitem.version ? (GRAY + "v" + pitem.version + RST) : (GRAY + "not installed" + RST);
+      ? (pitem.version ? (GRAY + vlabel(pitem.version) + RST + " " + OK + "active" + RST) : (OK + "active" + RST))
+      : pitem.version ? (GRAY + vlabel(pitem.version) + RST) : (GRAY + "not installed" + RST);
     var typeLabel = pitem.engine ? (DIM + "engine" + RST) : (GRAY + "npm" + RST);
     pushBody("  " + bg + arrow + nameStyle + pad(trunc(pitem.name, nameW), nameW) + RST + bg + " " + typeLabel + "  " + nvstr + RST, isSelected);
     if (sel) {
@@ -66,7 +80,7 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
 
   var statusStr = statusParts.join(GRAY + " | " + RST);
   var versionStr = pitem.latestTag
-    ? (GRAY + pitem.latestTag + RST)
+    ? (GRAY + vlabel(pitem.latestTag) + RST)
     : (pitem.localHead ? (DIM + pitem.localHead.substring(0, 7) + RST) : (GRAY + "---" + RST));
 
   pushBody("  " + bg + arrow + nameStyle + pad(trunc(pitem.name, nameW), nameW) + RST + bg + " " + statusStr + "  " + versionStr + RST, isSelected);
@@ -174,7 +188,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
     var ppitem = S.pluginItems[S.pcursor];
     pushBody("  " + BOLD + WHITE + "" + trunc(ppitem.name, cols - 6) + RST, false);
     var pinfo = ppitem.type === "npm"
-      ? ("npm  " + (ppitem.version ? "v" + ppitem.version : "not installed"))
+      ? ("npm  " + (ppitem.version ? vlabel(ppitem.version) : "not installed"))
       : trunc(ppitem.subject || ppitem.url || "", cols - 6);
     if (pinfo) pushBody("  " + GRAY + pinfo + RST, false);
     pushBody("", false);
@@ -407,6 +421,21 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       (updateCount > 0 ? ", " + ACCENT + updateCount + " updates" + GRAY : "") +
       (npmCount > 0 ? ", " + GRAY + npmCount + " npm" + GRAY : "") +
       ")" + RST);
+
+  // Makes background auto-updates (applied by plugin-updater's earlyLaunch, before
+  // the TUI ever ran) visible — otherwise a silent pull looks indistinguishable from
+  // "nothing happened". Reads the same cache buildPluginList/buildCombinedPluginList
+  // already consulted; absent cache (never checked yet) shows nothing.
+  var updCache = readUpdateCache();
+  var updCheckedMs = updCache && updCache.checkedAt ? Date.parse(updCache.checkedAt) : NaN;
+  if (updCache && !isNaN(updCheckedMs)) {
+    var justUpdatedCount = 0;
+    for (var upi = 0; upi < S.pluginItems.length; upi++) {
+      if (S.pluginItems[upi].updatedAt && S.pluginItems[upi].updatedAt === updCache.checkedAt) justUpdatedCount++;
+    }
+    pushSticky("  " + DIM + "update check: " + timeAgo(updCheckedMs) + RST +
+        (justUpdatedCount > 0 ? GRAY + " · " + ACCENT + justUpdatedCount + " updated" + RST : ""));
+  }
 
   pushSticky("");   // spacer between the count and the engine/locations block
 

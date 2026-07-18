@@ -2,8 +2,8 @@
 // Plugin list building: git-backed repos + npm plugins + the updater engine
 // row, remote-update detection, and the per-plugin action menu.
 
-import { existsSync } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync } from "fs";
+import { join, dirname } from "path";
 import { execSync, exec } from "child_process";
 import { REPOS_DIR, PLUGINS_DIR } from "./env.js";
 import { loadPlugins } from "./config.js";
@@ -17,9 +17,27 @@ export function gitText(args, cwd) {
   } catch { return ""; }
 }
 
+// Reads the update-status cache plugin-updater WRITES (`<configDir>/cache/
+// plugin-updates.json`, configDir = dirname(REPOS_DIR)) — the single source of
+// truth for real remote-vs-local update state. plugin-updater computes this
+// during earlyLaunch (git fetch + npm registry checks); the TUI just reads it so
+// the Installed list reflects reality on load, not only after a manual "F".
+// Best-effort like every other cache read in this codebase: any failure (no
+// file yet, bad JSON) returns null and callers fall back to current behavior.
+export function readUpdateCache() {
+  try {
+    var cachePath = join(dirname(REPOS_DIR), "cache", "plugin-updates.json");
+    if (!existsSync(cachePath)) return null;
+    var data = JSON.parse(readFileSync(cachePath, "utf-8"));
+    if (!data || typeof data !== "object" || !data.plugins) return null;
+    return data;
+  } catch { return null; }
+}
+
 export function buildPluginList() {
   var plugins = loadPlugins();
   var list = [];
+  var cache = readUpdateCache();
   for (var p of plugins) {
     var folderName = getFolderName(p);
     var dir = join(REPOS_DIR, folderName);
@@ -29,6 +47,7 @@ export function buildPluginList() {
     var remoteHead = "";
     var subject = "";
     var updateAvail = false;
+    var updatedAt = null;
     var latestTag = "";
     var enabled = p.enabled !== false;
 
@@ -44,6 +63,13 @@ export function buildPluginList() {
         }
       }
 
+    var centry = cache && cache.plugins && cache.plugins[p.name];
+    if (centry && centry.kind === "git") {
+      updateAvail = !!centry.updateAvailable;
+      if (centry.remoteHead) remoteHead = centry.remoteHead;
+      if (centry.updatedAt) updatedAt = centry.updatedAt;
+    }
+
     list.push({
       name: p.name,
       folderName: folderName,
@@ -57,6 +83,7 @@ export function buildPluginList() {
       latestTag: latestTag,
       subject: subject,
       updateAvail: updateAvail,
+      updatedAt: updatedAt,
       hasBuild: !!(p.build || p.bundle),
       pluginFile: p.pluginFile,
       _raw: p
@@ -104,12 +131,15 @@ export function fetchPluginRemotes(pluginItems, done) {
 export function buildCombinedPluginList() {
   var git = buildPluginList();
   var savedPlugins = loadPlugins();
+  var cache = readUpdateCache();
   // Under OpenCode plugin-updater IS an npm plugin (opencode.jsonc) — list it as the
   // active engine. It's transient (opencode fetches it at runtime) so it has no
   // resolvable version; mark it active rather than "not installed". Under Claude
   // loadNpmPlugins is empty (no opencode.jsonc), so no npm rows appear at all.
   var npm = loadNpmPlugins().map(function(np) {
     var isEngine = np.name === "plugin-updater";
+    var ncEntry = cache && cache.plugins && cache.plugins[np.name];
+    var npmUpdateAvail = !!(ncEntry && ncEntry.kind === "npm" && ncEntry.updateAvailable);
     return {
       type: "npm",
       engine: isEngine,
@@ -123,7 +153,8 @@ export function buildCombinedPluginList() {
       autoUpdate: false,
       installed: isEngine ? true : !!np.version,
       deployed: isEngine ? true : !!np.version,
-      updateAvail: false,
+      updateAvail: npmUpdateAvail,
+      updatedAt: (ncEntry && ncEntry.updatedAt) || null,
       localHead: "",
       remoteHead: "",
       latestTag: np.version || "",
