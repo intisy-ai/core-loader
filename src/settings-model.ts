@@ -1,6 +1,6 @@
 // Pure builder for the Settings tab: assembles the global settings section plus one
 // section per plugin that has a config schema, then the flat entry list the renderer and
-// key handler both walk — a "Global" header + its group, then a "Plugins" header + one
+// key handler both walk: a "Global" header + its group, then a "Plugins" header + one
 // group row per plugin. Headers are not selectable (nav skips them). Git-free: the
 // Versioning tab owns all config-ledger UI.
 import { probeConfigSchema, buildConfigItems } from "./plugins.js";
@@ -56,7 +56,7 @@ export function buildSettingsEntries(sections: SettingsSection[], loading: strin
   return entries;
 }
 
-// Only "group" rows are selectable — nav skips headers AND loading placeholders.
+// Only "group" rows are selectable, nav skips headers AND loading placeholders.
 export function firstSelectableIndex(entries: SettingsEntry[]): number {
   for (let i = 0; i < entries.length; i++) if (entries[i].type === "group") return i;
   return 0;

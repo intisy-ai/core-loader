@@ -7,7 +7,7 @@ import { join, dirname } from "path";
 import { CONFIG_PATH, CONFIG_FOLDER, CONFIG_DIR, CLI_CMD, IS_CLAUDE, PLUGINS_JSON, MCP_CONFIG_PATH } from "./env.js";
 
 // ── Loader plugin config (config/<loaderName>.json) ─────────────────────────
-// The active loader's OWN plugin config — the same file the loader's plugin.ts
+// The active loader's OWN plugin config, the same file the loader's plugin.ts
 // registers via defineConfig (opencode-loader.json / claude-code-loader.json).
 // The TUI reads it for the runtime knobs below. Returns {} when no file exists,
 // so every getter falls back to the default that reproduces current behavior.
@@ -85,7 +85,7 @@ export function saveConfig(cfg) {
 // The shared, app-wide settings every plugin reads via core's globalSetting(). The
 // loader edits this file DIRECTLY (plain JSON, like plugins.json) so the Configure
 // editor can manage global settings with no plugin bundle / no agent. Defaults mirror
-// core's GLOBAL_SETTINGS_DEFAULTS — keep in sync if core adds global keys.
+// core's GLOBAL_SETTINGS_DEFAULTS, keep in sync if core adds global keys.
 var GLOBAL_SETTINGS_FILE = join(CONFIG_FOLDER, "settings.json");
 export var GLOBAL_SETTINGS_DEFAULTS = { logConsole: false, logColor: true };
 
@@ -135,11 +135,11 @@ export function migrateConfigs() {
 }
 
 export function loadPlugins() {
-  // Read the plugin list DIRECTLY from plugins.json — the single source of truth the
+  // Read the plugin list DIRECTLY from plugins.json, the single source of truth the
   // plugin-updater itself reads and writes, and exactly how the non-interactive
-  // `cc plugins` / `cc doctor` CLI reads it. We previously routed this through the loaded
-  // updater module's getPlugins(); that indirection returned empty in some setups even
-  // though the file was present and readable, so the file itself is the reliable source.
+  // `cc plugins` / `cc doctor` CLI reads it. Routing this through the loaded updater
+  // module's getPlugins() indirection has returned empty in some setups even though
+  // the file was present and readable, so the file itself is the reliable source.
   //
   // This does NOT hide a missing updater: updater ENGINE detection is a separate concern
   // handled by buildPlugins, which gates the whole tab on getUpdater() and shows the

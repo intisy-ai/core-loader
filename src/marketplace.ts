@@ -47,7 +47,7 @@ export function loadCatalogCache() {
 // every user, even before they've added them to the host app. Each seed's
 // .claude-plugin/marketplace.json is fetched once per cache window (HEAD,
 // falling back to main/master) and cached on disk exactly like the plugin
-// catalog above, so a cold TUI open never blocks on the network — Level 1
+// catalog above, so a cold TUI open never blocks on the network. Level 1
 // shows the seed immediately with count "…" until the fetch (kicked off at
 // startup, see fetchSeedMarketplacesAsync below) resolves.
 
@@ -85,7 +85,7 @@ export function parseSeedPlugins(json, seedName) {
 // time Level 1 is built, same shape as fetchCatalogsAsync. On a fresh cache hit
 // this does nothing further; otherwise it fetches each seed once, trying HEAD
 // then main then master, and degrades a seed to count 0 / empty drill-in on
-// total failure (offline, renamed default branch, missing file, bad JSON) —
+// total failure (offline, renamed default branch, missing file, bad JSON);
 // it never throws and never blocks rendering.
 export function fetchSeedMarketplacesAsync() {
   if (S.seedFetched) return;
@@ -146,9 +146,9 @@ export function fetchSeedMarketplacesAsync() {
 function seedOfficialPlugins() {
   // Official status is AUTHORITATIVE from OFFICIAL_PLUGINS (by full_name): an entry
   // is official iff its full_name is one of ours. First clear any stale official
-  // flag — e.g. a fork a PAST build's name-match wrongly promoted and then baked
-  // into the on-disk catalog cache (vibheksoni/opencode-antigravity-auth, whose
-  // stripped name collided with our "antigravity-auth"). This self-heals bad caches.
+  // flag, e.g. a fork whose name-match got wrongly promoted and baked into the
+  // on-disk catalog cache (vibheksoni/opencode-antigravity-auth, whose stripped
+  // name collided with our "antigravity-auth"). This self-heals bad caches.
   var officialKeys = {};
   for (var ok = 0; ok < OFFICIAL_PLUGINS.length; ok++) {
     officialKeys[OFFICIAL_PLUGINS[ok].full_name.toLowerCase()] = true;
@@ -179,7 +179,7 @@ function seedOfficialPlugins() {
       if (!existing.repoName) existing.repoName = official.repoName;
       if (!existing.full_name) existing.full_name = official.full_name;
     } else {
-      // not yet in catalog — add a copy (stars left undefined until enrichment runs)
+      // not yet in catalog, add a copy (stars left undefined until enrichment runs)
       var copy = {};
       for (var k in official) copy[k] = official[k];
       S.MARKETPLACE_CATALOG.push(copy);
@@ -189,7 +189,7 @@ function seedOfficialPlugins() {
 
 // Claude's community catalog gets a Curated section like opencode's (whose Curated
 // entries come from the awesome-opencode scrape): seed the VERIFIED FEATURED_PLUGINS
-// repos as category "Curated" — one hand-checked source of truth, no new unverified
+// repos as category "Curated", one hand-checked source of truth, no new unverified
 // repos. full_name matching mirrors seedOfficialPlugins; stars ride in via the
 // existing enrichment passes.
 function seedCuratedPlugins() {
@@ -212,7 +212,7 @@ export function fetchCatalogsAsync() {
   S.catalogFetched = true;
   var curlCmd = process.platform === "win32" ? "curl.exe" : "curl";
   // even with a warm cache the curated MCP entries still need their stars derived
-  // (the cache predates them) — run that enrichment, then skip the cold registry search
+  // (the cache predates them); run that enrichment, then skip the cold registry search
   if (loadCatalogCache()) { seedOfficialPlugins(); seedCuratedPlugins(); enrichCuratedMcpStars(); return; }
 
   var enrichedOnce = false;
@@ -323,7 +323,7 @@ export function fetchCatalogsAsync() {
       target.full_name = fullName;
       if (first) fetchRepoStars(fullName);   // dedupe: only the first entry triggers the repo lookup
     }
-    // entries with a pre-seeded repo (env.ts CURATED_MCP_REPOS) skip npm entirely —
+    // entries with a pre-seeded repo (env.ts CURATED_MCP_REPOS) skip npm entirely;
     // the official @modelcontextprotocol/server-* packages have no resolvable repo
     for (var entry of pending) {
       if (entry.full_name) queueRepo(entry, entry.full_name);
@@ -368,7 +368,7 @@ export function fetchCatalogsAsync() {
               var it = json.items[i];
               var cleanName = it.name.replace(/^claude-|^opencode-/, "");
               // Match plugins by full_name (owner/repo), never by the stripped display
-              // name — two different repos can strip to the same name, and matching by
+              // name: two different repos can strip to the same name, and matching by
               // name let a community repo overwrite an official entry's star count.
               var exists = catalog.find(function(m) { return catalog === S.MARKETPLACE_CATALOG ? (!!m.full_name && m.full_name === it.full_name) : (m.name === it.name); });
               if (!exists) {
@@ -537,7 +537,7 @@ export function fetchCatalogsAsync() {
 
 // Synthetic leading rows for the two universal "add" actions. They are prepended
 // to the S.marketplaceItems array itself (not a parallel list) so S.mkCursor keeps
-// indexing straight into one flat array — no separate offset math anywhere else.
+// indexing straight into one flat array, no separate offset math anywhere else.
 // "add_plugin_url" always installs via the updater (every app); "add_marketplace"
 // only appears once the active loader's extension registers S.capabilities.addMarketplace.
 // Both are LEVEL-1-ONLY (they add a marketplace/plugin globally, not "into" a
@@ -551,7 +551,7 @@ function buildMarketplaceActionRows() {
   return rows;
 }
 
-// The loader's own two "marketplaces" — the built-in catalog (fetched/curated by
+// The loader's own two "marketplaces": the built-in catalog (fetched/curated by
 // this file) split into its official and community halves, each reported with a
 // live plugin count. They are marketplaces like any other at Level 1, just backed
 // by S.MARKETPLACE_CATALOG instead of a capabilities.marketplaces() entry.
@@ -570,7 +570,7 @@ function loaderOwnMarketplaces() {
 }
 
 // Seeded defaults not already covered by a real (loader-own or capability)
-// marketplace — matched by name (seenNames) or by the seed's repo appearing in
+// marketplace, matched by name (seenNames) or by the seed's repo appearing in
 // a capability marketplace's `source` (git URL or "owner/repo"; seenRepos holds
 // those sources lowercased). A seed the user already has wins, so it's never
 // shown twice. Count is "…" (undefined) until fetchSeedMarketplacesAsync resolves.
@@ -597,8 +597,8 @@ function seedMarketplaceRows(seenNames, seenRepos) {
 
 // Level 1: the marketplace-of-marketplaces list. Unified Add rows up top, then
 // the loader's own two marketplaces, then every marketplace the active app's
-// extension registers via capabilities.marketplaces() — deduped by name (the
-// loader's own entries always win a name collision) — then the seeded defaults
+// extension registers via capabilities.marketplaces(), deduped by name (the
+// loader's own entries always win a name collision), then the seeded defaults
 // not already covered by a real entry.
 export function buildMarketplaceMarketsList() {
   fetchCatalogsAsync();
@@ -622,7 +622,7 @@ export function buildMarketplaceMarketsList() {
   }
   var seeds = seedMarketplaceRows(seen, seenRepos);
   for (var sj = 0; sj < seeds.length; sj++) { rows.push(seeds[sj]); seen[seeds[sj].name] = true; }
-  // action rows are UI chrome, not search results — keep them pinned regardless
+  // action rows are UI chrome, not search results, keep them pinned regardless
   // of the active filter, same rule buildMarketplacePluginsList follows at Level 2.
   if (S.inputBuf) {
     var q = S.inputBuf.toLowerCase();
@@ -635,14 +635,14 @@ export function buildMarketplaceMarketsList() {
 // served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG); "Featured"
 // is served from the static FEATURED_PLUGINS list (env.ts); every other name is
 // assumed to be an app-registered marketplace and is served through
-// capabilities.marketplacePlugins(name) — which returns [] if the capability is
+// capabilities.marketplacePlugins(name), which returns [] if the capability is
 // absent or the marketplace is unknown, so this degrades to an empty list rather
 // than throwing.
 export function buildMarketplacePluginsList(marketName, marketKind) {
   fetchCatalogsAsync();
   // Route by the KIND captured off the Level-1 row (builtin "official"/"community"/
   // "featured" tag, or "capability"), not by string-comparing marketName against the
-  // loader's own display names — a capability marketplace could itself be named
+  // loader's own display names: a capability marketplace could itself be named
   // "community" and would otherwise be misrouted/dedup-swallowed into the built-in
   // catalog. marketKind is undefined for any caller that predates this param
   // (defensive fallback to the old name comparison).
@@ -661,7 +661,7 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
       res = res.filter(function(m) { return (m.name || "").toLowerCase().indexOf(q) !== -1 || (m.desc || "").toLowerCase().indexOf(q) !== -1; });
     }
     res.sort(function(a, b) {
-      // Sections must be CONTIGUOUS — the renderer emits a heading on every group
+      // Sections must be CONTIGUOUS: the renderer emits a heading on every group
       // change, so a pure star sort interleaves Curated/Community headings over
       // and over. Curated first, then Community; stars order within each group.
       var rank = function(e) { return e.category === "Curated" ? 0 : 1; };
@@ -673,7 +673,7 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
     });
     return res;
   }
-  // The built-in "Featured" catalog (env.ts FEATURED_PLUGINS) — standalone plugin
+  // The built-in "Featured" catalog (env.ts FEATURED_PLUGINS): standalone plugin
   // repos, not a marketplace.json to fetch. Each row is a plain catalog-shaped
   // item (name/desc/url/category/repoName/full_name) so it falls through the
   // SAME default branch of getMarketplaceActions()/marketplaceInstall() that the
@@ -697,7 +697,7 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
   }
   // A seeded default marketplace (env.ts DEFAULT_MARKETPLACES) not yet added to
   // the host app. Served entirely from S.seedMarketplaces (fetched/cached by
-  // fetchSeedMarketplacesAsync) — [] until that resolves or if the fetch failed,
+  // fetchSeedMarketplacesAsync), [] until that resolves or if the fetch failed,
   // degrading gracefully rather than throwing. `repo` rides along on every row so
   // an install action can addMarketplace(repo) before installAppPlugin(id, name).
   if (kind === "seed") {
@@ -746,7 +746,7 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
   return res2;
 }
 
-// Single entry point every caller uses (unchanged name/signature on purpose —
+// Single entry point every caller uses (unchanged name/signature on purpose:
 // input.ts/views/plugins.ts never need to know which level is active). Dispatches
 // on S.mkLevel so re-running it after e.g. a catalog fetch always rebuilds
 // whichever level the user is currently looking at.
@@ -756,7 +756,7 @@ export function buildMarketplaceList() {
 }
 
 // Pure rule: prefer git via the updater unless the catalog entry explicitly
-// hints npm, or no updater is loadable — then npm is the only option.
+// hints npm, or no updater is loadable, then npm is the only option.
 export function selectInstallMethod(entry, hasUpdater) {
   if (hasUpdater && entry.install !== "npm") return "git";
   return "npm";
@@ -768,8 +768,8 @@ export function selectInstallMethod(entry, hasUpdater) {
 export function getMarketplaceActions(item, hasUpdater) {
   var acts = [];
   if (item.seed) {
-    // Not yet added to the host app: one action does both steps — addMarketplace(repo)
-    // registers it, then installAppPlugin(id, name) installs the plugin — so the user
+    // Not yet added to the host app: one action does both steps. addMarketplace(repo)
+    // registers it, then installAppPlugin(id, name) installs the plugin, so the user
     // never has to add the marketplace separately first. Absent either capability
     // (e.g. opencode), this stays browse-only like a capability marketplace.
     var addMkFn = S.capabilities && S.capabilities.addMarketplace;
@@ -793,9 +793,9 @@ export function getMarketplaceActions(item, hasUpdater) {
     return acts;
   }
   if (item.installed) {
-    // already installed — no install action
+    // already installed, no install action
   } else if (IS_CLAUDE) {
-    // Claude has no npm-plugin mechanism — every plugin installs git-via-updater.
+    // Claude has no npm-plugin mechanism, every plugin installs git-via-updater.
     acts.push({ key: "install-git", label: "Install" });
   } else if (hasUpdater) {
     var def = selectInstallMethod(item, hasUpdater);
@@ -811,7 +811,7 @@ export function getMarketplaceActions(item, hasUpdater) {
 }
 
 // Git install runs entirely in a CHILD PROCESS via plugin-updater's `add`, which
-// registers the plugin in plugins.json AND clones/builds/deploys it — so the loader
+// registers the plugin in plugins.json AND clones/builds/deploys it, so the loader
 // never writes plugins.json itself and the git clone + npm install + build (all
 // execSync inside the updater) block that child, not our main event loop (the TUI
 // keeps rendering and animating). Every caller passes a `done(err)` callback: err
@@ -837,7 +837,7 @@ export function installViaNpm(entry, done) {
   }
   exec("npm install -g " + name, { timeout: 120000 }, function(err) {
     if (err) { done("npm install failed: " + ((err && err.message) || err)); return; }
-    // OpenCode won't load an npm plugin unless it's listed in opencode.json — mirror
+    // OpenCode won't load an npm plugin unless it's listed in opencode.json, mirror
     // the OpenCode branch of the tui.ts updater_install handler (best-effort).
     if (APP_NAME !== "Claude Code") {
       try {

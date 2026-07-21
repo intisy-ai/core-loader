@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // buildPluginList reads env.js's REPOS_DIR, which is derived from HUB_CONFIG_DIR at
-// module-evaluation time — so the fake configDir must be set up and the env var
+// module-evaluation time, so the fake configDir must be set up and the env var
 // assigned BEFORE the first import of dist/plugins.js in this file. Each vitest test
 // file gets its own isolated module registry, so this is safe without touching any
 // other test file's env/module state.

@@ -12,7 +12,7 @@ import { cleanup } from "./out.js";
 import { flash } from "./views/common.js";
 
 // Lazy sqlite: node's built-in (node 22+) first, bun:sqlite fallback. Loaded lazily
-// (NOT a top-level import) so the loader TUI runs under plain `node` — no bun required.
+// (NOT a top-level import) so the loader TUI runs under plain `node`, no bun required.
 // Returns { query(sql) -> stmt with .all(), close() } or null if neither is available.
 function openSqlite(path) {
   try {

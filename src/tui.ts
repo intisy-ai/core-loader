@@ -151,8 +151,8 @@ async function loadCustomTabs() {
   async function loadExt(extPath) {
     if (!extPath || !existsSync(extPath)) return;
     try {
-      // tui-extension.js is an esbuild ESM bundle — require() throws under Node, so
-      // import() it (via a file:// URL). This is why the Providers tab was missing.
+      // tui-extension.js is an esbuild ESM bundle; require() throws under Node, so
+      // import() it (via a file:// URL).
       var mod = await import(pathToFileURL(extPath).href);
       var fn = (mod && mod.default) || mod;
       if (typeof fn === "function") fn(tuiApi);
@@ -259,7 +259,7 @@ if (arg) {
 // load loader/plugin-provided tabs, then honor an initial-tab hint (e.g. the
 // cc wrapper sets HUB_OPEN_TAB=provider for `cc auth login`)
 // Startup runs async because custom tabs (Providers) and the updater engine are ESM
-// bundles that must be import()'d (require() throws under Node) — await both BEFORE the
+// bundles that must be import()'d (require() throws under Node); await both BEFORE the
 // first paint so the Providers tab shows and the engine isn't reported "missing".
 async function boot() {
   await loadCustomTabs();
@@ -275,7 +275,7 @@ async function boot() {
     // current behavior) only when the wrapper hasn't forced a tab via env
     S.page = defaultTab();
   }
-  // disable any mouse reporting a previous program left enabled — pointer
+  // disable any mouse reporting a previous program left enabled, pointer
   // movement otherwise arrives as input bytes and triggers random key handlers
   process.stderr.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l");
   await Promise.all([

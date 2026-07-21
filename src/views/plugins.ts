@@ -13,7 +13,7 @@ import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR, APP_NAME } from "../env.js";
 import { hints, messageLine, spinnerFrame, marketplaceRow, updaterInstallProgress } from "./common.js";
 
 // Normalizes any rendered version/tag to a single "vX.Y.Z" form: strips a
-// leading v/V (if present) then re-adds exactly one "v" — so a git tag, an npm
+// leading v/V (if present) then re-adds exactly one "v", so a git tag, an npm
 // registry version, and a foreign-plugin version all display consistently.
 // A trailing git "(shortsha)" suffix (added by buildPluginList) is preserved.
 function vlabel(v) {
@@ -95,7 +95,7 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
 export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
   var nameW = Math.min(32, Math.max(20, cols - 44));
 
-  // "hasUpdater" must mean the updater is actually INSTALLED AND LOADABLE — not
+  // "hasUpdater" must mean the updater is actually INSTALLED AND LOADABLE, not
   // merely listed in plugins.json. Basing it on the listing (name.includes("updater"))
   // made the git-plugins tab look usable when the updater was listed-but-not-installed:
   // every action then hit getUpdater()===null and silently no-op'd ("looked like it was
@@ -214,7 +214,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
     return;
   }
 
-  // Only short-circuit the Installed tab when empty — the Marketplace/Providers tabs
+  // Only short-circuit the Installed tab when empty; the Marketplace/Providers tabs
   // build their own lists (S.marketplaceItems / custom tabs) and must render even
   // when no plugins are installed yet.
   if (S.pluginItems.length === 0 && S.pluginSubPage === "installed") {
@@ -245,7 +245,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
 
   // --- Marketplace sub-page (two levels: markets -> a marketplace's plugins) ---
   if (S.pluginSubPage === "marketplace") {
-    // Actions menu for a selected Level-2 plugin (Level 1 never sets mkMode="actions" —
+    // Actions menu for a selected Level-2 plugin (Level 1 never sets mkMode="actions";
     // Enter there always drills in, see input.ts).
     if (S.mkMode === "actions" && S.marketplaceItems.length > 0) {
       var mitem = S.marketplaceItems[S.mkCursor];
@@ -285,7 +285,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
         var mktSel = mi === S.mkCursor;
         var mktArrow = mktSel ? (ACCENT + " ❯ " + RST) : "   ";
         var mktBg = mktSel ? BG_SEL : "";
-        // Unified Add-row style — identical to views/mcp.ts's "＋ Add MCP server" row
+        // Unified Add-row style, identical to views/mcp.ts's "＋ Add MCP server" row
         // (BOLD+ACCENT when selected, DIM otherwise; no separate status column).
         if (mktItem.isAction) {
           pushBody("  " + mktBg + mktArrow + (mktSel ? (BOLD + ACCENT) : DIM) + mktItem.name + RST, mktSel);
@@ -331,7 +331,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
 
     // section header whenever the plugin's category changes (Official/Community/
     // Curated for the loader's own catalogs; a single "From <source>" group for a
-    // capability marketplace) — also the unit [ / ] fast-nav jumps between.
+    // capability marketplace); also the unit [ / ] fast-nav jumps between.
     var lastGroup = null;
     for (var pi2 = 0; pi2 < S.marketplaceItems.length; pi2++) {
       var mitem = S.marketplaceItems[pi2];
@@ -423,7 +423,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       ")" + RST);
 
   // Makes background auto-updates (applied by plugin-updater's earlyLaunch, before
-  // the TUI ever ran) visible — otherwise a silent pull looks indistinguishable from
+  // the TUI ever ran) visible; otherwise a silent pull looks indistinguishable from
   // "nothing happened". Reads the same cache buildPluginList/buildCombinedPluginList
   // already consulted; absent cache (never checked yet) shows nothing.
   var updCache = readUpdateCache();

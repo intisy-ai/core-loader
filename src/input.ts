@@ -39,16 +39,16 @@ function enterSessions(dir, here) {
 }
 
 // Set a persistent status message for a long busy action. Unlike flash(), it does
-// NOT auto-clear after 2.5s — the message (and its "..." spinner) stays up until
+// NOT auto-clear after 2.5s; the message (and its "..." spinner) stays up until
 // the completion callback flashes the result. Clears any pending flash timeout.
 function setBusyMessage(msg) {
   if (S.msgTimeout) { clearTimeout(S.msgTimeout); S.msgTimeout = null; }
   S.message = msg;
 }
 
-// Update a list of plugins off-thread with a BOUNDED CONCURRENCY POOL — each plugin is
+// Update a list of plugins off-thread with a BOUNDED CONCURRENCY POOL: each plugin is
 // an independent git repo + child process, so running a few at once cuts update-all
-// wall-clock roughly by the pool size vs the old one-at-a-time loop. Progress shows
+// wall-clock roughly by the pool size vs updating them one at a time. Progress shows
 // "Updating plugins (done/N)..."; the final callback rebuilds the list, flashes a
 // summary, and runs onDone (cursor clamp). Used by update-all ('a' key + action) and
 // single update.
@@ -113,7 +113,7 @@ export function switchPluginSubPage() {
 // Fast nav within a (potentially long) Level-2 marketplace: jump the cursor to
 // the start of the previous/next category group ("Official"/"Community"/"Curated"
 // for the loader's own two catalogs). A capability marketplace's plugins carry no
-// category, so there is only one implicit group there — in that case (or any
+// category, so there is only one implicit group there; in that case (or any
 // single-group list) fall back to a 10-row page jump so the keys stay useful.
 function jumpMarketplaceGroup(dir) {
   var items = S.marketplaceItems;
@@ -154,7 +154,7 @@ function marketplaceInstall(item, done, forceMethod) {
 // Install a plugin browsed from a SEEDED default marketplace (not yet added to
 // the host app, see marketplace.ts's DEFAULT_MARKETPLACES / getMarketplaceActions
 // "install-seed"): register the marketplace first (capabilities.addMarketplace),
-// then install the plugin from it (capabilities.installAppPlugin) — one user
+// then install the plugin from it (capabilities.installAppPlugin); one user
 // action does both. Both calls are guarded (absent capability -> graceful flash,
 // same as a capability-marketplace row); `done()` always runs so the caller can
 // refresh the list/cursor and re-render.
@@ -189,7 +189,7 @@ function installSeedPlugin(item, done) {
 }
 
 export function handleKey(key) {
-  // A long install/update is running off-thread — ignore every key so the user
+  // A long install/update is running off-thread; ignore every key so the user
   // stays in the current menu and can't navigate away or fire another action.
   if (S.busy) return;
   if (S.helpOpen) { S.helpOpen = false; return; }
@@ -292,7 +292,7 @@ export function handlePluginKey(key) {
 
     var activeTab = S.customTabs.find(function(t) { return t.id === S.pluginSubPage; });
     if (activeTab && activeTab.handleKey) {
-      // A custom tab OWNS all its keys — including Esc, so it can back out of its own
+      // A custom tab OWNS all its keys, including Esc, so it can back out of its own
       // sub-views (e.g. chain editor -> slots) instead of the core quitting the loader.
       // Quitting from a custom tab is `q` only (handled above).
       try {
@@ -420,7 +420,7 @@ export function handlePluginKey(key) {
       else if (key === "i") {
         if (S.mkLevel !== "plugins") { flash("Open a marketplace first."); return; }
         // Source from S.marketplaceItems (not the raw catalog) so the synthetic
-        // isUpdater entry buildMarketplaceList() injects is visible to the batch —
+        // isUpdater entry buildMarketplaceList() injects is visible to the batch;
         // it never appears in S.MARKETPLACE_CATALOG.
         var batch = selectedInstallables(S.marketplaceItems, loadPlugins().map(function(p) { return p.name; }), S.mkSelected);
         if (batch.length > 0) {
@@ -508,7 +508,7 @@ export function handlePluginKey(key) {
         setBusyMessage("Updating the updater engine...");
         render();
         updateUpdater(function (ue) {
-          // self-update cleared the cached engine module — re-import the (new) one so
+          // self-update cleared the cached engine module; re-import the (new) one so
           // the TUI doesn't drop to "Updater Plugin Missing" after updating.
           preloadUpdater().catch(function () {}).then(function () {
             S.busy = false;
@@ -737,7 +737,7 @@ export function handlePluginKey(key) {
     else if (key === "escape" || key === "q" || key === "left") { S.mode = "pactions"; }
     else if ((key === "enter" || key === "space") && citem) {
       if (citem.type === "boolean") {
-        // booleans toggle in place — no typing
+        // booleans toggle in place, no typing
         var nv = !citem.value;
         var berr = S.configTarget.global
           ? setGlobalSetting(citem.key, nv ? "true" : "false")
@@ -895,7 +895,7 @@ export function parseKey(buf) {
   if (buf[0] === 9) return "tab";
   var ch = String.fromCharCode(buf[0]).toLowerCase();
   // NB: every actionable letter key MUST be listed here or parseKey drops it before
-  // any handler sees it (this is why "E to update" silently did nothing — 'e' was missing).
+  // any handler ever sees it.
   if ("wsadqpchofuximynreg/?[]".indexOf(ch) !== -1) return ch;
   return null;
 }
@@ -1225,7 +1225,7 @@ export function handleVersioningKey(key) {
 function installConfigLedger() {
   var entry = (OFFICIAL_PLUGINS || []).find(function (p) { return p.name === "config-ledger"; });
   if (!entry) { flash("config-ledger not found in the official catalog."); return; }
-  // plugin-updater is the engine that installs & manages every git plugin — it is a
+  // plugin-updater is the engine that installs & manages every git plugin; it is a
   // prerequisite. Install it first (if not already) with the same step-checklist screen
   // the Plugins tab uses, then continue to config-ledger. One Enter does both.
   var upd = getUpdater();
@@ -1284,7 +1284,7 @@ export function handleMcpKey(key) {
           return;
         }
         // capability-sourced servers have no per-item action menu yet (no
-        // remove/configure capability defined) — only the legacy on-disk list does.
+        // remove/configure capability defined); only the legacy on-disk list does.
         if (instRow.fromCapability) return;
         S.mcpMode = "actions"; S.mcpAcursor = 0;
         return;
@@ -1483,7 +1483,7 @@ export function handlePluginInputData(buf) {
 // S.mkAddAction picks which). "add_plugin_url" installs via the SAME updater path
 // every other marketplace install uses (installMarketplacePlugin -> `plugin-updater add
 // <url>`), so it works identically to the CLI's `plugins install <url>`. "add_marketplace"
-// is generic — it just calls the app-registered S.capabilities.addMarketplace(input).
+// is generic, it just calls the app-registered S.capabilities.addMarketplace(input).
 export function handleMarketplaceAddInputData(buf) {
   if (buf[0] === 27) { S.inputBuf = ""; S.mkAddAction = null; S.mode = "list"; return; }
   if (buf[0] === 3) { cleanup(); process.exit(1); }
@@ -1521,8 +1521,8 @@ export function handleMarketplaceAddInputData(buf) {
 }
 
 // Multi-step "＋ Add MCP server" flow (S.mode === "mcpaddinput"): step 0 collects
-// a free-text name, step 1 toggles transport (http|stdio) via arrow keys — never
-// typed — and step 2 collects the target (a URL for http, a command for stdio).
+// a free-text name, step 1 toggles transport (http|stdio) via arrow keys (never
+// typed), and step 2 collects the target (a URL for http, a command for stdio).
 // Escape at any step cancels the whole flow (mirrors handleMarketplaceAddInputData).
 // On completion, calls the app-registered S.capabilities.addMcpServer(draft).
 export function handleMcpAddInputData(buf) {
@@ -1552,7 +1552,7 @@ export function handleMcpAddInputData(buf) {
       S.inputBuf = "";
       return;
     }
-    // step 2: target — completes the flow
+    // step 2: target, completes the flow
     var target = S.inputBuf.trim();
     S.mcpAddDraft.target = target;
     var draft = S.mcpAddDraft;

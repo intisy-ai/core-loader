@@ -26,7 +26,7 @@ export function updaterInstallProgress(pushBody, pushFoot, barW) {
   pushFoot("  " + DIM + "Please wait…" + RST);
 }
 
-// One marketplace row, shared by the plugins AND MCP marketplaces — they differ only
+// One marketplace row, shared by the plugins AND MCP marketplaces, they differ only
 // in the badge (curated ✦ vs git/npm) and the selected sub-line, never the layout.
 // The star count is right-aligned to the edge and the description scales with `cols`.
 // opts: { selected, name, nameW, desc, stars, statusIcon (colored 1-char), badge, badgeW }
@@ -55,7 +55,7 @@ export function flash(msg) {
   S.msgTimeout = setTimeout(function() { S.message = ""; render(); }, 2500);
 }
 
-// async catalog fetches arrive in bursts — coalesce their redraws
+// async catalog fetches arrive in bursts, coalesce their redraws
 export function scheduleRender() {
   if (S.renderTimer) return;
   S.renderTimer = setTimeout(function() { S.renderTimer = null; render(); }, 120);

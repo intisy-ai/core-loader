@@ -1,5 +1,5 @@
 // @ts-nocheck
-// The Versioning tab — git-backed config versioning (config-ledger). All git lives here;
+// The Versioning tab: git-backed config versioning (config-ledger). All git lives here;
 // the Settings tab is git-free. Three top-level states, chosen by config-ledger status:
 //   • not installed  → a single install gate (Enter installs, like the Plugins updater gate)
 //   • not initialized → the repo setup screen (Initialize / connect remote / gh)
@@ -44,8 +44,8 @@ export function versioningSetupOpts() {
 }
 
 // Recompute config-ledger readiness + the uncommitted-diff rows for this tab. Called on
-// entering the tab and after every mutating action (commit/import/pull/rollback/switch/init)
-// — never per render frame (isRepo/diffAgainstHead spawn git).
+// entering the tab and after every mutating action (commit/import/pull/rollback/switch/init),
+// never per render frame (isRepo/diffAgainstHead spawn git).
 export function refreshVersioning() {
   S.clReady = configLedgerReady();
   if (S.clReady) { try { S.clDiffRows = getConfigLedger().diffAgainstHead() || []; } catch { S.clDiffRows = []; } }
@@ -95,10 +95,10 @@ function statusSticky(pushSticky) {
 }
 
 export function buildVersioning(pushBody, pushFoot, cols, barW, pushSticky) {
-  // Installing plugin-updater (the prerequisite) — identical screen to the Plugins tab.
+  // Installing plugin-updater (the prerequisite), identical screen to the Plugins tab.
   if (S.updaterInstalling) { updaterInstallProgress(pushBody, pushFoot, barW); return; }
 
-  // Installing config-ledger itself — a spinner + live status (the async `plugin-updater
+  // Installing config-ledger itself: a spinner + live status (the async `plugin-updater
   // add` gives no step callbacks, so we show a single animated line, never a frozen screen).
   if (S.clInstalling) {
     pushBody("  " + BOLD + WHITE + "Installing config versioning" + RST, false);
@@ -119,7 +119,7 @@ export function buildVersioning(pushBody, pushFoot, cols, barW, pushSticky) {
   }
 
   // ① Not installed → a full-tab install gate, same shape as the Plugins tab's updater
-  // gate. Arrow keys still switch tabs (handled in handleKey before this handler) — the
+  // gate. Arrow keys still switch tabs (handled in handleKey before this handler); the
   // gate is scoped to this tab, it doesn't trap the whole UI.
   if (!configLedgerInstalled()) {
     pushBody("  " + BOLD + WHITE + "Config Versioning Not Installed" + RST, false);

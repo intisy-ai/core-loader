@@ -18,7 +18,7 @@ export function gitText(args, cwd) {
 }
 
 // Reads the update-status cache plugin-updater WRITES (`<configDir>/cache/
-// plugin-updates.json`, configDir = dirname(REPOS_DIR)) — the single source of
+// plugin-updates.json`, configDir = dirname(REPOS_DIR)), the single source of
 // truth for real remote-vs-local update state. plugin-updater computes this
 // during earlyLaunch (git fetch + npm registry checks); the TUI just reads it so
 // the Installed list reflects reality on load, not only after a manual "F".
@@ -56,7 +56,7 @@ export function buildPluginList() {
         subject = gitText(["git", "log", "-1", "--format=%s"], dir);
         var desc = gitText(["git", "describe", "--tags", "--always"], dir);
         if (!desc || /^[0-9a-f]+$/.test(desc)) {
-          latestTag = ""; // no tags in repo — row falls back to the sha
+          latestTag = ""; // no tags in repo, row falls back to the sha
         } else {
           var tmatch = desc.match(/^(.*)-\d+-g[0-9a-f]+$/);
           latestTag = tmatch ? tmatch[1] + " (" + localHead.substring(0, 7) + ")" : desc;
@@ -100,8 +100,8 @@ function gitTextAsync(args, cwd, cb) {
 }
 
 // Fetch each git plugin's remote HEAD OFF the main thread (parallel), then invoke
-// done() once all complete. `git fetch` hits the network (up to 15s each) — running
-// it synchronously froze the UI; async keeps the loop free so the spinner animates.
+// done() once all complete. `git fetch` hits the network (up to 15s each); running
+// it synchronously would freeze the UI, so async keeps the loop free and the spinner animating.
 export function fetchPluginRemotes(pluginItems, done) {
   var targets = pluginItems.filter(function(p) { return p.type !== "npm" && !p.foreign && p.installed && p.enabled !== false; });
   var remaining = targets.length;
@@ -132,7 +132,7 @@ export function buildCombinedPluginList() {
   var git = buildPluginList();
   var savedPlugins = loadPlugins();
   var cache = readUpdateCache();
-  // Under OpenCode plugin-updater IS an npm plugin (opencode.jsonc) — list it as the
+  // Under OpenCode plugin-updater IS an npm plugin (opencode.jsonc); list it as the
   // active engine. It's transient (opencode fetches it at runtime) so it has no
   // resolvable version; mark it active rather than "not installed". Under Claude
   // loadNpmPlugins is empty (no opencode.jsonc), so no npm rows appear at all.
@@ -144,11 +144,11 @@ export function buildCombinedPluginList() {
       type: "npm",
       engine: isEngine,
       name: np.name,
-      // the engine is transient (no package-cache version) — read its real version
+      // the engine is transient (no package-cache version), read its real version
       // from the resolved updater bundle instead of leaving it blank.
       version: isEngine ? (getUpdaterVersion() || np.version) : np.version,
       raw: np.raw,
-      // npm plugins have no disable state — the app loads whatever opencode.jsonc lists
+      // npm plugins have no disable state, the app loads whatever opencode.jsonc lists
       enabled: true,
       autoUpdate: false,
       installed: isEngine ? true : !!np.version,
@@ -221,7 +221,7 @@ export function getPluginActions(pitem) {
     return a;
   }
   if (pitem.type === "npm") {
-    // managed via opencode.json — no disable state, only update/uninstall (+ Configure
+    // managed via opencode.json, no disable state, only update/uninstall (+ Configure
     // when the deployed bundle answers `config schema`, same probe as git plugins)
     if (pitem._cfg && pitem._cfg.items && pitem._cfg.items.length) {
       a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + pitem._cfg.items.length + ")" });
@@ -263,7 +263,7 @@ export function getPluginActions(pitem) {
 // Probe a deployed plugin bundle for its config schema. A plugin built on our core
 // answers `node <bundle> config schema` with {name, defaults, current}; anything else
 // (non-core plugins, undeployed items, parse error) yields null -> no Configure action.
-// Runs for git AND npm plugins alike — an npm plugin built on our core is just as
+// Runs for git AND npm plugins alike, an npm plugin built on our core is just as
 // probeable via its deployed bundle file.
 export function probeConfigSchema(pitem) {
   if (!pitem || !pitem.deployed || pitem.foreign) return null;
@@ -280,7 +280,7 @@ export function probeConfigSchema(pitem) {
 }
 
 // Async twin of probeConfigSchema (uses exec, not execSync) so the Settings tab can probe
-// plugin schemas in the background without blocking the render — never resolves rejected.
+// plugin schemas in the background without blocking the render; never resolves rejected.
 export function probeConfigSchemaAsync(pitem) {
   return new Promise(function (resolve) {
     if (!pitem || !pitem.deployed || pitem.foreign) { resolve(null); return; }
@@ -312,7 +312,7 @@ export function buildConfigItems(schema) {
   });
 }
 
-// Persist one setting by shelling back into the plugin's own config CLI — `config set`
+// Persist one setting by shelling back into the plugin's own config CLI: `config set`
 // is the only thing that writes a file, so a config appears only once actually changed.
 export function setPluginConfig(bundle, key, valueStr) {
   try {

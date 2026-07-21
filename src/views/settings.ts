@@ -1,8 +1,8 @@
 // @ts-nocheck
-// Settings tab — two sub-tabs (Tab switches): "Settings" (global + plugin settings, here)
+// Settings tab: two sub-tabs (Tab switches): "Settings" (global + plugin settings, here)
 // and "Versioning" (config-ledger git UI, delegated to views/versioning.ts).
 // Plugin config schemas are probed in the BACKGROUND (async) with a spinner, so entering
-// the tab never blocks — plugin rows show "loading…" until their schema resolves.
+// the tab never blocks; plugin rows show "loading…" until their schema resolves.
 
 import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";

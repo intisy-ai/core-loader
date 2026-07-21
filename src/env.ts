@@ -36,7 +36,7 @@ export const MCP_CONFIG_PATH = join(CONFIG_DIR, ".mcp.json");
 export const CATALOG_CACHE_PATH = join(CACHE_DIR, "marketplace-catalog.json");
 export const SEED_CACHE_PATH = join(CACHE_DIR, "seed-marketplaces.json");
 
-// anything printed to the terminal corrupts the TUI — diagnostics go to a file
+// anything printed to the terminal corrupts the TUI, diagnostics go to a file
 export const TUI_START_TIME = new Date().toISOString().replace(/:/g, "-").split(".")[0];
 // isError just tags the line for grep-ability -- never mirrored to stderr (see above).
 export function tuiLog(msg, isError?) {
@@ -91,7 +91,7 @@ export const MCP_CATALOG = [
 
 // Known GitHub repos for curated entries whose npm package can't be resolved to
 // one (the official @modelcontextprotocol/server-* packages have no repository
-// field — and several aren't even published — so they all live in the servers
+// field, and several aren't even published, so they all live in the servers
 // monorepo). Pre-seeding full_name lets the star enrichment skip the npm lookup
 // and fetch stars directly (deduped per repo). Entries not listed here fall back
 // to npm->repo resolution (works for standalone packages like todoist, docker).
@@ -133,7 +133,7 @@ OFFICIAL_PLUGINS.forEach(function(e) { e.official = true; });
 // added them to the host app. name -> github "owner/repo"; marketplace.ts fetches
 // each repo's .claude-plugin/marketplace.json (HEAD, falling back to main/master)
 // to derive a plugin count + drill-in list, cached on disk (see fetchSeedMarketplacesAsync).
-// Verified list — do NOT add unverified repos here (see the redesign plan's seed catalog).
+// Verified list, do NOT add unverified repos here.
 export const DEFAULT_MARKETPLACES = [
   { name: "claude-plugins-official", repo: "anthropics/claude-plugins-official" },
   { name: "claude-plugins-community", repo: "anthropics/claude-plugins-community" },
@@ -143,7 +143,6 @@ export const DEFAULT_MARKETPLACES = [
   { name: "ecc", repo: "affaan-m/ECC" },
   { name: "xiaolai", repo: "xiaolai/claude-plugin-marketplace" },
   { name: "claude-mem", repo: "thedotmack/claude-mem" },
-  // Added July 2026 — verified marketplace repos (curated catalog pass).
   { name: "superpowers-plugin", repo: "obra/superpowers" },
   { name: "wshobson-commands", repo: "wshobson/commands" },
   { name: "anthropics-skills", repo: "anthropics/skills" },
@@ -156,9 +155,9 @@ export const DEFAULT_MARKETPLACES = [
 // Standalone individual plugin repos (not marketplaces) curated for a built-in
 // "Featured" catalog shown in Level 1 alongside "intisy-ai (official)"/"community"
 // (see marketplace.ts loaderOwnMarketplaces). Each installs like any other
-// catalog plugin — git clone via the updater, using the derived .url below —
+// catalog plugin, git clone via the updater, using the derived .url below;
 // there is no marketplace.json to fetch, so these never go through the seed
-// fetch machinery. Verified list — do NOT add unverified repos here.
+// fetch machinery. Verified list, do NOT add unverified repos here.
 export const FEATURED_PLUGINS = [
   { name: "claude-mem", repo: "thedotmack/claude-mem", description: "Persistent cross-session memory (capture/compress/reinject)", category: "memory" },
   { name: "hindsight", repo: "vectorize-io/hindsight", description: "Agent memory that learns (+ hindsight-skills)", category: "memory" },
@@ -187,11 +186,9 @@ FEATURED_PLUGINS.forEach(function(e) {
   e.url = "https://github.com/" + e.repo + ".git";
   e.desc = e.description;
   e.featured = true;
-  // categories double as section headings in the list — capitalize for display
+  // categories double as section headings in the list, capitalize for display
   e.category = e.category.charAt(0).toUpperCase() + e.category.slice(1);
 });
-
-export const MCP_CATEGORIES = ["All", "Search", "Development", "Files", "Database", "Cloud", "Communication", "Productivity", "Data", "AI", "Plugin"];
 
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 

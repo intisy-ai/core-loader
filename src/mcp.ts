@@ -155,7 +155,7 @@ export function buildMcpList(categoryFilter) {
       }
     }
   }
-  // rank by GitHub stars — curated and registry entries are intermixed, not pinned;
+  // rank by GitHub stars, curated and registry entries are intermixed, not pinned;
   // unstarred (curated awaiting enrichment, embedded plugins) fall to the bottom
   list.sort(function (a, b) { return (b.stars || 0) - (a.stars || 0); });
   return list;
@@ -177,7 +177,7 @@ export function uninstallMcpServer(name) {
 }
 
 // The active loader extension's mcpServers() capability, normalized to the same
-// row shape the "installed" view renders — {name, transport, detail}. Returns
+// row shape the "installed" view renders: {name, transport, detail}. Returns
 // null when the capability isn't registered (caller falls back to the legacy
 // on-disk list); returns [] on a capability call error so a broken host doesn't
 // crash the TUI.
@@ -195,7 +195,7 @@ export function getCapabilityMcpList() {
 // Rows for the "Installed" MCP sub-tab. Prefers S.capabilities.mcpServers() over
 // the legacy MCP_CONFIG_PATH file when registered (the host app may not actually
 // read that file), and prepends a synthetic "＋ Add MCP server" action row when
-// addMcpServer is registered — the SAME isAction-row approach buildMarketplaceList()
+// addMcpServer is registered, the SAME isAction-row approach buildMarketplaceList()
 // uses, so S.mcpCursor keeps indexing straight into one flat array.
 export function buildInstalledMcpRows() {
   var capList = getCapabilityMcpList();

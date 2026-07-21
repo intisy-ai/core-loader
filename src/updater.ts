@@ -9,8 +9,8 @@ import { PLUGINS_DIR, CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, IS_CLAUDE, tuiLog } 
 import { S } from "./state.js";
 
 // Every place the deployed plugin-updater might live. The npx roots differ per OS:
-// ~/.npm/_npx on unix, %LOCALAPPDATA%/%APPDATA%\npm-cache\_npx on Windows — missing the
-// Windows ones was why the loader reported "Updater Plugin Missing" on Windows.
+// ~/.npm/_npx on unix, %LOCALAPPDATA%/%APPDATA%\npm-cache\_npx on Windows; all must
+// be checked or the loader reports "Updater Plugin Missing" on Windows.
 function updaterCandidatePaths() {
   const fs = require('fs'); const path = require('path'); const os = require('os');
   const cands = [
@@ -34,7 +34,7 @@ function updaterCandidatePaths() {
 }
 
 // plugin-updater is ESM with top-level await, so require() throws ERR_REQUIRE_ASYNC_MODULE
-// under Node — it MUST be import()'d. Preload it once (async) at TUI startup; getUpdater()
+// under Node; it MUST be import()'d. Preload it once (async) at TUI startup; getUpdater()
 // then returns the cached module synchronously to all the sync callers.
 export async function preloadUpdater() {
   if (S.UPDATER_MODULE !== undefined) return S.UPDATER_MODULE;
@@ -47,8 +47,8 @@ export async function preloadUpdater() {
     }
     try {
       S.UPDATER_MODULE = await import(pathToFileURL(entry).href);
-      S.UPDATER_PATH = p;        // package dir — for the version lookup
-      S.UPDATER_ENTRY = entry;   // resolved .js — the child process import()s this
+      S.UPDATER_PATH = p;        // package dir, for the version lookup
+      S.UPDATER_ENTRY = entry;   // resolved .js, the child process import()s this
       return S.UPDATER_MODULE;
     } catch (e) { tuiLog("Failed to load updater from " + entry + ": " + e); }
   }
@@ -60,7 +60,7 @@ export function getUpdater() {
   return S.UPDATER_MODULE || null;
 }
 
-// The resolved bundle path getUpdater() cached — used to run updatePluginPublic
+// The resolved bundle path getUpdater() cached, used to run updatePluginPublic
 // in a child process (setupPlugin) so the update doesn't block the main thread.
 export function getUpdaterPath() {
   return S.UPDATER_PATH;
@@ -78,7 +78,7 @@ export function getUpdaterVersion() {
 
 // Run the updater's updatePluginPublic (git + build + deploy + activate) in a
 // child node process so the git/build execSync inside plugin-updater blocks that
-// child, not our main event loop — the TUI keeps rendering and animating.
+// child, not our main event loop, so the TUI keeps rendering and animating.
 export function setupPlugin(repo, done) {
   var updater = getUpdater();
   if (!updater || typeof updater.updatePluginPublic !== "function" || !getUpdaterPath()) {
@@ -87,9 +87,9 @@ export function setupPlugin(repo, done) {
   }
   var updaterPath = S.UPDATER_ENTRY || getUpdaterPath();   // the entry .js the child import()s
   // Params go through ENV, not argv: the loader runs under Bun, and `bun -e "code" a b`
-  // does NOT expose the trailing args at process.argv[1..] like `node -e` does — so
-  // positional args arrived undefined and updatePluginPublic built nothing. Env is
-  // read identically under both runtimes.
+  // does NOT expose the trailing args at process.argv[1..] like `node -e` does, so
+  // positional args would arrive undefined and updatePluginPublic would build nothing.
+  // Env is read identically under both runtimes.
   var script = 'const {pathToFileURL}=require("url"); import(pathToFileURL(process.env.PU_PATH).href).then(function(m){return m.updatePluginPublic(process.env.PU_NAME, process.env.PU_URL||undefined, process.env.PU_BRANCH||undefined);}).then(function(){process.exit(0);}).catch(function(e){console.error((e&&e.message)||e);process.exit(1);});';
   // Tell the child WHICH app + config dir to update: without these it guesses from
   // argv (no "claude") + ~/.<app>, so it updated the wrong home and the loader's own
@@ -176,13 +176,13 @@ export function clearUpdaterCache() {
   S.hasUpdater = false;
 }
 
-// Self-update the engine — the one plugin permitted to use npm/npx. Claude: drop the
+// Self-update the engine, the one plugin permitted to use npm/npx. Claude: drop the
 // cached npx copy (npx pins @latest) and re-fetch+run the newest published version.
 // OpenCode: update the opencode.jsonc npm plugin via the engine's own API. Returns
 // "" on success or an error string.
-// Runs OFF-THREAD via a child process and reports through `done(err)` — the old
-// execSync blocked the event loop so the busy spinner froze and the user saw no
-// feedback at all. Keeps S.busy owned by the caller; calls done("") on success.
+// Runs OFF-THREAD via a child process and reports through `done(err)` so a blocking
+// execSync never freezes the busy spinner or the TUI's event loop. Keeps S.busy
+// owned by the caller; calls done("") on success.
 export function updateUpdater(done) {
   var finish = typeof done === "function" ? done : function () {};
   var spawn = require("child_process").spawn;
@@ -244,7 +244,7 @@ export function installUpdater(configDir, appName, onStep) {
       writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");
     }
     // Run the engine now so it's fetched + resolvable immediately (populates the npx
-    // cache getUpdater() looks in) — installing shouldn't require an app restart.
+    // cache getUpdater() looks in); installing shouldn't require an app restart.
     step("Fetching + building the engine");
     try { execSync("npx -y plugin-updater@latest run --app " + appFlag, { timeout: 180000, stdio: "ignore" }); } catch { /* best effort; getUpdater re-checks */ }
     step("Done");

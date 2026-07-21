@@ -2,7 +2,7 @@
 // Claude-side bridge for auth-provider notifications. Providers (headless under the
 // CC proxy) append messages to config/auth-notifications.jsonl via core-auth's
 // notify(). This registers a PostToolUse hook + a tiny drain script that reads the
-// queue and re-emits each message as a Claude Code hook `systemMessage` — shown to
+// queue and re-emits each message as a Claude Code hook `systemMessage`, shown to
 // the USER but never added to the model's context. (opencode uses toasts instead.)
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from "fs";
@@ -23,9 +23,8 @@ try {
 if (msgs.length) process.stdout.write(JSON.stringify({ systemMessage: msgs.join("\\n"), suppressOutput: true, continue: true }));
 `;
 
-// Write the drain script under cache/ + register the Stop/PostToolUse hooks. Also
-// migrates off the old config/ location: re-points any stale hook entries and
-// removes the old config/ script + queue. Idempotent.
+// Writes the drain script under cache/ and registers the Stop/PostToolUse hooks;
+// also removes any stale auth-notify-drain artifacts left in config/. Idempotent.
 export function ensureNotifyDrainHook(configDir) {
   try {
     const cacheSub = join(configDir, "cache");
@@ -38,10 +37,9 @@ export function ensureNotifyDrainHook(configDir) {
     try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch {}
     const hooks = settings.hooks || (settings.hooks = {});
     const cmd = `node "${drainPath}"`;
-    // Drain on BOTH Stop (end of every turn — surfaces notifications even when no tool
+    // Drain on BOTH Stop (end of every turn, surfaces notifications even when no tool
     // ran, e.g. a plain answer) and PostToolUse (mid-turn, during long tool sequences).
-    // Drop any existing auth-notify-drain entry first (removes stale config/ paths and
-    // avoids duplicates), then add the current cache/ one.
+    // Drop any existing auth-notify-drain hook entry first to avoid duplicates.
     let changed = false;
     for (const evt of ["Stop", "PostToolUse"]) {
       const list = hooks[evt] || (hooks[evt] = []);
@@ -51,9 +49,9 @@ export function ensureNotifyDrainHook(configDir) {
     }
     if (changed) writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
 
-    // Clean up the old config/ artifacts from before the cache/ move.
+    // The queue and drain script must only live under cache/, never config/.
     for (const stale of [join(configDir, "config", "auth-notify-drain.cjs"), join(configDir, "config", "auth-notifications.jsonl")]) {
       try { if (existsSync(stale)) unlinkSync(stale); } catch { /* ignore */ }
     }
-  } catch { /* best-effort — notifications must never break loader activation */ }
+  } catch { /* best-effort, notifications must never break loader activation */ }
 }

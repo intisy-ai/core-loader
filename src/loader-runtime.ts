@@ -1,6 +1,6 @@
 // @ts-nocheck
 // Shared activation helpers for BOTH loaders' plugin.ts (claude-code-loader,
-// opencode-loader). Kept core-free — the caller injects its own logger — so
+// opencode-loader). Kept core-free (the caller injects its own logger) so
 // core-loader stays independent of the core bundle.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
@@ -48,12 +48,6 @@ export async function runEarlyLaunchHooks(configDir: string, log: (message: stri
   }
 }
 
-export function ensureBinDir() {
-  const binDir = getBinDir();
-  if (!existsSync(binDir)) try { mkdirSync(binDir, { recursive: true }); } catch {}
-  return binDir;
-}
-
 // Provider handlers deployed under <configDir>/repos: each plugin declares them in its
 // package.json via `claudeHub.authProviders` (or a top-level `authProviders`). One scan
 // shared by the loader CLI's provider/doctor views and the CC proxy's request router, so
@@ -85,9 +79,9 @@ export function readDeployedProviders(reposDir: string): Array<{
 }
 
 // getBinDir() (~/.local/bin) is where the cc/oc wrappers land, but that dir is only
-// on PATH by default on some Linux login shells — never on macOS (zsh) or Windows.
+// on PATH by default on some Linux login shells, never on macOS (zsh) or Windows.
 // ensureOnPath registers it so `cc`/`oc` actually resolve in new shells. Idempotent
-// (marker-guarded on POSIX; membership-checked on Windows) and never throws — a
+// (marker-guarded on POSIX; membership-checked on Windows) and never throws: a
 // failure here just means the user runs the wrapper by full path until they fix PATH.
 const PATH_MARKER = "# intisy loader (cc/oc) PATH";
 

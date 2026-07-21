@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Shared slash-command engine for BOTH loaders. Each loader deploys ONLY to its
 // own app's command dir (not cross-app), so its /plugins + /accounts don't collide
-// with the other loader's. Kept core-free — the caller injects runConfigCli (from
+// with the other loader's. Kept core-free, the caller injects runConfigCli (from
 // its own core bundle) plus the app-specific bits.
 //
 //   makeLoaderCommands({ plugin, commandDir, loaderEntry, runConfigCli, authHint })

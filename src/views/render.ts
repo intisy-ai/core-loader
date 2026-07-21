@@ -12,7 +12,7 @@ import { buildMcp } from "./mcp.js";
 import { buildSettings } from "./settings.js";
 
 export function render() {
-  // Prefer the stream we draw to (stderr), but fall back to stdout — depending on how
+  // Prefer the stream we draw to (stderr), but fall back to stdout, depending on how
   // the wrapper launches bun, only one of them reports a TTY size. Re-read every frame
   // so the UI tracks live terminal resizes.
   var cols = process.stderr.columns || process.stdout.columns || 80;
@@ -71,7 +71,7 @@ export function render() {
   while (bodyLines.length > 0 && bodyLines[bodyLines.length - 1] === "") bodyLines.pop();
   if (footLines.length) footLines.unshift("");
 
-  // 3. Viewport calculation — the scrollable body occupies the space BELOW the
+  // 3. Viewport calculation: the scrollable body occupies the space BELOW the
   // header/tabs and the sticky region (which are always shown in full).
   var maxBody = Math.max(2, totalRows - headLines.length - stickyLines.length - footLines.length);
   
@@ -118,7 +118,7 @@ export function render() {
     visibleBody.push(hiddenBelow > 0 ? "  " + GRAY + "     ↓ " + hiddenBelow + " more" + RST : "");
     bodyLines = visibleBody;
   } else {
-    // content fits — pad with blank rows so the footer always sits at the bottom
+    // content fits, pad with blank rows so the footer always sits at the bottom
     while (bodyLines.length < maxBody) bodyLines.push("");
   }
 

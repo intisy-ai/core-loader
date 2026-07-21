@@ -82,7 +82,7 @@ export const S = {
   // Settings page (unified global + per-plugin settings editor)
   settingsCursor: 0,
   settingsScrollOff: 0,
-  settingsSubPage: "settings",  // "settings" | "versioning" — sub-tabs of the Settings tab (Tab switches)
+  settingsSubPage: "settings",  // "settings" | "versioning", sub-tabs of the Settings tab (Tab switches)
   settingsSections: [],  // SettingsSection[] (Global + one per plugin)
   settingsEntries: [],   // SettingsEntry[] the renderer + key handler walk (headers + groups)
 
@@ -97,7 +97,7 @@ export const S = {
   vgKeyCursor: 0,
   vgHistFile: "",
 
-  // config-ledger (Phase 2) -- cached lib module + git-data caches for the Settings tab
+  // config-ledger: cached lib module + git-data caches for the Settings tab
   CONFIG_LEDGER_MODULE: null,   // resolved dist/lib.js module, or null when absent
   clReady: false,            // cached configLedgerReady() (repo.isRepo spawns git; recomputed in refreshSettings, never per render frame)
   clDiffRows: [],            // last diffAgainstHead() rows (markers + review screen)
@@ -121,13 +121,13 @@ export const S = {
   mkSelected: {},
   // Two-level browser: "markets" (marketplaces themselves) | "plugins" (one
   // marketplace's plugins, named by mkMarket). S.marketplaceItems always holds
-  // whichever level is active — see marketplace.ts buildMarketplaceList().
+  // whichever level is active, see marketplace.ts buildMarketplaceList().
   mkLevel: "markets",
   mkMarket: null,
   // Kind of the drilled-in marketplace, captured from its Level-1 row's
   // builtin/capability tag ("official" | "community" | "capability" | null).
   // buildMarketplacePluginsList() routes on THIS, not on comparing mkMarket's
-  // display name to "intisy-ai (official)"/"community" — a capability
+  // display name to "intisy-ai (official)"/"community": a capability
   // marketplace could otherwise share one of those names and be misrouted.
   mkMarketKind: null,
   // Which leading action row is being confirmed while S.mode === "mkinput":
@@ -144,7 +144,7 @@ export const S = {
   busy: false,
 
   // Cached "is the updater plugin present" result. The check reads disk + can shell
-  // out, so it must never run on a navigation render — computed until true, then held.
+  // out, so it must never run on a navigation render, computed until true, then held.
   hasUpdater: false,
 
   // Updater install progress (shown in-body while installUpdater runs). updaterSteps

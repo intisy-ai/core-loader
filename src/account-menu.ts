@@ -41,7 +41,7 @@ export function createAccountMenu() {
   // Self-contained busy indicator for async in-tab actions. Owns its OWN animation
   // interval + tuiApi.refresh (not the global updateSpinner, which doesn't reliably
   // drive this in-tab menu) and a hard timeout so a hung action never freezes the
-  // spinner forever. The spinner ticks only while the event loop is free — which it is
+  // spinner forever. The spinner ticks only while the event loop is free, which it is
   // for the network actions this runs (refresh/verify/quota).
   function stopBusy() {
     if (nav.busyTimer) { clearInterval(nav.busyTimer); nav.busyTimer = null; }
@@ -123,7 +123,7 @@ export function createAccountMenu() {
       if (nav.input.message) String(nav.input.message).split("\n").forEach(function (line) { h.pushBody("  " + h.DIM + line + h.RST, false); });
       h.pushBody("", false);
       if (nav.input.pending) {
-        // complete() is in flight (e.g. a slow token exchange) — show progress in
+        // complete() is in flight (e.g. a slow token exchange); show progress in
         // place of the field instead of closing the menu and surfacing later
         h.pushBody("  " + h.ACCENT + (nav.input.pendingLabel || "Working…") + h.RST, false);
         h.pushFoot("  " + h.GRAY + "─".repeat(h.barW) + h.RST);
@@ -158,11 +158,11 @@ export function createAccountMenu() {
       h.pushBody("  " + bg + arrow + nameStyle + it.label + h.RST + (it.hint ? h.GRAY + "  " + it.hint + h.RST : ""), sel);
     });
     h.pushFoot("  " + h.GRAY + "─".repeat(h.barW) + h.RST);
-    // Show the transient flash (set by tuiApi.flash — e.g. "Models refreshed (N)") so
+    // Show the transient flash (set by tuiApi.flash, e.g. "Models refreshed (N)") so
     // action feedback is visible INSIDE the account menu (which draws its own footer and
     // would otherwise swallow S.message).
     if (nav.busy) {
-      // an async action is running — our own interval animates this frame + re-renders
+      // an async action is running; our own interval animates this frame + re-renders
       h.pushFoot("  " + h.ACCENT + SPINNER_FRAMES[nav.busy.tick % SPINNER_FRAMES.length] + " " + nav.busy.label + "…" + h.RST);
     } else if (S.message) {
       h.pushFoot("  " + h.ACCENT + S.message + h.RST);
@@ -175,11 +175,11 @@ export function createAccountMenu() {
   function handleKey(key, tuiApi) {
     if (!nav.active) return false;
     if (nav.input) {
-      if (nav.input.pending) return true;   // complete() in flight — ignore keys until it settles
+      if (nav.input.pending) return true;   // complete() in flight, ignore keys until it settles
       if (key === "escape") { const inpE = nav.input; nav.input = null; if (inpE.onClose) { try { inpE.onClose(); } catch (e) {} } return true; }
       if (key === "enter") {
         // run complete() live (no suspend) and keep the field showing progress until it
-        // resolves — closing instantly made the account appear ~15s later with no feedback
+        // resolves; closing instantly makes the account appear ~15s later with no feedback
         const inp = nav.input, buf = nav.inputBuf || ""; inp.pending = true; nav.inputBuf = ""; if (tuiApi.refresh) tuiApi.refresh();
         Promise.resolve(inp.complete(buf)).then(function (a) { if (nav.input === inp) nav.input = null; if (inp.onClose) { try { inp.onClose(); } catch (e) {} } applyAction(a, tuiApi); if (tuiApi.refresh) tuiApi.refresh(); }).catch(function (e) { if (nav.input === inp) nav.input = null; try { tuiApi.flash(String(e && e.message || e)); } catch (x) {} if (tuiApi.refresh) tuiApi.refresh(); });
         return true;
@@ -211,7 +211,7 @@ export function createAccountMenu() {
       if (item.suspend) {
         // suspend items (provider login(), proxy pickers, confirm) need a clean terminal.
         // run() must start INSIDE runBlocking: an async run() executes up to its first await
-        // synchronously, and a confirm()/select() there grabs raw stdin — which runBlocking
+        // synchronously, and a confirm()/select() there grabs raw stdin, which runBlocking
         // would then clobber (setRawMode(false) + pause), freezing the prompt.
         tuiApi.runBlocking(async function () { try { const a = await item.run(); applyAction(a, tuiApi); ack(a); } catch (e) { fail(e); } });
         return true;
