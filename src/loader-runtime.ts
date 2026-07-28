@@ -57,6 +57,7 @@ export function readDeployedProviders(reposDir: string): Array<{
   repo: string;
   handler: string;
   handlerPath: string;
+  translator: string | undefined;
 }> {
   const out = [];
   let repos = [];
@@ -72,6 +73,7 @@ export function readDeployedProviders(reposDir: string): Array<{
         repo,
         handler: provider.handler,
         handlerPath: join(reposDir, repo, provider.handler),
+        translator: provider.translator,
       });
     }
   }
