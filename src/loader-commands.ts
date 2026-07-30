@@ -4,18 +4,20 @@
 // with the other loader's. Kept core-free, the caller injects runConfigCli (from
 // its own core bundle) plus the app-specific bits.
 //
-//   makeLoaderCommands({ plugin, commandDir, loaderEntry, runConfigCli, authHint })
+//   makeLoaderCommands({ plugin, commandDir, loaderEntry, runConfigCli, authHint, busDrain })
 //     plugin       - package name (also the /<plugin>-config command name)
 //     commandDir   - app command subdir ("commands" for Claude, "command" for opencode)
 //     loaderEntry  - (configDir) => absolute path to the loader's runtime plugin.js
 //     runConfigCli - core's runConfigCli, bound to the caller's bundle
 //     authHint     - trailing sentence for the /accounts body when none are signed in
+//     busDrain     - optional; drains the event bus and prints a Claude systemMessage
+//                    (wired only by the loader whose app has the drain hook)
 
 import { join } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 
 export function makeLoaderCommands(opts) {
-  const { plugin, commandDir, loaderEntry, runConfigCli, authHint } = opts;
+  const { plugin, commandDir, loaderEntry, runConfigCli, authHint, busDrain } = opts;
 
   function commandDefs(entry) {
     const node = `node "${entry}"`;
@@ -105,6 +107,10 @@ export function makeLoaderCommands(opts) {
     }
     if (argv[0] === "accounts") {
       listAccounts(configDir);
+      return true;
+    }
+    if (argv[0] === "bus-drain") {
+      if (typeof busDrain === "function") busDrain();
       return true;
     }
     return false;
