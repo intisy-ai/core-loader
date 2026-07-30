@@ -27,6 +27,7 @@ export type StartLoaderProxyOptions<TProfile = unknown> = {
     port: number;
     log: (message: string) => void;
     resolveHandler: (providerName: string) => Promise<unknown>;
+    notify?: (message: string, level?: string) => void;
   }) => ProxyServerLike;
   makeDynamicResolver: (listProviders: () => ProxyHandlerEntry[]) => (providerName: string) => Promise<unknown>;
   profile: TProfile;
@@ -36,6 +37,10 @@ export type StartLoaderProxyOptions<TProfile = unknown> = {
   // (and future callers with their own logging setup) can inject their own.
   log?: (message: string) => void;
   reposDir?: string;
+  // Routes the proxy's user-notifications to a delivery mechanism the host owns
+  // (the core event bus). Left undefined by default, so core-proxy falls back to
+  // its own notification append.
+  notify?: (message: string, level?: string) => void;
 };
 
 export type StartedLoaderProxy = {
@@ -91,7 +96,7 @@ export function startLoaderProxy<TProfile = unknown>(
     readDeployedProviders(reposDir).map((p) => ({ provider: p.provider, handlerPath: p.handlerPath })),
   );
 
-  const server = createProxyServer({ configDir, profile, port, log, resolveHandler });
+  const server = createProxyServer({ configDir, profile, port, log, resolveHandler, notify: options.notify });
 
   return server.listen().then((boundPort) => {
     stampStartMarker(configDir);
