@@ -49,15 +49,17 @@ export async function runEarlyLaunchHooks(configDir: string, log: (message: stri
 }
 
 // Provider handlers deployed under <configDir>/repos: each plugin declares them in its
-// package.json via `claudeHub.authProviders` (or a top-level `authProviders`). One scan
-// shared by the loader CLI's provider/doctor views and the CC proxy's request router, so
-// the "read package.json → pick name/handler" logic lives in exactly one place.
+// package.json via `claudeHub.authProviders` (or a top-level `authProviders`), plus any
+// dynamic providers materialized to .dynamic-providers.json (see readDynamicProviders).
+// One scan shared by the loader CLI's provider/doctor views and the CC proxy's request
+// router, so the "read package.json → pick name/handler" logic lives in exactly one place.
 export function readDeployedProviders(reposDir: string): Array<{
   provider: string;
   repo: string;
   handler: string;
   handlerPath: string;
   translator: string | undefined;
+  accountPool: string;
 }> {
   const out = [];
   let repos = [];
@@ -68,14 +70,44 @@ export function readDeployedProviders(reposDir: string): Array<{
     const declared = (pkg && pkg.claudeHub && pkg.claudeHub.authProviders) || (pkg && pkg.authProviders) || [];
     for (const provider of declared) {
       if (!provider.handler) continue;
+      const name = provider.name || repo;
       out.push({
-        provider: provider.name || repo,
+        provider: name,
         repo,
         handler: provider.handler,
         handlerPath: join(reposDir, repo, provider.handler),
         translator: provider.translator,
+        accountPool: provider.accountPool || name,
       });
     }
+    out.push(...readDynamicProviders(reposDir, repo));
+  }
+  return out;
+}
+
+// Config-driven providers a plugin advertises by writing <repo>/.dynamic-providers.json
+// (e.g. custom-auth, one provider per user-configured endpoint). Best-effort and
+// synchronous like the rest of this scan: a missing or malformed manifest yields no
+// entries, so plugins that never write one see no change in behavior.
+function readDynamicProviders(reposDir, repo) {
+  const out = [];
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(reposDir, repo, ".dynamic-providers.json"), "utf-8"));
+  } catch {
+    return out;
+  }
+  if (!Array.isArray(manifest)) return out;
+  for (const entry of manifest) {
+    if (!entry || typeof entry.name !== "string" || typeof entry.handler !== "string") continue;
+    out.push({
+      provider: entry.name,
+      repo,
+      handler: entry.handler,
+      handlerPath: join(reposDir, repo, entry.handler),
+      translator: entry.translator,
+      accountPool: entry.accountPool || entry.name,
+    });
   }
   return out;
 }
