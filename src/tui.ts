@@ -155,7 +155,10 @@ async function loadCustomTabs() {
       // import() it (via a file:// URL).
       var mod = await import(pathToFileURL(extPath).href);
       var fn = (mod && mod.default) || mod;
-      if (typeof fn === "function") fn(tuiApi);
+      // Await in case the extension's own async init (e.g. a bundled TeaVM module)
+      // must resolve before the tab is usable; a sync-returning extension awaits
+      // a non-promise value harmlessly.
+      if (typeof fn === "function") await fn(tuiApi);
     } catch(e) { tuiLog("custom tab load failed (" + extPath + "): " + e); }
   }
   // 1. The active loader declares its own extension via env (absolute path)
