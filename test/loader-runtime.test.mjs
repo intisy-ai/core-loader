@@ -84,6 +84,54 @@ describe("readDeployedProviders: dynamic manifest", () => {
   });
 });
 
+describe("readDeployedProviders: models", () => {
+  it("carries a declared provider's models array through verbatim", () => {
+    const reposDir = makeReposDir();
+    writeRepo(reposDir, "stub-auth", {
+      claudeHub: { authProviders: [{ name: "stub", handler: "dist/handler.js", models: ["stub-model-1", "stub-model-2"] }] },
+    });
+
+    const [entry] = readDeployedProviders(reposDir);
+    assert.deepEqual(entry.models, ["stub-model-1", "stub-model-2"]);
+  });
+
+  it("defaults models to an empty array when a declared provider has none", () => {
+    const reposDir = makeReposDir();
+    writeRepo(reposDir, "stub-auth", {
+      claudeHub: { authProviders: [{ name: "stub", handler: "dist/handler.js" }] },
+    });
+
+    const [entry] = readDeployedProviders(reposDir);
+    assert.deepEqual(entry.models, []);
+  });
+
+  it("carries a dynamic provider's models array through verbatim", () => {
+    const reposDir = makeReposDir();
+    writeRepo(
+      reposDir,
+      "custom-auth",
+      { claudeHub: { authProviders: [] } },
+      [{ name: "my-endpoint", handler: "dist/dynamic.js", models: [{ id: "custom-model", name: "Custom Model" }] }],
+    );
+
+    const [entry] = readDeployedProviders(reposDir);
+    assert.deepEqual(entry.models, [{ id: "custom-model", name: "Custom Model" }]);
+  });
+
+  it("defaults a dynamic provider's models to an empty array when absent", () => {
+    const reposDir = makeReposDir();
+    writeRepo(
+      reposDir,
+      "custom-auth",
+      { claudeHub: { authProviders: [] } },
+      [{ name: "my-endpoint", handler: "dist/dynamic.js" }],
+    );
+
+    const [entry] = readDeployedProviders(reposDir);
+    assert.deepEqual(entry.models, []);
+  });
+});
+
 describe("readDeployedProviders: no providers declared", () => {
   it("yields nothing for a repo with no authProviders and no dynamic manifest", () => {
     const reposDir = makeReposDir();

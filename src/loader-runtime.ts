@@ -60,6 +60,7 @@ export function readDeployedProviders(reposDir: string): Array<{
   handlerPath: string;
   translator: string | undefined;
   accountPool: string;
+  models: unknown[];
 }> {
   const out = [];
   let repos = [];
@@ -78,6 +79,7 @@ export function readDeployedProviders(reposDir: string): Array<{
         handlerPath: join(reposDir, repo, provider.handler),
         translator: provider.translator,
         accountPool: provider.accountPool || name,
+        models: provider.models || [],
       });
     }
     out.push(...readDynamicProviders(reposDir, repo));
@@ -107,6 +109,7 @@ function readDynamicProviders(reposDir, repo) {
       handlerPath: join(reposDir, repo, entry.handler),
       translator: entry.translator,
       accountPool: entry.accountPool || entry.name,
+      models: entry.models || [],
     });
   }
   return out;
