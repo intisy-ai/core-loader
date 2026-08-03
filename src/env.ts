@@ -5,6 +5,7 @@
 import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import officialPluginsData from "../data/official-plugins.json";
 
 // plugin-updater runs its full update sequence on import and logs to the
 // console; library mode limits it to the API so nothing prints over the TUI
@@ -114,18 +115,13 @@ export const CURATED_MCP_REPOS = {
 // runtime carry no curated flag, which is correct.
 MCP_CATALOG.forEach(function (e) { e.curated = true; if (CURATED_MCP_REPOS[e.name]) e.full_name = CURATED_MCP_REPOS[e.name]; });
 
-// First-party plugins maintained by the intisy-ai org. These are always shown
-// at the top of the marketplace in a dedicated "Official · intisy-ai" section
-// and are present regardless of whether the remote catalog fetch has completed.
-export const OFFICIAL_PLUGINS = [
-  { name: "antigravity-auth", repoName: "antigravity-auth", full_name: "intisy-ai/antigravity-auth", url: "https://github.com/intisy-ai/antigravity-auth.git", desc: "Antigravity (Gemini) auth provider: OAuth accounts, model mapping, rotation", author: "intisy-ai", category: "Official" },
-  { name: "claude-code-auth",  repoName: "claude-code-auth",  full_name: "intisy-ai/claude-code-auth",  url: "https://github.com/intisy-ai/claude-code-auth.git",  desc: "Claude Code auth provider: multi-account OAuth with cooldown & rotation",       author: "intisy-ai", category: "Official" },
-  { name: "stub-auth",         repoName: "stub-auth",         full_name: "intisy-ai/stub-auth",         url: "https://github.com/intisy-ai/stub-auth.git",         desc: "Example provider showcasing the core-auth SDK (stub/mock)",                    author: "intisy-ai", category: "Official" },
-  { name: "metric-dashboard",  repoName: "metric-dashboard",  full_name: "intisy-ai/metric-dashboard",  url: "https://github.com/intisy-ai/metric-dashboard.git",  desc: "Local usage & metrics dashboard with a web UI",                                author: "intisy-ai", category: "Official" },
-  { name: "sync-bridge",       repoName: "sync-bridge",       full_name: "intisy-ai/sync-bridge",       url: "https://github.com/intisy-ai/sync-bridge.git",       desc: "Sync config & accounts across opencode and Claude Code",                       author: "intisy-ai", category: "Official" },
-  { name: "wakatime-sync",     repoName: "wakatime-sync",     full_name: "intisy-ai/wakatime-sync",     url: "https://github.com/intisy-ai/wakatime-sync.git",     desc: "WakaTime time-tracking heartbeats for opencode & Claude Code",                 author: "intisy-ai", category: "Official" },
-  { name: "config-ledger",        repoName: "config-ledger",        full_name: "intisy-ai/config-ledger",        url: "https://github.com/intisy-ai/config-ledger.git",        desc: "Git-backed config: versioned sanitized snapshots with history, rollback & profiles", author: "intisy-ai", category: "Official" },
-];
+// First-party plugins maintained by the intisy-ai org, loaded from data/official-plugins.json
+// (kept as data, not code, so this module carries no hardcoded plugin catalog). Statically
+// imported (not readFileSync'd at runtime) so esbuild inlines the data when core-loader gets
+// bundled into a loader's single dist/plugin.js, where __dirname no longer has a data/ sibling.
+// Always shown at the top of the marketplace in a dedicated "Official · intisy-ai" section,
+// present regardless of whether the remote catalog fetch has completed.
+export const OFFICIAL_PLUGINS = officialPluginsData;
 // mark every entry so downstream code can test e.official without string comparisons
 OFFICIAL_PLUGINS.forEach(function(e) { e.official = true; });
 
