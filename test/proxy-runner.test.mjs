@@ -83,4 +83,42 @@ describe("proxy-runner", () => {
     assert.ok(existsSync(markerPath), ".proxy-started marker should be written");
     assert.ok(readFileSync(markerPath, "utf-8").length > 0);
   });
+
+  it("threads the injected emitActivity into createProxyServer and emits a started lifecycle event", async () => {
+    const configDir = mkdtempSync(join(tmpdir(), "core-loader-proxy-runner-activity-"));
+
+    const fakeServer = { listen: async () => 5050, close: async () => {} };
+    let createProxyServerCall = null;
+    function fakeCreateProxyServer(opts) {
+      createProxyServerCall = opts;
+      return fakeServer;
+    }
+    function fakeMakeDynamicResolver() {
+      return async () => null;
+    }
+
+    const activityCalls = [];
+    function fakeEmitActivity(spec) {
+      activityCalls.push(spec);
+    }
+
+    await startLoaderProxy({
+      createProxyServer: fakeCreateProxyServer,
+      makeDynamicResolver: fakeMakeDynamicResolver,
+      profile: {},
+      configDir,
+      port: 5050,
+      log: () => {},
+      emitActivity: fakeEmitActivity,
+    });
+
+    // createProxyServer must receive the injected emitActivity (so core-proxy can emit
+    // its own activity), proving passthrough rather than core-loader swallowing it.
+    assert.equal(typeof createProxyServerCall.emitActivity, "function");
+
+    const started = activityCalls.find((c) => c.action === "started");
+    assert.ok(started, "should emit a proxy.status started activity event");
+    assert.equal(started.topic, "proxy.status");
+    assert.equal(started.impact, "notice");
+  });
 });

@@ -17,6 +17,18 @@ export type ProxyServerLike = {
   close?: () => Promise<void>;
 };
 
+// Generic activity spec mirroring core's Activity convention, kept structurally
+// typed here (no import from core) so core-loader stays dependency-free; the
+// host loader injects an emitActivity backed by core's real emitEvent.
+export type ActivitySpec = {
+  topic: string;
+  action: string;
+  actor?: string;
+  impact?: string;
+  subject?: unknown;
+  details?: unknown;
+};
+
 // TProfile is left generic (not imported from core-proxy) so this module never
 // depends on an app-proxy's RoutingProfile type; callers pass their own profile
 // value and its shape is opaque here.
@@ -28,6 +40,7 @@ export type StartLoaderProxyOptions<TProfile = unknown> = {
     log: (message: string) => void;
     resolveHandler: (providerName: string) => Promise<unknown>;
     notify?: (message: string, level?: string) => void;
+    emitActivity?: (spec: ActivitySpec) => void;
   }) => ProxyServerLike;
   makeDynamicResolver: (listProviders: () => ProxyHandlerEntry[]) => (providerName: string) => Promise<unknown>;
   profile: TProfile;
@@ -41,6 +54,9 @@ export type StartLoaderProxyOptions<TProfile = unknown> = {
   // (the core event bus). Left undefined by default, so core-proxy falls back to
   // its own notification append.
   notify?: (message: string, level?: string) => void;
+  // Routes proxy activity (lifecycle + whatever core-proxy emits) to the host's
+  // Activity pipeline. Left undefined by default; core-loader never requires it.
+  emitActivity?: (spec: ActivitySpec) => void;
 };
 
 export type StartedLoaderProxy = {
@@ -96,11 +112,50 @@ export function startLoaderProxy<TProfile = unknown>(
     readDeployedProviders(reposDir).map((p) => ({ provider: p.provider, handlerPath: p.handlerPath })),
   );
 
-  const server = createProxyServer({ configDir, profile, port, log, resolveHandler, notify: options.notify });
+  const server = createProxyServer({
+    configDir,
+    profile,
+    port,
+    log,
+    resolveHandler,
+    notify: options.notify,
+    emitActivity: options.emitActivity,
+  });
 
   return server.listen().then((boundPort) => {
     stampStartMarker(configDir);
     log("Loader proxy listening on 127.0.0.1:" + (boundPort || port));
-    return { server, configDir, reposDir, log };
+    emitProxyLifecycle(options.emitActivity, "started", { port: boundPort || port });
+    return { server: wrapServerWithStopActivity(server, options.emitActivity), configDir, reposDir, log };
   });
+}
+
+// Best-effort activity emit: never lets a broken/absent emitter take the proxy down.
+function emitProxyLifecycle(
+  emitActivity: ((spec: ActivitySpec) => void) | undefined,
+  action: "started" | "stopped",
+  details?: Record<string, unknown>,
+) {
+  try {
+    emitActivity?.({ topic: "proxy.status", action, impact: "notice", details });
+  } catch {}
+}
+
+// Wraps the returned server's close() (when it has one) so stopping the proxy
+// also emits the "stopped" lifecycle event. Servers with no close hook get no
+// stopped emit here, there is no stop path in this module to attach it to.
+function wrapServerWithStopActivity(
+  server: ProxyServerLike,
+  emitActivity: ((spec: ActivitySpec) => void) | undefined,
+): ProxyServerLike {
+  if (!server.close || !emitActivity) return server;
+  const originalClose = server.close.bind(server);
+  return {
+    ...server,
+    close: async () => {
+      const result = await originalClose();
+      emitProxyLifecycle(emitActivity, "stopped");
+      return result;
+    },
+  };
 }
