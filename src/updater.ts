@@ -200,7 +200,8 @@ export function updateUpdater(done) {
     var command = IS_CLAUDE
       ? "npx -y plugin-updater@latest run --app claude"
       : "npm update -g plugin-updater";
-    var child = spawn(command, { stdio: ["ignore", "ignore", "pipe"], shell: true });
+    // command may be either tool, so the trace is merged unconditionally
+    var child = spawn(command, { stdio: ["ignore", "ignore", "pipe"], shell: true, env: { ...process.env, ...loaderActivityEnv() } });
     var err = "";
     child.stderr.on("data", function (d) { err += d.toString(); });
     child.on("error", function (e) { finish("updater self-update failed: " + ((e && e.message) || e)); });

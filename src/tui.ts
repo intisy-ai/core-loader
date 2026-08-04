@@ -299,11 +299,17 @@ boot();
 
 // Every TUI action starts as one keypress, so one scope here attributes everything
 // it triggers (a config write, an install, a spawned child) to the surface the user
-// was on. Navigation keys emit nothing, so the scope stays free.
+// was on. Navigation keys emit nothing, so the scope stays free. The key is recorded
+// only in list mode: in a text-input mode a keystroke is content the user is typing
+// (a config value, a URL, a token), and the cause is stamped onto every event the
+// keypress produces, so the mode in the surface is all a reader should get.
 function onData(buf) {
   var key = parseKey(buf);
-  var surface = String(S.page || "") + (S.mode && S.mode !== "list" ? " > " + S.mode : "");
-  withLoaderCause({ kind: "user", surface: surface, detail: String(key || "") }, function () { dispatchInput(buf, key); });
+  var typing = S.mode && S.mode !== "list";
+  var surface = String(S.page || "") + (typing ? " > " + S.mode : "");
+  var cause = { kind: "user", surface: surface };
+  if (!typing && key) cause.detail = String(key);
+  withLoaderCause(cause, function () { dispatchInput(buf, key); });
 }
 
 function dispatchInput(buf, key) {
