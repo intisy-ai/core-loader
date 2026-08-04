@@ -121,4 +121,72 @@ describe("proxy-runner", () => {
     assert.equal(started.topic, "proxy.status");
     assert.equal(started.impact, "notice");
   });
+
+  it("wraps close() to emit a stopped lifecycle event while preserving close's own return value", async () => {
+    const configDir = mkdtempSync(join(tmpdir(), "core-loader-proxy-runner-stop-"));
+
+    // Sentinel object identity is asserted below, proving the wrap forwards
+    // close()'s real resolution rather than swallowing/replacing it.
+    const CLOSE_SENTINEL = { reason: "closed-by-test" };
+    const fakeServer = { listen: async () => 6060, close: async () => CLOSE_SENTINEL };
+    function fakeCreateProxyServer() {
+      return fakeServer;
+    }
+    function fakeMakeDynamicResolver() {
+      return async () => null;
+    }
+
+    const activityCalls = [];
+    function fakeEmitActivity(spec) {
+      activityCalls.push(spec);
+    }
+
+    const started = await startLoaderProxy({
+      createProxyServer: fakeCreateProxyServer,
+      makeDynamicResolver: fakeMakeDynamicResolver,
+      profile: {},
+      configDir,
+      port: 6060,
+      log: () => {},
+      emitActivity: fakeEmitActivity,
+    });
+
+    assert.equal(
+      activityCalls.some((c) => c.action === "stopped"),
+      false,
+      "stopped must not fire before close() is called",
+    );
+
+    const closeResult = await started.server.close();
+
+    assert.equal(closeResult, CLOSE_SENTINEL, "wrapped close() must resolve the original return value unchanged");
+
+    const stopped = activityCalls.find((c) => c.action === "stopped");
+    assert.ok(stopped, "should emit a proxy.status stopped activity event once close() runs");
+    assert.equal(stopped.topic, "proxy.status");
+    assert.equal(stopped.impact, "notice");
+  });
+
+  it("returns the original server unwrapped when no emitActivity is injected", async () => {
+    const configDir = mkdtempSync(join(tmpdir(), "core-loader-proxy-runner-no-activity-"));
+
+    const fakeServer = { listen: async () => 7070, close: async () => ({ ok: true }) };
+    function fakeCreateProxyServer() {
+      return fakeServer;
+    }
+    function fakeMakeDynamicResolver() {
+      return async () => null;
+    }
+
+    const started = await startLoaderProxy({
+      createProxyServer: fakeCreateProxyServer,
+      makeDynamicResolver: fakeMakeDynamicResolver,
+      profile: {},
+      configDir,
+      port: 7070,
+      log: () => {},
+    });
+
+    assert.equal(started.server, fakeServer, "server should be returned unwrapped with no emitActivity injected");
+  });
 });
