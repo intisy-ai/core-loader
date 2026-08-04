@@ -196,13 +196,22 @@ export function handleKey(key) {
   if (key === "?" && S.mode === "list") { S.helpOpen = true; return; }
   // Page switching with left/right (only in list mode, not in actions/input)
   if ((S.mode === "list") && (key === "left" || key === "right")) {
-    var pages = ["projects", "plugins", "mcp", "settings"];
+    // "activity" only joins the cycle once its capability is injected, so the
+    // cycle stays contiguous when the host loader hasn't registered it.
+    var pages = ["projects", "plugins", "mcp"];
+    if (S.capabilities && S.capabilities.activity) pages.push("activity");
+    pages.push("settings");
     var pi = pages.indexOf(S.page);
     var switchTo = function (np) {
       S.page = np; S.mode = "list";
       S.globalKeyHandler = null;   // leaving the updater gate: don't let it intercept keys on the new tab
       // landing on Settings with the Versioning sub-tab active → re-detect config-ledger
       if (np === "settings" && S.settingsSubPage === "versioning") { try { reconcileConfigLedger(); } catch (e) {} }
+      if (np === "activity") {
+        var readFn = S.capabilities && S.capabilities.activity && S.capabilities.activity.read;
+        try { S.activityRecords = (typeof readFn === "function" && readFn()) || []; } catch (e) { S.activityRecords = []; }
+        S.activityCursor = 0;
+      }
       render();
     };
     if (key === "left" && pi > 0) { switchTo(pages[pi - 1]); return; }
@@ -216,6 +225,8 @@ export function handleKey(key) {
     handleProjectKey(key);
   } else if (S.page === "mcp") {
     handleMcpKey(key);
+  } else if (S.page === "activity") {
+    handleActivityKey(key);
   } else if (S.page === "settings") {
     handleSettingsKey(key);
   } else {
@@ -1357,6 +1368,22 @@ export function handleMcpKey(key) {
     }
     else if (key === "escape" || key === "left") { S.mcpMode = "catalog"; }
   }
+}
+
+// Read-only: no per-row action menu, just cursor movement and a manual refresh.
+export function handleActivityKey(key) {
+  if (key === "up" || key === "w") { S.activityCursor = Math.max(0, S.activityCursor - 1); }
+  else if (key === "down" || key === "s") {
+    S.activityCursor = Math.min(Math.max(0, (S.activityRecords || []).length - 1), S.activityCursor + 1);
+  }
+  else if (key === "r") {
+    var readFn = S.capabilities && S.capabilities.activity && S.capabilities.activity.read;
+    try { S.activityRecords = (typeof readFn === "function" && readFn()) || []; } catch (e) { S.activityRecords = []; }
+    S.activityCursor = 0;
+    S.activityScrollOff = 0;
+    flash("Refreshed.");
+  }
+  else if (key === "q" || key === "escape") { cleanup(); process.exit(1); }
 }
 
 export function handleSearchData(buf) {

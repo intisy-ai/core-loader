@@ -9,6 +9,7 @@ import { buildConfirm, buildHelp, updateSpinner } from "./common.js";
 import { buildProjects } from "./projects.js";
 import { buildPlugins } from "./plugins.js";
 import { buildMcp } from "./mcp.js";
+import { buildActivity } from "./activity.js";
 import { buildSettings } from "./settings.js";
 
 export function render() {
@@ -44,11 +45,15 @@ export function render() {
   pushHead("  " + BOLD + ACCENT + APP_NAME + RST + DIM + " · Loader" + RST);
   pushHead("  " + rule(barW));
   var showPluginsTab = S.pluginItems.length > 0 || S.MARKETPLACE_CATALOG.length > 0;
+  // Activity is a capability-gated tab: shown only once the host loader has
+  // injected S.capabilities.activity (registered by tuiApi.registerCapabilities).
+  var showActivityTab = !!(S.capabilities && S.capabilities.activity);
   var projTab = S.page === "projects" ? (BOLD + ACCENT + BG_SEL + " Projects " + RST) : (GRAY + " Projects " + RST);
   var plugTab = showPluginsTab ? (S.page === "plugins" ? (BOLD + ACCENT + BG_SEL + " Plugins " + RST) : (GRAY + " Plugins " + RST)) : "";
   var mcpTab = S.page === "mcp" ? (BOLD + ACCENT + BG_SEL + " MCP " + RST) : (GRAY + " MCP " + RST);
+  var activityTab = showActivityTab ? (S.page === "activity" ? (BOLD + ACCENT + BG_SEL + " Activity " + RST) : (GRAY + " Activity " + RST)) : "";
   var settingsTab = S.page === "settings" ? (BOLD + ACCENT + BG_SEL + " Settings " + RST) : (GRAY + " Settings " + RST);
-  pushHead("  " + projTab + "  " + plugTab + "  " + mcpTab + "  " + settingsTab + "    " + DIM + "← →" + RST);
+  pushHead("  " + projTab + "  " + plugTab + "  " + mcpTab + "  " + activityTab + "  " + settingsTab + "    " + DIM + "← →" + RST);
   pushHead("");
 
   if (S.helpOpen) {
@@ -59,6 +64,8 @@ export function render() {
     buildProjects(pushBody, pushFoot, cols, barW, pushSticky);
   } else if (S.page === "mcp") {
     buildMcp(pushBody, pushFoot, cols, barW, pushSticky);
+  } else if (S.page === "activity" && showActivityTab) {
+    buildActivity(pushBody, pushFoot, cols, barW, pushSticky);
   } else if (S.page === "settings") {
     buildSettings(pushBody, pushFoot, cols, barW, pushSticky);
   } else {
@@ -78,6 +85,7 @@ export function render() {
   var activeScroll = 0;
   if (S.page === "projects") activeScroll = S.scrollOff;
   else if (S.page === "mcp") activeScroll = S.mcpScrollOff;
+  else if (S.page === "activity") activeScroll = S.activityScrollOff;
   else if (S.page === "settings") activeScroll = S.settingsScrollOff;
   else if (S.mode === "pcommits") activeScroll = S.cscrollOff;
   else if (S.page === "plugins" && S.pluginSubPage === "marketplace") activeScroll = S.mkScrollOff;
@@ -99,6 +107,7 @@ export function render() {
 
     if (S.page === "projects") S.scrollOff = activeScroll;
     else if (S.page === "mcp") S.mcpScrollOff = activeScroll;
+    else if (S.page === "activity") S.activityScrollOff = activeScroll;
     else if (S.page === "settings") S.settingsScrollOff = activeScroll;
     else if (S.mode === "pcommits") S.cscrollOff = activeScroll;
     else if (S.page === "plugins" && S.pluginSubPage === "marketplace") S.mkScrollOff = activeScroll;
