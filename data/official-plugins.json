@@ -1,0 +1,9 @@
+[
+  { "name": "antigravity-auth", "repoName": "antigravity-auth", "full_name": "intisy-ai/antigravity-auth", "url": "https://github.com/intisy-ai/antigravity-auth.git", "desc": "Antigravity (Gemini) auth provider: OAuth accounts, model mapping, rotation", "author": "intisy-ai", "category": "Official" },
+  { "name": "claude-code-auth", "repoName": "claude-code-auth", "full_name": "intisy-ai/claude-code-auth", "url": "https://github.com/intisy-ai/claude-code-auth.git", "desc": "Claude Code auth provider: multi-account OAuth with cooldown & rotation", "author": "intisy-ai", "category": "Official" },
+  { "name": "stub-auth", "repoName": "stub-auth", "full_name": "intisy-ai/stub-auth", "url": "https://github.com/intisy-ai/stub-auth.git", "desc": "Example provider showcasing the core-auth SDK (stub/mock)", "author": "intisy-ai", "category": "Official" },
+  { "name": "metric-dashboard", "repoName": "metric-dashboard", "full_name": "intisy-ai/metric-dashboard", "url": "https://github.com/intisy-ai/metric-dashboard.git", "desc": "Local usage & metrics dashboard with a web UI", "author": "intisy-ai", "category": "Official" },
+  { "name": "sync-bridge", "repoName": "sync-bridge", "full_name": "intisy-ai/sync-bridge", "url": "https://github.com/intisy-ai/sync-bridge.git", "desc": "Sync config & accounts across opencode and Claude Code", "author": "intisy-ai", "category": "Official" },
+  { "name": "wakatime-sync", "repoName": "wakatime-sync", "full_name": "intisy-ai/wakatime-sync", "url": "https://github.com/intisy-ai/wakatime-sync.git", "desc": "WakaTime time-tracking heartbeats for opencode & Claude Code", "author": "intisy-ai", "category": "Official" },
+  { "name": "config-ledger", "repoName": "config-ledger", "full_name": "intisy-ai/config-ledger", "url": "https://github.com/intisy-ai/config-ledger.git", "desc": "Git-backed config: versioned sanitized snapshots with history, rollback & profiles", "author": "intisy-ai", "category": "Official" }
+]

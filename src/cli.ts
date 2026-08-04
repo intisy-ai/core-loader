@@ -7,8 +7,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { execFileSync } from "child_process";
 import {
-  APP_NAME,
-  CLI_CMD,
+  IS_CLAUDE,
   CONFIG_FOLDER,
   PLUGINS_JSON,
   REPOS_DIR,
@@ -18,7 +17,7 @@ import { readDeployedProviders } from "./loader-runtime.js";
 
 const PROXY_PORT = parseInt(process.env.HUB_PROXY_PORT || "34567", 10);
 const PROXY_URL = "http://127.0.0.1:" + PROXY_PORT;
-const UPDATER_APP = /claude/i.test(APP_NAME) || /claude/i.test(CLI_CMD) ? "claude" : "opencode";
+const UPDATER_APP = IS_CLAUDE ? "claude" : "opencode";
 const ACCOUNTS_JSON = join(CONFIG_FOLDER, "accounts.json");
 const LOADER_CONFIG = join(CONFIG_FOLDER, UPDATER_APP === "claude" ? "claude-code-loader.json" : "opencode-loader.json");
 

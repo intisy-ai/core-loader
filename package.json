@@ -1,5 +1,6 @@
 {
   "private": true,
+  "files": ["dist/", "data/"],
   "scripts": {
     "build": "npx tsc",
     "test": "npm run build && vitest run"
