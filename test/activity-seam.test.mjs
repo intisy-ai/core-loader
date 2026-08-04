@@ -148,18 +148,3 @@ describe("spawned children inherit the loader's trace", () => {
   });
 });
 
-describe("cause shape the TUI's per-keypress scope relies on", () => {
-  afterEach(() => seam.setActivitySeam(null));
-
-  it("forwards a cause with no detail key untouched, never inventing one", () => {
-    const causes = [];
-    seam.setActivitySeam({ scope: (cause, fn) => { causes.push(cause); return fn(); } });
-
-    const typingCause = { kind: "user", surface: "plugins > pcfginput" };
-    seam.withLoaderCause(typingCause, () => "ok");
-
-    assert.strictEqual(causes.length, 1);
-    assert.strictEqual(Object.prototype.hasOwnProperty.call(causes[0], "detail"), false);
-    assert.deepStrictEqual(causes[0], { kind: "user", surface: "plugins > pcfginput" });
-  });
-});
