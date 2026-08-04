@@ -61,4 +61,78 @@ describe("activity-seam", () => {
     assert.strictEqual(emitted[0].subject.id, "some-loader");
     assert.strictEqual(emitted[0].details.version, "1.2.3");
   });
+
+  it("returns the action's own value when the scope throws AFTER the action already succeeded", () => {
+    let calls = 0;
+    seam.setActivitySeam({ scope: (cause, fn) => { fn(); throw new Error("boom-after"); } });
+
+    let result;
+    assert.doesNotThrow(() => {
+      result = seam.withLoaderCause({ kind: "user" }, () => { calls++; return "computed-value"; });
+    });
+    assert.strictEqual(result, "computed-value");
+    assert.strictEqual(calls, 1);
+  });
+
+  it("still runs the action exactly once when the scope returns without ever invoking fn", () => {
+    let calls = 0;
+    seam.setActivitySeam({ scope: () => undefined });
+
+    const result = seam.withLoaderCause({ kind: "user" }, () => { calls++; return "R"; });
+    assert.strictEqual(result, "R");
+    assert.strictEqual(calls, 1);
+  });
+
+  it("propagates an error the action itself throws, having run the action exactly once", () => {
+    let calls = 0;
+    seam.setActivitySeam({ scope: (cause, fn) => fn() });
+
+    assert.throws(
+      () => seam.withLoaderCause({ kind: "user" }, () => { calls++; throw new Error("action boom"); }),
+      /action boom/,
+    );
+    assert.strictEqual(calls, 1);
+  });
+
+  it("runs the action exactly once, unscoped, when the scope throws before ever calling fn", () => {
+    let calls = 0;
+    seam.setActivitySeam({ scope: () => { throw new Error("scope boom"); } });
+
+    const result = seam.withLoaderCause({ kind: "user" }, () => { calls++; return "ok"; });
+    assert.strictEqual(result, "ok");
+    assert.strictEqual(calls, 1);
+  });
+
+  it("does not let a scope's own return value override the action's result", () => {
+    let calls = 0;
+    seam.setActivitySeam({ scope: (cause, fn) => { fn(); return "hijacked"; } });
+
+    const result = seam.withLoaderCause({ kind: "user" }, () => { calls++; return "real-value"; });
+    assert.strictEqual(result, "real-value");
+    assert.strictEqual(calls, 1);
+  });
+
+  it("returns falsy action values exactly, uncoerced, through every scope path, running the action exactly once each time", () => {
+    const values = [0, "", false, null, undefined];
+    const scopeFactories = {
+      noSeamInstalled: null,
+      workingScope: () => (cause, fn) => fn(),
+      throwsAfterAction: () => (cause, fn) => { fn(); throw new Error("boom"); },
+      neverCallsAction: () => () => undefined,
+      throwsBeforeAction: () => () => { throw new Error("boom"); },
+      hijacksReturnValue: () => (cause, fn) => { fn(); return "hijacked"; },
+    };
+
+    for (const [name, factory] of Object.entries(scopeFactories)) {
+      for (const v of values) {
+        let calls = 0;
+        seam.setActivitySeam(factory ? { scope: factory() } : null);
+
+        const result = seam.withLoaderCause({ kind: "user" }, () => { calls++; return v; });
+
+        assert.ok(Object.is(result, v), name + " with value " + String(v) + " returned " + String(result));
+        assert.strictEqual(calls, 1, name + " with value " + String(v) + " ran the action " + calls + " times");
+      }
+    }
+  });
 });
