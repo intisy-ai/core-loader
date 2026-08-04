@@ -136,3 +136,14 @@ describe("activity-seam", () => {
     }
   });
 });
+
+describe("spawned children inherit the loader's trace", () => {
+  afterEach(() => seam.setActivitySeam(null));
+
+  it("merges the seam env into a child environment without dropping process.env", () => {
+    seam.setActivitySeam({ env: () => ({ HUB_ACTIVITY_TRACE: "t1", HUB_ACTIVITY_CAUSE: '{"kind":"user"}' }) });
+    const childEnv = { ...process.env, ...seam.loaderActivityEnv() };
+    assert.strictEqual(childEnv.HUB_ACTIVITY_TRACE, "t1");
+    assert.strictEqual(childEnv.PATH, process.env.PATH);
+  });
+});

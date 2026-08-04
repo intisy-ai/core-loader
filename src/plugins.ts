@@ -9,6 +9,7 @@ import { REPOS_DIR, PLUGINS_DIR } from "./env.js";
 import { loadPlugins } from "./config.js";
 import { getFolderName, loadNpmPlugins, getUpdaterVersion } from "./updater.js";
 import { S } from "./state.js";
+import { loaderActivityEnv } from "./activity-seam.js";
 
 export function gitText(args, cwd) {
   try {
@@ -316,7 +317,7 @@ export function buildConfigItems(schema) {
 // is the only thing that writes a file, so a config appears only once actually changed.
 export function setPluginConfig(bundle, key, valueStr) {
   try {
-    execSync('node "' + bundle + '" config set ' + JSON.stringify(key) + ' ' + JSON.stringify(String(valueStr)), { timeout: 8000, stdio: ["ignore", "ignore", "ignore"] });
+    execSync('node "' + bundle + '" config set ' + JSON.stringify(key) + ' ' + JSON.stringify(String(valueStr)), { timeout: 8000, stdio: ["ignore", "ignore", "ignore"], env: { ...process.env, ...loaderActivityEnv() } });
     return "";
   } catch (e) { return (e && e.message) || "set failed"; }
 }
