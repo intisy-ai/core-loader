@@ -70,6 +70,8 @@ export const S = {
   // activityRecords caches the last read() result; refreshed on tab entry and 'r'.
   activityRecords: [],
   activityCursor: 0,
+  // narrows what the injected reader returns; empty means every impact
+  activityImpacts: [],
   activityScrollOff: 0,
 
   // MCP page

@@ -305,11 +305,18 @@ export function probeConfigSchemaAsync(pitem) {
 export function buildConfigItems(schema) {
   var defaults = (schema && schema.defaults) || {};
   var current = (schema && schema.current) || {};
+  var fields = (schema && schema.fields) || [];
+  var byKey = {};
+  for (var i = 0; i < fields.length; i++) { if (fields[i] && fields[i].key) byKey[fields[i].key] = fields[i]; }
   var merged = Object.assign({}, defaults, current);
   return Object.keys(merged).map(function (k) {
     var isSet = Object.prototype.hasOwnProperty.call(current, k);
     var value = isSet ? current[k] : defaults[k];
-    return { key: k, value: value, def: defaults[k], isSet: isSet, type: typeof value };
+    var field = byKey[k];
+    var item = { key: k, value: value, def: defaults[k], isSet: isSet, type: typeof value };
+    // A declared choice list turns a free-text row into one that steps through its options.
+    if (field && Array.isArray(field.options) && field.options.length) item.options = field.options;
+    return item;
   });
 }
 

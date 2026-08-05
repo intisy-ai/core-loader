@@ -17,7 +17,9 @@ function impactGlyph(impact) {
 
 export function buildActivity(pushBody, pushFoot, cols, barW, pushSticky) {
   var readFn = S.capabilities && S.capabilities.activity && S.capabilities.activity.read;
-  pushSticky("  " + BOLD + WHITE + "Activity" + RST + GRAY + " (" + (S.activityRecords || []).length + ")" + RST);
+  var impacts = S.activityImpacts || [];
+  var filterNote = impacts.length ? GRAY + " [" + impacts.join(",") + "]" + RST : "";
+  pushSticky("  " + BOLD + WHITE + "Activity" + RST + GRAY + " (" + (S.activityRecords || []).length + ")" + RST + filterNote);
   pushSticky("");
 
   if (typeof readFn !== "function") {
@@ -39,7 +41,12 @@ export function buildActivity(pushBody, pushFoot, cols, barW, pushSticky) {
 
   var tsW = 8;
   var srcW = Math.min(20, Math.max(10, cols - 40));
-  var textW = Math.max(10, cols - 20 - tsW - srcW);
+  // The app and cause columns are worth less than a readable message, so a narrow
+  // terminal drops them rather than truncating the text into uselessness.
+  var wide = cols >= 100;
+  var whereW = wide ? 12 : 0;
+  var whyW = wide ? 8 : 0;
+  var textW = Math.max(10, cols - 20 - tsW - srcW - (whereW ? whereW + 1 : 0) - (whyW ? whyW + 1 : 0));
   for (var i = 0; i < records.length; i++) {
     var rec = records[i] || {};
     var sel = i === S.activityCursor;
@@ -47,9 +54,13 @@ export function buildActivity(pushBody, pushFoot, cols, barW, pushSticky) {
     var bg = sel ? BG_SEL : "";
     var srcStyle = sel ? (BOLD + WHITE) : DIM;
     var textStyle = sel ? WHITE : GRAY;
+    var where = (rec.origin && rec.origin.app) || "";
+    var why = (rec.cause && rec.cause.kind) || "";
     pushBody(
       "  " + bg + arrow + impactGlyph(rec.impact) + " " + GRAY + pad(timeAgo(rec.ts), tsW) + RST +
       bg + " " + srcStyle + pad(trunc(String(rec.source || ""), srcW), srcW) + RST +
+      (whereW ? bg + " " + DIM + pad(trunc(String(where), whereW), whereW) + RST : "") +
+      (whyW ? bg + " " + DIM + pad(trunc(String(why), whyW), whyW) + RST : "") +
       bg + "  " + textStyle + trunc(String(rec.text || ""), textW) + RST,
       sel
     );
@@ -59,5 +70,5 @@ export function buildActivity(pushBody, pushFoot, cols, barW, pushSticky) {
     pushFoot(messageLine(cols));
   }
   pushFoot("  " + rule(barW));
-  pushFoot(hints([["↑↓", "move"], ["r", "refresh"], ["q", "quit"]]));
+  pushFoot(hints([["↑↓", "move"], ["i", "impact"], ["r", "refresh"], ["q", "quit"]]));
 }

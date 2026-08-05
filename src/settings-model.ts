@@ -5,6 +5,7 @@
 // Versioning tab owns all config-ledger UI.
 import { probeConfigSchema, buildConfigItems } from "./plugins.js";
 import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "./config.js";
+import { S } from "./state.js";
 
 export type SettingsItem = { key: string; value: unknown; def: unknown; isSet: boolean; type: string };
 export type SettingsSection = {
@@ -15,8 +16,14 @@ export type SettingsSection = {
   items: SettingsItem[];
 };
 
+// The host loader injects core's own declaration of the shared settings (defaults plus
+// field types), so a key core adds shows up here with no change. The local constant is
+// only the fallback for a host that injects nothing.
 export function buildGlobalSection(): SettingsSection {
-  const items = buildConfigItems({ defaults: GLOBAL_SETTINGS_DEFAULTS, current: loadGlobalSettings() }) as SettingsItem[];
+  const injected = (S.capabilities && (S.capabilities as any).globalSettings) || null;
+  const defaults = (injected && injected.defaults) || GLOBAL_SETTINGS_DEFAULTS;
+  const fields = (injected && injected.fields) || [];
+  const items = buildConfigItems({ defaults, fields, current: loadGlobalSettings() }) as SettingsItem[];
   return { label: "Global", kind: "global", file: "settings.json", bundle: null, items };
 }
 
