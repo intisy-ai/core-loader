@@ -1,6 +1,10 @@
 import { describe, it } from "vitest";
 import assert from "node:assert";
-import { buildSettingsEntries, firstSelectableIndex } from "../dist/settings-model.js";
+import { buildSettingsEntries, firstSelectableIndex, buildGlobalSection } from "../dist/settings-model.js";
+import { createRequire } from "node:module";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("settings-model", () => {
   it("buildSettingsEntries and firstSelectableIndex behave as expected", () => {
@@ -38,5 +42,36 @@ describe("settings-model", () => {
     // only-loading (no probed plugins yet) still shows the Plugins header
     const e5 = buildSettingsEntries([secs[0]], ["x"]);
     assert.deepEqual(e5.map((e) => e.type), ["header", "group", "header", "loading"]);
+  });
+});
+
+describe("buildGlobalSection", () => {
+  const require = createRequire(import.meta.url);
+  const { S } = require("../dist/state.js");
+
+  it("renders the settings the host injected, including a choice field", () => {
+    S.capabilities = {
+      globalSettings: {
+        defaults: { activityMaxDays: 0, activityMinImpact: "info" },
+        fields: [
+          { key: "activityMaxDays", type: "number", label: "Keep at most (days)" },
+          { key: "activityMinImpact", type: "select", options: [{ value: "info", label: "info" }, { value: "error", label: "error" }] },
+        ],
+      },
+    };
+    try {
+      const items = buildGlobalSection().items;
+      const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
+      assert.ok(byKey.activityMaxDays, "expected the injected retention key");
+      assert.deepEqual(byKey.activityMinImpact.options.map((o) => o.value), ["info", "error"]);
+    } finally {
+      S.capabilities = {};
+    }
+  });
+
+  it("falls back to its own defaults when the host injects nothing", () => {
+    S.capabilities = {};
+    const keys = buildGlobalSection().items.map((i) => i.key);
+    assert.ok(keys.includes("logConsole"), "expected the fallback keys: " + keys.join(","));
   });
 });

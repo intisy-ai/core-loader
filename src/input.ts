@@ -23,6 +23,71 @@ import { refreshVersioning, reconcileConfigLedger, VG_INIT_OPTS, VG_MENU_ITEMS }
 import { buildGlobalSection, buildPluginSections } from "./settings-model.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
+import { emitLoaderActivity } from "./activity-seam.js";
+
+// Enter on a config row: a boolean flips, a field with a declared choice list steps to
+// its next option, anything else opens the text input. Shared by both config editors so
+// the write path exists once.
+function activateConfigItem(citem, textMode) {
+  if (!citem) return;
+  var next = null;
+  if (citem.type === "boolean") next = !citem.value;
+  else if (Array.isArray(citem.options) && citem.options.length) {
+    var values = citem.options.map(function (o) { return typeof o === "string" ? o : o.value; });
+    var at = values.indexOf(String(citem.value));
+    next = values[(at + 1) % values.length];
+  }
+  if (next === null) {
+    S.configEditKey = citem.key;
+    S.inputBuf = (citem.value === undefined || citem.value === null) ? "" : String(citem.value);
+    S.mode = textMode;
+    return;
+  }
+  var err = S.configTarget.global
+    ? setGlobalSetting(citem.key, String(next))
+    : setPluginConfig(S.configTarget.bundle, citem.key, String(next));
+  if (err) { flash(citem.key + ": " + err); return; }
+  refreshConfigItems();
+  flash(citem.key + " = " + next + " (restart to apply)");
+}
+
+// The activity reader is injected (core-loader reads no log itself), so the impact
+// filter travels as a query. A host whose reader ignores the argument simply returns
+// everything, which is why the filter is applied by the reader and not re-applied here.
+function readActivityRecords() {
+  var readFn = S.capabilities && S.capabilities.activity && S.capabilities.activity.read;
+  if (typeof readFn !== "function") return [];
+  var query = { limit: 200 };
+  var impacts = S.activityImpacts || [];
+  if (impacts.length) query.impacts = impacts.slice();
+  try { return readFn(query) || []; } catch (e) { return []; }
+}
+
+// Ordered so one key walks from "only what broke" to "everything worth reading".
+var IMPACT_CYCLE = [[], ["error"], ["error", "warning"], ["notice", "warning", "error"]];
+
+function cycleImpactFilter() {
+  var current = JSON.stringify(S.activityImpacts || []);
+  var at = 0;
+  for (var i = 0; i < IMPACT_CYCLE.length; i++) {
+    if (JSON.stringify(IMPACT_CYCLE[i]) === current) { at = i; break; }
+  }
+  S.activityImpacts = IMPACT_CYCLE[(at + 1) % IMPACT_CYCLE.length].slice();
+}
+
+// Plugin lifecycle facts share one vocabulary with plugin-updater's, so a reader sees
+// the same actions whoever performed them. Only actions this menu performs ITSELF are
+// reported here: what it delegates to plugin-updater, plugin-updater already reports.
+function reportPluginAction(action, name, details) {
+  emitLoaderActivity({
+    topic: "plugin.installed",
+    action: action,
+    impact: "notice",
+    outcome: "ok",
+    subject: { kind: "plugin", id: name, label: name },
+    details: details || {},
+  });
+}
 
 // Open a project through the session picker. Sessions come from the active
 // app's listSessions capability (absent -> none, picker skipped). With no prior
@@ -196,13 +261,21 @@ export function handleKey(key) {
   if (key === "?" && S.mode === "list") { S.helpOpen = true; return; }
   // Page switching with left/right (only in list mode, not in actions/input)
   if ((S.mode === "list") && (key === "left" || key === "right")) {
-    var pages = ["projects", "plugins", "mcp", "settings"];
+    // "activity" only joins the cycle once its capability is injected, so the
+    // cycle stays contiguous when the host loader hasn't registered it.
+    var pages = ["projects", "plugins", "mcp"];
+    if (S.capabilities && S.capabilities.activity) pages.push("activity");
+    pages.push("settings");
     var pi = pages.indexOf(S.page);
     var switchTo = function (np) {
       S.page = np; S.mode = "list";
       S.globalKeyHandler = null;   // leaving the updater gate: don't let it intercept keys on the new tab
       // landing on Settings with the Versioning sub-tab active → re-detect config-ledger
       if (np === "settings" && S.settingsSubPage === "versioning") { try { reconcileConfigLedger(); } catch (e) {} }
+      if (np === "activity") {
+        S.activityRecords = readActivityRecords();
+        S.activityCursor = 0;
+      }
       render();
     };
     if (key === "left" && pi > 0) { switchTo(pages[pi - 1]); return; }
@@ -216,6 +289,8 @@ export function handleKey(key) {
     handleProjectKey(key);
   } else if (S.page === "mcp") {
     handleMcpKey(key);
+  } else if (S.page === "activity") {
+    handleActivityKey(key);
   } else if (S.page === "settings") {
     handleSettingsKey(key);
   } else {
@@ -648,6 +723,7 @@ export function handlePluginKey(key) {
         }
         S.pluginItems = buildCombinedPluginList();
         if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+        if (!err) reportPluginAction("updated", pitem.name, { kind: "npm", message: "Updated " + pitem.name });
         flash(err ? pitem.name + ": " + err : pitem.name + " updated. Restart " + APP_NAME + " to apply.");
         S.mode = "list";
       }
@@ -735,21 +811,7 @@ export function handlePluginKey(key) {
     if (key === "up" || key === "w") { S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
     else if (key === "down" || key === "s") { S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
     else if (key === "escape" || key === "q" || key === "left") { S.mode = "pactions"; }
-    else if ((key === "enter" || key === "space") && citem) {
-      if (citem.type === "boolean") {
-        // booleans toggle in place, no typing
-        var nv = !citem.value;
-        var berr = S.configTarget.global
-          ? setGlobalSetting(citem.key, nv ? "true" : "false")
-          : setPluginConfig(S.configTarget.bundle, citem.key, nv ? "true" : "false");
-        if (berr) { flash(citem.key + ": " + berr); }
-        else { refreshConfigItems(); flash(citem.key + " = " + nv + " (restart to apply)"); }
-      } else {
-        S.configEditKey = citem.key;
-        S.inputBuf = (citem.value === undefined || citem.value === null) ? "" : String(citem.value);
-        S.mode = "pcfginput";
-      }
-    }
+    else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
   } else if (S.mode === "confirm") {
     if (key === "y") {
       if (S.confirmAction && S.confirmAction.type === "uninstall-plugin") {
@@ -768,6 +830,7 @@ export function handlePluginKey(key) {
         savePlugins(cplugins);
         S.pluginItems = buildCombinedPluginList();
         if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+        reportPluginAction("uninstalled", cpitem.name, { kind: "git", message: "Uninstalled " + cpitem.name });
         flash(cpitem.name + " uninstalled.");
       } else if (S.confirmAction && S.confirmAction.type === "uninstall-npm") {
         var cpitem = S.confirmAction.target;
@@ -783,6 +846,7 @@ export function handlePluginKey(key) {
           }
           S.pluginItems = buildCombinedPluginList();
           if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+          reportPluginAction("uninstalled", cpitem.name, { kind: "npm", message: "Uninstalled " + cpitem.name });
           flash(cpitem.name + " uninstalled. Restart " + APP_NAME + ".");
         } catch(e) {
           flash("Uninstall failed. Try: npm uninstall -g " + cpitem.name);
@@ -820,6 +884,8 @@ export function handlePluginKey(key) {
         } catch (e) {
           flash("Checkout failed"); S.mode = "list"; return;
         }
+        // only this branch is our own work: updater.downgrade() reports itself
+        reportPluginAction("downgraded", pitem.name, { hash: citem.hash, message: "Downgraded " + pitem.name + " to " + citem.hash });
       }
       if (err === "Success" || !err) err = "";
       
@@ -919,6 +985,7 @@ export function handleConfirmKey(key) {
       }
       S.pluginItems = buildCombinedPluginList();
       if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+      reportPluginAction("uninstalled", pitem.name, { kind: "git", message: "Uninstalled " + pitem.name });
       flash(pitem.name + " uninstalled.");
     } else if (S.confirmAction && S.confirmAction.type === "uninstall-npm") {
       var npmName = S.confirmAction.target.name || S.confirmAction.target;
@@ -929,6 +996,7 @@ export function handleConfirmKey(key) {
       }
       S.pluginItems = buildCombinedPluginList();
       if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+      if (!npmErr) reportPluginAction("uninstalled", npmName, { kind: "npm", message: "Uninstalled " + npmName });
       flash(npmErr ? npmName + ": " + npmErr : npmName + " removed from opencode.json. Restart " + APP_NAME + " to unload.");
     } else if (S.confirmAction && S.confirmAction.type === "uninstall-mcp") {
       uninstallMcpServer(S.confirmAction.target);
@@ -1067,20 +1135,7 @@ export function handleSettingsKey(key) {
     if (key === "up" || key === "w") { S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
     else if (key === "down" || key === "s") { S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
     else if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; }
-    else if ((key === "enter" || key === "space") && citem) {
-      if (citem.type === "boolean") {
-        var nv = !citem.value;
-        var berr = S.configTarget.global
-          ? setGlobalSetting(citem.key, nv ? "true" : "false")
-          : setPluginConfig(S.configTarget.bundle, citem.key, nv ? "true" : "false");
-        if (berr) { flash(citem.key + ": " + berr); }
-        else { refreshConfigItems(); flash(citem.key + " = " + nv + " (restart to apply)"); }
-      } else {
-        S.configEditKey = citem.key;
-        S.inputBuf = (citem.value === undefined || citem.value === null) ? "" : String(citem.value);
-        S.mode = "pcfginput";
-      }
-    }
+    else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
     return;
   }
 
@@ -1357,6 +1412,29 @@ export function handleMcpKey(key) {
     }
     else if (key === "escape" || key === "left") { S.mcpMode = "catalog"; }
   }
+}
+
+// Read-only: no per-row action menu, just cursor movement and a manual refresh.
+export function handleActivityKey(key) {
+  if (key === "up" || key === "w") { S.activityCursor = Math.max(0, S.activityCursor - 1); }
+  else if (key === "down" || key === "s") {
+    S.activityCursor = Math.min(Math.max(0, (S.activityRecords || []).length - 1), S.activityCursor + 1);
+  }
+  else if (key === "r") {
+    S.activityRecords = readActivityRecords();
+    S.activityCursor = 0;
+    S.activityScrollOff = 0;
+    flash("Refreshed.");
+  }
+  else if (key === "i") {
+    cycleImpactFilter();
+    S.activityRecords = readActivityRecords();
+    S.activityCursor = 0;
+    S.activityScrollOff = 0;
+    var active = S.activityImpacts.length ? S.activityImpacts.join(", ") : "all impacts";
+    flash("Showing " + active + ".");
+  }
+  else if (key === "q" || key === "escape") { cleanup(); process.exit(1); }
 }
 
 export function handleSearchData(buf) {

@@ -11,6 +11,7 @@ import { loadPlugins, catalogCacheHours } from "./config.js";
 import { scheduleRender } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
 import { getUpdater } from "./updater.js";
+import { loaderActivityEnv } from "./activity-seam.js";
 
 export function invalidateCatalogCache() {
   try { unlinkSync(CATALOG_CACHE_PATH); } catch {}
@@ -819,7 +820,7 @@ export function getMarketplaceActions(item, hasUpdater) {
 export function installMarketplacePlugin(entry, done) {
   var url = entry.url;
   var app = APP_NAME === "Claude Code" ? "claude" : "opencode";
-  exec("npx -y plugin-updater@latest add " + url + " --app " + app, { timeout: 180000 }, function(err) {
+  exec("npx -y plugin-updater@latest add " + url + " --app " + app, { timeout: 180000, env: { ...process.env, ...loaderActivityEnv() } }, function(err) {
     done(err ? ("Install failed: " + ((err && err.message) || err)) : null);
   });
 }

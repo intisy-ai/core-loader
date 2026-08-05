@@ -9,6 +9,7 @@ import { REPOS_DIR, PLUGINS_DIR } from "./env.js";
 import { loadPlugins } from "./config.js";
 import { getFolderName, loadNpmPlugins, getUpdaterVersion } from "./updater.js";
 import { S } from "./state.js";
+import { loaderActivityEnv } from "./activity-seam.js";
 
 export function gitText(args, cwd) {
   try {
@@ -304,11 +305,18 @@ export function probeConfigSchemaAsync(pitem) {
 export function buildConfigItems(schema) {
   var defaults = (schema && schema.defaults) || {};
   var current = (schema && schema.current) || {};
+  var fields = (schema && schema.fields) || [];
+  var byKey = {};
+  for (var i = 0; i < fields.length; i++) { if (fields[i] && fields[i].key) byKey[fields[i].key] = fields[i]; }
   var merged = Object.assign({}, defaults, current);
   return Object.keys(merged).map(function (k) {
     var isSet = Object.prototype.hasOwnProperty.call(current, k);
     var value = isSet ? current[k] : defaults[k];
-    return { key: k, value: value, def: defaults[k], isSet: isSet, type: typeof value };
+    var field = byKey[k];
+    var item = { key: k, value: value, def: defaults[k], isSet: isSet, type: typeof value };
+    // A declared choice list turns a free-text row into one that steps through its options.
+    if (field && Array.isArray(field.options) && field.options.length) item.options = field.options;
+    return item;
   });
 }
 
@@ -316,7 +324,7 @@ export function buildConfigItems(schema) {
 // is the only thing that writes a file, so a config appears only once actually changed.
 export function setPluginConfig(bundle, key, valueStr) {
   try {
-    execSync('node "' + bundle + '" config set ' + JSON.stringify(key) + ' ' + JSON.stringify(String(valueStr)), { timeout: 8000, stdio: ["ignore", "ignore", "ignore"] });
+    execSync('node "' + bundle + '" config set ' + JSON.stringify(key) + ' ' + JSON.stringify(String(valueStr)), { timeout: 8000, stdio: ["ignore", "ignore", "ignore"], env: { ...process.env, ...loaderActivityEnv() } });
     return "";
   } catch (e) { return (e && e.message) || "set failed"; }
 }

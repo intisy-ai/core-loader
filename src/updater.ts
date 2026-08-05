@@ -7,6 +7,7 @@ import { homedir } from "os";
 import { execSync } from "child_process";
 import { PLUGINS_DIR, CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, IS_CLAUDE, tuiLog } from "./env.js";
 import { S } from "./state.js";
+import { loaderActivityEnv } from "./activity-seam.js";
 
 // Every place the deployed plugin-updater might live. The npx roots differ per OS:
 // ~/.npm/_npx on unix, %LOCALAPPDATA%/%APPDATA%\npm-cache\_npx on Windows; all must
@@ -98,7 +99,7 @@ export function setupPlugin(repo, done) {
     PU_PATH: updaterPath, PU_NAME: repo.name, PU_URL: repo.url || "", PU_BRANCH: repo.branch || "",
     PLUGIN_UPDATER_APP: IS_CLAUDE ? "claude" : "opencode",
     HUB_CONFIG_DIR: CONFIG_DIR,
-  });
+  }, loaderActivityEnv());
   var child = require("child_process").spawn(process.execPath, ["-e", script], { stdio: ["ignore", "ignore", "pipe"], env: childEnv });
   var errBuf = "";
   child.stderr.on("data", function(d) { errBuf += d.toString(); });
@@ -199,7 +200,8 @@ export function updateUpdater(done) {
     var command = IS_CLAUDE
       ? "npx -y plugin-updater@latest run --app claude"
       : "npm update -g plugin-updater";
-    var child = spawn(command, { stdio: ["ignore", "ignore", "pipe"], shell: true });
+    // command may be either tool, so the trace is merged unconditionally
+    var child = spawn(command, { stdio: ["ignore", "ignore", "pipe"], shell: true, env: { ...process.env, ...loaderActivityEnv() } });
     var err = "";
     child.stderr.on("data", function (d) { err += d.toString(); });
     child.on("error", function (e) { finish("updater self-update failed: " + ((e && e.message) || e)); });
@@ -246,7 +248,7 @@ export function installUpdater(configDir, appName, onStep) {
     // Run the engine now so it's fetched + resolvable immediately (populates the npx
     // cache getUpdater() looks in); installing shouldn't require an app restart.
     step("Fetching + building the engine");
-    try { execSync("npx -y plugin-updater@latest run --app " + appFlag, { timeout: 180000, stdio: "ignore" }); } catch { /* best effort; getUpdater re-checks */ }
+    try { execSync("npx -y plugin-updater@latest run --app " + appFlag, { timeout: 180000, stdio: "ignore", env: { ...process.env, ...loaderActivityEnv() } }); } catch { /* best effort; getUpdater re-checks */ }
     step("Done");
     return "";
   } catch (e) {

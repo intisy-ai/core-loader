@@ -19,6 +19,8 @@ import { buildCombinedPluginList } from "./plugins.js";
 import { buildList, outputDir } from "./projects.js";
 import { render } from "./views/render.js";
 import { parseKey, handleKey, handleInputData, handlePluginInputData, handleMarketplaceAddInputData, handleMcpAddInputData, handleSearchData, handleTabInputData, handleConfigInputData, handleSettingsGitInputData, switchPluginSubPage } from "./input.js";
+import { setActivitySeam, withLoaderCause } from "./activity-seam.js";
+import { inputCause } from "./input-cause.js";
 
 global.OpenCodeAPI = {
   getReposDir: function() { return REPOS_DIR; },
@@ -122,6 +124,9 @@ export var tuiApi = {
   registerCapabilities: function(caps) {
     if (caps && typeof caps === "object") {
       for (var k in caps) { if (Object.prototype.hasOwnProperty.call(caps, k)) S.capabilities[k] = caps[k]; }
+      // The same object carries the read side the views use and the write side the
+      // seam needs, so a loader wires Activity in one place.
+      if (caps.activity) setActivitySeam(caps.activity);
     }
   }
 };
@@ -295,7 +300,10 @@ boot();
 
 function onData(buf) {
   var key = parseKey(buf);
+  withLoaderCause(inputCause(S.page, S.mode, key), function () { dispatchInput(buf, key); });
+}
 
+function dispatchInput(buf, key) {
   if (S.globalKeyHandler === "updater_install") {
     // The updater gate offers install-or-quit, but must NOT trap the arrow keys: ← →
     // still switch tabs (the other tabs don't need the updater). Everything else is
@@ -327,7 +335,6 @@ function onData(buf) {
   if (S.mode === "sgprofinput" || S.mode === "sgurlinput") { handleSettingsGitInputData(buf); render(); return; }
   if (S.mode === "search") { handleSearchData(buf); render(); return; }
   if (S.mode === "tabinput") { handleTabInputData(buf); render(); return; }
-  var key = parseKey(buf);
   if (key) {
     // Never let a handler error crash the whole TUI: surface it as a status
     // message and keep the loop alive so the user stays in their menu.

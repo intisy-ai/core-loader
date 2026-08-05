@@ -66,6 +66,14 @@ export const S = {
   configTarget: null,
   configEditKey: "",
 
+  // Activity page: read-only feed from the injected `capabilities.activity` reader.
+  // activityRecords caches the last read() result; refreshed on tab entry and 'r'.
+  activityRecords: [],
+  activityCursor: 0,
+  // narrows what the injected reader returns; empty means every impact
+  activityImpacts: [],
+  activityScrollOff: 0,
+
   // MCP page
   mcpItems: [],
   mcpCursor: 0,

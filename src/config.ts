@@ -84,8 +84,9 @@ export function saveConfig(cfg) {
 // ── Global ecosystem settings (config/settings.json) ────────────────────────
 // The shared, app-wide settings every plugin reads via core's globalSetting(). The
 // loader edits this file DIRECTLY (plain JSON, like plugins.json) so the Configure
-// editor can manage global settings with no plugin bundle / no agent. Defaults mirror
-// core's GLOBAL_SETTINGS_DEFAULTS, keep in sync if core adds global keys.
+// editor can manage global settings with no plugin bundle / no agent. These defaults are
+// the FALLBACK: the host loader injects core's own declaration (see buildGlobalSection),
+// which is authoritative and carries field types.
 var GLOBAL_SETTINGS_FILE = join(CONFIG_FOLDER, "settings.json");
 export var GLOBAL_SETTINGS_DEFAULTS = { logConsole: false, logColor: true };
 
