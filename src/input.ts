@@ -23,6 +23,21 @@ import { refreshVersioning, reconcileConfigLedger, VG_INIT_OPTS, VG_MENU_ITEMS }
 import { buildGlobalSection, buildPluginSections } from "./settings-model.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
+import { emitLoaderActivity } from "./activity-seam.js";
+
+// Plugin lifecycle facts share one vocabulary with plugin-updater's, so a reader sees
+// the same actions whoever performed them. Only actions this menu performs ITSELF are
+// reported here: what it delegates to plugin-updater, plugin-updater already reports.
+function reportPluginAction(action, name, details) {
+  emitLoaderActivity({
+    topic: "plugin.installed",
+    action: action,
+    impact: "notice",
+    outcome: "ok",
+    subject: { kind: "plugin", id: name, label: name },
+    details: details || {},
+  });
+}
 
 // Open a project through the session picker. Sessions come from the active
 // app's listSessions capability (absent -> none, picker skipped). With no prior
@@ -659,6 +674,7 @@ export function handlePluginKey(key) {
         }
         S.pluginItems = buildCombinedPluginList();
         if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+        if (!err) reportPluginAction("updated", pitem.name, { kind: "npm", message: "Updated " + pitem.name });
         flash(err ? pitem.name + ": " + err : pitem.name + " updated. Restart " + APP_NAME + " to apply.");
         S.mode = "list";
       }
@@ -779,6 +795,7 @@ export function handlePluginKey(key) {
         savePlugins(cplugins);
         S.pluginItems = buildCombinedPluginList();
         if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+        reportPluginAction("uninstalled", cpitem.name, { kind: "git", message: "Uninstalled " + cpitem.name });
         flash(cpitem.name + " uninstalled.");
       } else if (S.confirmAction && S.confirmAction.type === "uninstall-npm") {
         var cpitem = S.confirmAction.target;
@@ -794,6 +811,7 @@ export function handlePluginKey(key) {
           }
           S.pluginItems = buildCombinedPluginList();
           if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+          reportPluginAction("uninstalled", cpitem.name, { kind: "npm", message: "Uninstalled " + cpitem.name });
           flash(cpitem.name + " uninstalled. Restart " + APP_NAME + ".");
         } catch(e) {
           flash("Uninstall failed. Try: npm uninstall -g " + cpitem.name);
@@ -831,6 +849,8 @@ export function handlePluginKey(key) {
         } catch (e) {
           flash("Checkout failed"); S.mode = "list"; return;
         }
+        // only this branch is our own work: updater.downgrade() reports itself
+        reportPluginAction("downgraded", pitem.name, { hash: citem.hash, message: "Downgraded " + pitem.name + " to " + citem.hash });
       }
       if (err === "Success" || !err) err = "";
       
@@ -930,6 +950,7 @@ export function handleConfirmKey(key) {
       }
       S.pluginItems = buildCombinedPluginList();
       if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+      reportPluginAction("uninstalled", pitem.name, { kind: "git", message: "Uninstalled " + pitem.name });
       flash(pitem.name + " uninstalled.");
     } else if (S.confirmAction && S.confirmAction.type === "uninstall-npm") {
       var npmName = S.confirmAction.target.name || S.confirmAction.target;
@@ -940,6 +961,7 @@ export function handleConfirmKey(key) {
       }
       S.pluginItems = buildCombinedPluginList();
       if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
+      if (!npmErr) reportPluginAction("uninstalled", npmName, { kind: "npm", message: "Uninstalled " + npmName });
       flash(npmErr ? npmName + ": " + npmErr : npmName + " removed from opencode.json. Restart " + APP_NAME + " to unload.");
     } else if (S.confirmAction && S.confirmAction.type === "uninstall-mcp") {
       uninstallMcpServer(S.confirmAction.target);

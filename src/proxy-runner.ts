@@ -137,7 +137,15 @@ function emitProxyLifecycle(
   details?: Record<string, unknown>,
 ) {
   try {
-    emitActivity?.({ topic: "proxy.status", action, impact: "notice", details });
+    // The cause is stated rather than inherited: a stop happens from close(), long
+    // after any scope around the start, so a scope here would cover only half of it.
+    emitActivity?.({
+      topic: "proxy.status",
+      action,
+      impact: "notice",
+      cause: { kind: action === "started" ? "startup" : "shutdown" },
+      details,
+    });
   } catch {}
 }
 

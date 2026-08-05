@@ -120,6 +120,7 @@ describe("proxy-runner", () => {
     assert.ok(started, "should emit a proxy.status started activity event");
     assert.equal(started.topic, "proxy.status");
     assert.equal(started.impact, "notice");
+    assert.deepEqual(started.cause, { kind: "startup" });
   });
 
   it("wraps close() to emit a stopped lifecycle event while preserving close's own return value", async () => {
@@ -165,6 +166,7 @@ describe("proxy-runner", () => {
     assert.ok(stopped, "should emit a proxy.status stopped activity event once close() runs");
     assert.equal(stopped.topic, "proxy.status");
     assert.equal(stopped.impact, "notice");
+    assert.deepEqual(stopped.cause, { kind: "shutdown" });
   });
 
   it("returns the original server unwrapped when no emitActivity is injected", async () => {
