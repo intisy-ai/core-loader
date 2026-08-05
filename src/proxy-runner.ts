@@ -25,6 +25,7 @@ export type ActivitySpec = {
   action: string;
   actor?: string;
   impact?: string;
+  cause?: { kind: string; surface?: string; detail?: string };
   subject?: unknown;
   details?: unknown;
 };
