@@ -309,7 +309,13 @@ export function buildConfigItems(schema) {
   var byKey = {};
   for (var i = 0; i < fields.length; i++) { if (fields[i] && fields[i].key) byKey[fields[i].key] = fields[i]; }
   var merged = Object.assign({}, defaults, current);
-  return Object.keys(merged).map(function (k) {
+  // A nested object cannot be edited through a text row: typing JSON into one would be
+  // stored as a string and corrupt the setting. Surfaces that can edit structure (the
+  // dashboard) read the same config directly.
+  return Object.keys(merged).filter(function (k) {
+    var v = merged[k];
+    return v === null || typeof v !== "object";
+  }).map(function (k) {
     var isSet = Object.prototype.hasOwnProperty.call(current, k);
     var value = isSet ? current[k] : defaults[k];
     var field = byKey[k];
