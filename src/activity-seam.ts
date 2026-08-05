@@ -56,6 +56,14 @@ export function loaderActivityEnv(): Record<string, string> {
   } catch { return {}; }
 }
 
+// The environment for a child process we start: the caller's own additions first, then
+// the activity trace, which must win so a child joins the chain that started it. One
+// helper rather than the same spread at five call sites, so a real spawned-child test
+// covers every one of them.
+export function spawnEnv(extra?: Record<string, string>): Record<string, string> {
+  return { ...process.env, ...(extra || {}), ...loaderActivityEnv() } as Record<string, string>;
+}
+
 // Startup coverage: the host app loaded this plugin. The caller passes its own name,
 // so this module names nothing.
 export function emitPluginActivated(pluginName: string, details?: Record<string, unknown>): void {

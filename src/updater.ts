@@ -7,7 +7,7 @@ import { homedir } from "os";
 import { execSync } from "child_process";
 import { PLUGINS_DIR, CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, IS_CLAUDE, tuiLog } from "./env.js";
 import { S } from "./state.js";
-import { loaderActivityEnv } from "./activity-seam.js";
+import { spawnEnv } from "./activity-seam.js";
 
 // Every place the deployed plugin-updater might live. The npx roots differ per OS:
 // ~/.npm/_npx on unix, %LOCALAPPDATA%/%APPDATA%\npm-cache\_npx on Windows; all must
@@ -95,11 +95,11 @@ export function setupPlugin(repo, done) {
   // Tell the child WHICH app + config dir to update: without these it guesses from
   // argv (no "claude") + ~/.<app>, so it updated the wrong home and the loader's own
   // repos/<name> clone never advanced (updates "did nothing" / kept showing available).
-  var childEnv = Object.assign({}, process.env, {
+  var childEnv = spawnEnv({
     PU_PATH: updaterPath, PU_NAME: repo.name, PU_URL: repo.url || "", PU_BRANCH: repo.branch || "",
     PLUGIN_UPDATER_APP: IS_CLAUDE ? "claude" : "opencode",
     HUB_CONFIG_DIR: CONFIG_DIR,
-  }, loaderActivityEnv());
+  });
   var child = require("child_process").spawn(process.execPath, ["-e", script], { stdio: ["ignore", "ignore", "pipe"], env: childEnv });
   var errBuf = "";
   child.stderr.on("data", function(d) { errBuf += d.toString(); });
@@ -201,7 +201,7 @@ export function updateUpdater(done) {
       ? "npx -y plugin-updater@latest run --app claude"
       : "npm update -g plugin-updater";
     // command may be either tool, so the trace is merged unconditionally
-    var child = spawn(command, { stdio: ["ignore", "ignore", "pipe"], shell: true, env: { ...process.env, ...loaderActivityEnv() } });
+    var child = spawn(command, { stdio: ["ignore", "ignore", "pipe"], shell: true, env: spawnEnv() });
     var err = "";
     child.stderr.on("data", function (d) { err += d.toString(); });
     child.on("error", function (e) { finish("updater self-update failed: " + ((e && e.message) || e)); });
@@ -248,7 +248,7 @@ export function installUpdater(configDir, appName, onStep) {
     // Run the engine now so it's fetched + resolvable immediately (populates the npx
     // cache getUpdater() looks in); installing shouldn't require an app restart.
     step("Fetching + building the engine");
-    try { execSync("npx -y plugin-updater@latest run --app " + appFlag, { timeout: 180000, stdio: "ignore", env: { ...process.env, ...loaderActivityEnv() } }); } catch { /* best effort; getUpdater re-checks */ }
+    try { execSync("npx -y plugin-updater@latest run --app " + appFlag, { timeout: 180000, stdio: "ignore", env: spawnEnv() }); } catch { /* best effort; getUpdater re-checks */ }
     step("Done");
     return "";
   } catch (e) {
