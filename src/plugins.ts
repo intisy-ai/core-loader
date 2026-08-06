@@ -113,6 +113,10 @@ export function fetchPluginRemotes(pluginItems, done) {
       var refs = ["origin/HEAD", "origin/main", "origin/master"];
       var ri = 0;
       var finish = function() {
+        // The same test plugin-updater's cache.ts makes, deliberately repeated rather than
+        // shared: this library carries no core submodule (see PLUGIN_MANAGER_PACKAGE in env.ts),
+        // so sharing one boolean would mean adding one. Only reached when the cache has no
+        // answer for this plugin; a cached verdict wins above.
         p.updateAvail = !!(p.localHead && p.remoteHead && p.localHead !== p.remoteHead);
         remaining--;
         if (remaining === 0 && done) done();
