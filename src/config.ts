@@ -3,6 +3,7 @@
 // All three prefer the config/ subdir and fall back to legacy top-level files.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, unlinkSync } from "fs";
+import { readJson } from "./json.js";
 import { join, dirname } from "path";
 import { CONFIG_PATH, CONFIG_FOLDER, CONFIG_DIR, CLI_CMD, IS_CLAUDE, PLUGINS_JSON, MCP_CONFIG_PATH } from "./env.js";
 
@@ -36,10 +37,8 @@ export function loadLoaderConfig() {
   var name = loaderName();
   var preferred = join(CONFIG_FOLDER, name + ".json");
   var fallback = join(CONFIG_DIR, name + ".json");
-  try {
-    var p = existsSync(preferred) ? preferred : existsSync(fallback) ? fallback : null;
-    LOADER_CONFIG = p ? (JSON.parse(readFileSync(p, "utf-8")) || {}) : {};
-  } catch { LOADER_CONFIG = {}; }
+  var p = existsSync(preferred) ? preferred : existsSync(fallback) ? fallback : null;
+  LOADER_CONFIG = p ? readJson(p, {}) : {};
   return LOADER_CONFIG;
 }
 
@@ -68,9 +67,10 @@ export function defaultTab() {
 }
 
 export function loadConfig() {
-  try { if (existsSync(CONFIG_PATH)) return JSON.parse(readFileSync(CONFIG_PATH, "utf-8")); } catch {}
-  var legacy = join(CONFIG_DIR, "oc-config.json");
-  try { if (existsSync(legacy)) return JSON.parse(readFileSync(legacy, "utf-8")); } catch {}
+  var current = readJson(CONFIG_PATH);
+  if (current) return current;
+  var legacy = readJson(join(CONFIG_DIR, "oc-config.json"));
+  if (legacy) return legacy;
   return { pinned: [], hidden: [] };
 }
 
@@ -96,8 +96,7 @@ var GLOBAL_SETTINGS_CACHE = null;
 
 export function loadGlobalSettings() {
   if (GLOBAL_SETTINGS_CACHE !== null) return GLOBAL_SETTINGS_CACHE;
-  var out = {};
-  try { if (existsSync(GLOBAL_SETTINGS_FILE)) out = JSON.parse(readFileSync(GLOBAL_SETTINGS_FILE, "utf-8")) || {}; } catch {}
+  var out = readJson(GLOBAL_SETTINGS_FILE, {});
   GLOBAL_SETTINGS_CACHE = out;
   return out;
 }
@@ -176,10 +175,7 @@ var MCP_CONFIG_CACHE = null;
 
 export function loadMcpConfig() {
   if (MCP_CONFIG_CACHE !== null) return MCP_CONFIG_CACHE;
-  var out = { mcpServers: {} };
-  try {
-    if (existsSync(MCP_CONFIG_PATH)) out = JSON.parse(readFileSync(MCP_CONFIG_PATH, "utf-8"));
-  } catch {}
+  var out = readJson(MCP_CONFIG_PATH, { mcpServers: {} });
   MCP_CONFIG_CACHE = out;
   return out;
 }

@@ -14,6 +14,7 @@
 //                    (wired only by the loader whose app has the drain hook)
 
 import { join } from "path";
+import { readJson } from "./json.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 
 export function makeLoaderCommands(opts) {
@@ -68,29 +69,25 @@ export function makeLoaderCommands(opts) {
 
   function listPlugins(configDir) {
     for (const p of [join(configDir, "config", "plugins.json"), join(configDir, "plugins.json")]) {
-      if (!existsSync(p)) continue;
-      try {
-        const arr = JSON.parse(readFileSync(p, "utf8"));
-        if (!Array.isArray(arr) || !arr.length) return console.log("No plugins configured.");
-        for (const e of arr) console.log(`- ${e.name}${e.enabled === false ? " (disabled)" : ""}${e.sync ? " [sync]" : ""}`);
-        return;
-      } catch { /* try next */ }
+      const arr = readJson(p);
+      if (arr === null) continue;
+      if (!Array.isArray(arr) || !arr.length) return console.log("No plugins configured.");
+      for (const e of arr) console.log(`- ${e.name}${e.enabled === false ? " (disabled)" : ""}${e.sync ? " [sync]" : ""}`);
+      return;
     }
     console.log("No plugins.json found.");
   }
 
   function listAccounts(configDir) {
     for (const p of [join(configDir, "config", "accounts.json"), join(configDir, "accounts.json"), join(configDir, "config", "core-auth-accounts.json"), join(configDir, "core-auth-accounts.json")]) {
-      if (!existsSync(p)) continue;
-      try {
-        const store = JSON.parse(readFileSync(p, "utf8"));
-        const lines = [];
-        for (const provider of Object.keys(store)) {
-          const accts = Array.isArray(store[provider]) ? store[provider] : (store[provider]?.accounts || []);
-          for (const a of accts) lines.push(`- [${provider}] ${a.email || a.id}${a.enabled === false ? " (disabled)" : ""}`);
-        }
-        return console.log(lines.length ? lines.join("\n") : "No accounts signed in.");
-      } catch { /* try next */ }
+      const store = readJson(p);
+      if (store === null || typeof store !== "object") continue;
+      const lines = [];
+      for (const provider of Object.keys(store)) {
+        const accts = Array.isArray(store[provider]) ? store[provider] : (store[provider]?.accounts || []);
+        for (const a of accts) lines.push(`- [${provider}] ${a.email || a.id}${a.enabled === false ? " (disabled)" : ""}`);
+      }
+      return console.log(lines.length ? lines.join("\n") : "No accounts signed in.");
     }
     console.log("No accounts store found.");
   }

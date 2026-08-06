@@ -11,6 +11,7 @@
 // written per provider; a host app's config is a merge target, not a record of who serves what.
 
 import { existsSync, readFileSync } from "fs";
+import { readJson } from "./json.js";
 import { join } from "path";
 import { readDeployedProviders } from "./loader-runtime.js";
 
@@ -19,14 +20,12 @@ const CATALOG_FILES = ["models.json", "core-auth-models.json"];
 
 export function readModelCatalog(configDir) {
   for (const file of CATALOG_FILES) {
-    try {
-      const at = join(configDir, "config", file);
-      if (!existsSync(at)) continue;
-      const parsed = JSON.parse(readFileSync(at, "utf8"));
-      // Anything that is not a map of providers is as useless as no catalog, and returning it
-      // would have every caller guess at the shape instead.
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-    } catch { /* an unreadable catalog is the same as none */ }
+    const at = join(configDir, "config", file);
+    if (!existsSync(at)) continue;
+    const parsed = readJson(at);
+    // Anything that is not a map of providers is as useless as no catalog, and returning it
+    // would have every caller guess at the shape instead.
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   }
   return {};
 }

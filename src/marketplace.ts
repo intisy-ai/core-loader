@@ -3,6 +3,7 @@
 // on-disk catalog cache, list building, and one-shot plugin install via git.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
+import { readJson, readJsonc } from "./json.js";
 import { join } from "path";
 import { exec } from "child_process";
 import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, FEATURED_PLUGINS, APP_NAME, CONFIG_DIR, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, tuiLog } from "./env.js";
@@ -23,8 +24,7 @@ export function invalidateSeedCache() {
 
 export function loadCatalogCache() {
   try {
-    if (!existsSync(CATALOG_CACHE_PATH)) return false;
-    var cached = JSON.parse(readFileSync(CATALOG_CACHE_PATH, "utf-8"));
+    var cached = readJson(CATALOG_CACHE_PATH);
     if (!cached || Date.now() - cached.time > catalogCacheHours() * 3600000) return false;
     if (!Array.isArray(cached.marketplace) || cached.marketplace.length === 0) return false;
     for (var ce of cached.marketplace) S.MARKETPLACE_CATALOG.push(ce);
@@ -54,8 +54,7 @@ export function loadCatalogCache() {
 
 function loadSeedCache() {
   try {
-    if (!existsSync(SEED_CACHE_PATH)) return false;
-    var cached = JSON.parse(readFileSync(SEED_CACHE_PATH, "utf-8"));
+    var cached = readJson(SEED_CACHE_PATH);
     if (!cached || Date.now() - cached.time > catalogCacheHours() * 3600000) return false;
     if (!cached.data || typeof cached.data !== "object") return false;
     for (var name in cached.data) S.seedMarketplaces[name] = cached.data[name];
@@ -843,10 +842,7 @@ export function installViaNpm(entry, done) {
     if (APP_NAME !== "Claude Code") {
       try {
         var ocPath = join(CONFIG_DIR, "opencode.json");
-        var ocData = {};
-        if (existsSync(ocPath)) {
-          try { ocData = JSON.parse(readFileSync(ocPath, "utf-8").replace(/^\s*\/\/[^\n]*/gm, "")); } catch {}
-        }
+        var ocData = readJsonc(ocPath, {});
         if (!Array.isArray(ocData.plugin)) ocData.plugin = [];
         if (ocData.plugin.indexOf(name) === -1) ocData.plugin.push(name);
         writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");

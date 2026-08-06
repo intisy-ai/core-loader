@@ -3,6 +3,7 @@
 // row, remote-update detection, and the per-plugin action menu.
 
 import { existsSync, readFileSync } from "fs";
+import { readJson } from "./json.js";
 import { join, dirname } from "path";
 import { execSync, exec } from "child_process";
 import { REPOS_DIR, PLUGINS_DIR, PLUGIN_MANAGER_PACKAGE } from "./env.js";
@@ -28,8 +29,7 @@ export function gitText(args, cwd) {
 export function readUpdateCache() {
   try {
     var cachePath = join(dirname(REPOS_DIR), "cache", "plugin-updates.json");
-    if (!existsSync(cachePath)) return null;
-    var data = JSON.parse(readFileSync(cachePath, "utf-8"));
+    var data = readJson(cachePath);
     if (!data || typeof data !== "object" || !data.plugins) return null;
     return data;
   } catch { return null; }

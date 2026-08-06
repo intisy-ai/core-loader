@@ -4,6 +4,7 @@
 // via transient npx, never a persistent require.
 
 import { existsSync, readFileSync } from "fs";
+import { readJson } from "./json.js";
 import { join } from "path";
 import { execFileSync } from "child_process";
 import {
@@ -23,10 +24,6 @@ const LOADER_CONFIG = join(CONFIG_FOLDER, UPDATER_APP === "claude" ? "claude-cod
 
 const OK = "✓";
 const BAD = "✗";
-
-function readJson(file) {
-  try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; }
-}
 
 function pad(str, width) {
   str = String(str);
