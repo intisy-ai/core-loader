@@ -18,6 +18,10 @@ export const CLI_CMD = process.env.HUB_CLI_CMD || "opencode";
 // so the loader hides the npm section + npm install option under Claude.
 export const IS_CLAUDE = String(CLI_CMD).indexOf("claude") !== -1 || String(APP_NAME).indexOf("Claude") !== -1;
 export const NPM_PKG = process.env.HUB_NPM_PKG || "opencode-ai";
+// The plugin manager's package name. This library cannot ask core which plugin holds the
+// plugin-management capability (a loader carries core, this does not), and a module cannot be
+// resolved without its name anyway, so the name lives here once instead of in every call site.
+export const PLUGIN_MANAGER_PACKAGE = "plugin-updater";
 export const CONFIG_DIR = process.env.HUB_CONFIG_DIR || join(HOME, ".config", "opencode");
 export const CACHE_PKG_DIR = join(CONFIG_DIR, "cache", "node_modules");
 

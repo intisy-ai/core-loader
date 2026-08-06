@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 import { execSync, exec } from "child_process";
-import { REPOS_DIR, PLUGINS_DIR } from "./env.js";
+import { REPOS_DIR, PLUGINS_DIR, PLUGIN_MANAGER_PACKAGE } from "./env.js";
 import { loadPlugins } from "./config.js";
 import { getFolderName, loadNpmPlugins, getUpdaterVersion } from "./updater.js";
 import { S } from "./state.js";
@@ -138,7 +138,7 @@ export function buildCombinedPluginList() {
   // resolvable version; mark it active rather than "not installed". Under Claude
   // loadNpmPlugins is empty (no opencode.jsonc), so no npm rows appear at all.
   var npm = loadNpmPlugins().map(function(np) {
-    var isEngine = np.name === "plugin-updater";
+    var isEngine = np.name === PLUGIN_MANAGER_PACKAGE;
     var ncEntry = cache && cache.plugins && cache.plugins[np.name];
     var npmUpdateAvail = !!(ncEntry && ncEntry.kind === "npm" && ncEntry.updateAvailable);
     return {

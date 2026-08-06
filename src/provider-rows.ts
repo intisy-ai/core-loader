@@ -14,7 +14,7 @@ import { customProviderState, customProviderLabel, addCustomProviderAction } fro
 // Rows the view appends after the discovered providers. Each carries a `run(tuiApi)` the view
 // calls on Enter; an empty list means there is nothing actionable to show.
 export function extraProviderRows(ctx) {
-  const engine = ctx.engineByCapability("custom-endpoints");
+  const engine = ctx.pluginByCapability("custom-endpoints");
   const state = customProviderState(engine, ctx.reposDir, { exists: ctx.exists, hasManager: ctx.hasManager });
   const label = customProviderLabel(state);
   if (!label) return [];

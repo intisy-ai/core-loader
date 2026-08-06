@@ -17,15 +17,6 @@
 import { existsSync } from "fs";
 import { join } from "path";
 
-const CAPABILITY = "custom-endpoints";
-
-// Read from core lazily: a loader bundles core, but this module is also unit-tested on its own
-// where injecting the registry is what keeps it from needing the whole bundle.
-export function customEndpointsEngine(deps = {}) {
-  if (deps.engineByCapability) return deps.engineByCapability(CAPABILITY);
-  return undefined;
-}
-
 export function customProviderState(engine, reposDir, deps = {}) {
   if (!engine) return { kind: "unavailable", reason: "no plugin provides custom endpoints" };
   const exists = deps.exists || existsSync;
