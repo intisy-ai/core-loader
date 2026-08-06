@@ -5,9 +5,9 @@
 // being written into each one.
 //
 // Nothing here names a plugin or an app. The plugin behind custom providers is found by
-// capability, and installing it is delegated to the plugin manager the loader already has.
-// core's registry and config system arrive through ctx: this library sits inside a loader and
-// does not carry core itself, so the loader passes in what it already has.
+// capability, installing it is delegated to the plugin manager the loader already has, and the
+// endpoint itself is validated and stored by that plugin. core's registry arrives through ctx:
+// this library sits inside a loader and does not carry core itself.
 
 import { customProviderState, customProviderLabel, addCustomProviderAction } from "./custom-provider.js";
 
@@ -32,12 +32,12 @@ export function extraProviderRows(ctx) {
     id: "add-custom-provider",
     label,
     hint: "an endpoint of your own, served as its own provider",
+    // The plugin decides what a valid endpoint is, stores it, and makes it routable. The
+    // loader only says which plugin to ask and passes the answers along.
     run: (tuiApi) => ctx.openAction(addCustomProviderAction(state.engine, {
-      getConfigValue: ctx.getConfigValue,
-      setConfigValue: ctx.setConfigValue,
-      // The plugin stores the key and re-materialises its own provider manifest; the loader
-      // only says which plugin to ask.
-      applyEndpoint: (endpoint, key) => ctx.applyEndpoint(state.engine, endpoint, key),
+      defaultFormat: ctx.defaultFormat,
+      validate: (endpoint) => ctx.validate(state.engine, endpoint),
+      addEndpoint: (endpoint, key) => ctx.addEndpoint(state.engine, endpoint, key),
     }), tuiApi, label),
   }];
 }

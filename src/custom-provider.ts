@@ -2,17 +2,17 @@
 // The "add a custom provider" row every loader's Providers view offers, and the install that
 // has to happen first when the plugin backing it is absent.
 //
-// Nothing here names a plugin: the plugin is found by CAPABILITY in core's engine registry, so
-// a loader gains this row without knowing which plugin implements it, and a different
-// implementation would need no change here. Which of the three states the row is in depends on
-// what is actually installed:
+// Nothing here names a plugin: the plugin is found by CAPABILITY in core's registry, so a
+// loader gains this row without knowing which plugin implements it. Which of the three states
+// the row is in depends on what is actually installed:
 //
 //   "add"         the plugin is deployed, so an endpoint can be added right now
 //   "install"     it is absent but the plugin manager is present to fetch it
 //   "unavailable" it is absent and nothing here could install it, so no row is offered
 //
-// Custom providers are per-endpoint: each configured endpoint becomes its own provider through
-// the plugin's dynamic manifest, which is why the plugin itself is not a provider.
+// What an endpoint IS, whether one would work, and where it is stored are the plugin's own
+// business. This file collects answers and hands them over whole: a second copy of those rules
+// here is how the loader and the dashboard came to disagree about what a valid endpoint is.
 
 import { existsSync } from "fs";
 import { join } from "path";
@@ -31,57 +31,10 @@ export function customProviderLabel(state) {
   return state.kind === "add" ? "Add a custom provider" : "Install custom providers";
 }
 
-// The endpoint list lives in the plugin's own config, under the key the engine descriptor
-// names, and is written through core's config system like every other plugin setting.
-export function readCustomEndpoints(engine, deps) {
-  const name = engine && engine.meta && engine.meta.configName;
-  if (!name) return [];
-  const value = deps.getConfigValue(name, "endpoints");
-  return Array.isArray(value) ? value : [];
-}
-
-export function endpointIdTaken(engine, id, deps) {
-  return readCustomEndpoints(engine, deps).some((e) => e && e.id === id);
-}
-
-// A base URL has to be absolute: a relative one silently resolves against whatever the proxy
-// is serving and every request to it fails far from here.
-export function validateEndpoint(engine, endpoint, deps) {
-  const id = (endpoint.id || "").trim();
-  if (!id) return "an id is required";
-  if (!/^[A-Za-z0-9._-]+$/.test(id)) return "an id may only hold letters, digits, dot, dash and underscore";
-  if (endpointIdTaken(engine, id, deps)) return `there is already an endpoint called ${id}`;
-  const url = (endpoint.baseUrl || "").trim();
-  if (!/^https?:\/\/.+/i.test(url)) return "the base URL must start with http:// or https://";
-  return "";
-}
-
-// Writes the endpoint into the plugin's config, then hands the credential and the "make this
-// routable" step to the plugin itself: a loader has no business holding either. Async because
-// reaching the plugin means loading its bundle.
-export async function saveCustomEndpoint(engine, endpoint, deps) {
-  const problem = validateEndpoint(engine, endpoint, deps);
-  if (problem) throw new Error(problem);
-  const name = engine.meta.configName;
-  const endpoints = readCustomEndpoints(engine, deps);
-  const saved = {
-    id: endpoint.id.trim(),
-    label: (endpoint.label || endpoint.id).trim(),
-    baseUrl: endpoint.baseUrl.trim(),
-    format: endpoint.format || "openai",
-    models: endpoint.models || [],
-  };
-  deps.setConfigValue(name, "endpoints", [...endpoints, saved]);
-  // Without a key the provider exists but every request through it is unauthenticated, and
-  // without the manifest step it is not routable at all until something else rewrites it.
-  if (deps.applyEndpoint) await deps.applyEndpoint(saved, endpoint.key || "");
-  return saved;
-}
-
 // The chained prompts the TUI shows, as menu input-actions. Each step returns the next, so the
 // whole thing is one action from the caller's point of view.
 export function addCustomProviderAction(engine, deps) {
-  const draft = {};
+  const draft = { format: deps.defaultFormat || "openai" };
   const fail = (message) => ({ refresh: true, flash: message });
 
   const askKey = () => ({
@@ -89,12 +42,22 @@ export function addCustomProviderAction(engine, deps) {
       title: "API key",
       message: `Key for ${draft.id} (leave empty to add it later)`,
       secret: true,
-      complete: (key) => {
-        draft.key = (key || "").trim();
-        return saveCustomEndpoint(engine, draft, deps).then(
-          (saved) => ({ refresh: true, flash: `Added ${saved.id}${draft.key ? "" : " (no key yet)"}` }),
-          (e) => fail(String((e && e.message) || e)),
-        );
+      complete: (key) => Promise.resolve(deps.addEndpoint(draft, String(key || "").trim())).then(
+        () => ({ refresh: true, flash: `Added ${draft.id}${String(key || "").trim() ? "" : " (no key yet)"}` }),
+        (e) => fail(String((e && e.message) || e)),
+      ),
+    },
+  });
+
+  // A custom endpoint serves the models it advertises, so one with none is a provider that can
+  // never answer. The plugin rejects that; asking here is what makes it answerable.
+  const askModels = () => ({
+    input: {
+      title: "Models",
+      message: `Model ids ${draft.id} serves, comma separated`,
+      complete: (models) => {
+        draft.models = String(models || "").split(",").map((m) => m.trim()).filter(Boolean);
+        return Promise.resolve(deps.validate(draft)).then((problem) => (problem ? fail(problem) : askKey()));
       },
     },
   });
@@ -104,12 +67,8 @@ export function addCustomProviderAction(engine, deps) {
       title: "Base URL",
       message: `Where ${draft.id} serves its API, e.g. https://api.example.com/v1`,
       complete: (url) => {
-        draft.baseUrl = (url || "").trim();
-        const problem = validateEndpoint(engine, draft, deps);
-        // Only the URL is being answered here, so an id problem cannot be fixed by asking again.
-        if (problem && /base URL/.test(problem)) return fail(problem);
-        if (problem) return fail(problem);
-        return askKey();
+        draft.baseUrl = String(url || "").trim();
+        return askModels();
       },
     },
   });
@@ -119,12 +78,12 @@ export function addCustomProviderAction(engine, deps) {
       title: "Custom provider",
       message: "A short id, e.g. my-endpoint",
       complete: (id) => {
-        draft.id = (id || "").trim();
+        draft.id = String(id || "").trim();
         draft.label = draft.id;
         if (!draft.id) return { refresh: true };
-        const problem = validateEndpoint(engine, { ...draft, baseUrl: "http://placeholder" }, deps);
-        if (problem) return fail(problem);
-        return askBaseUrl();
+        // Only the id is known yet, so only an id problem can be reported at this point.
+        return Promise.resolve(deps.validate({ ...draft, baseUrl: "https://placeholder.invalid", models: ["placeholder"] }))
+          .then((problem) => (problem && /id/i.test(problem) ? fail(problem) : askBaseUrl()));
       },
     },
   };
