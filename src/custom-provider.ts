@@ -65,7 +65,10 @@ export function validateEndpoint(engine, endpoint, deps) {
   return "";
 }
 
-export function saveCustomEndpoint(engine, endpoint, deps) {
+// Writes the endpoint into the plugin's config, then hands the credential and the "make this
+// routable" step to the plugin itself: a loader has no business holding either. Async because
+// reaching the plugin means loading its bundle.
+export async function saveCustomEndpoint(engine, endpoint, deps) {
   const problem = validateEndpoint(engine, endpoint, deps);
   if (problem) throw new Error(problem);
   const name = engine.meta.configName;
@@ -78,9 +81,9 @@ export function saveCustomEndpoint(engine, endpoint, deps) {
     models: endpoint.models || [],
   };
   deps.setConfigValue(name, "endpoints", [...endpoints, saved]);
-  // The key is an account under the endpoint's own pool, which is what makes the endpoint
-  // usable; without it the provider exists but every request is unauthenticated.
-  if (endpoint.key) deps.saveKey(saved.id, endpoint.key);
+  // Without a key the provider exists but every request through it is unauthenticated, and
+  // without the manifest step it is not routable at all until something else rewrites it.
+  if (deps.applyEndpoint) await deps.applyEndpoint(saved, endpoint.key || "");
   return saved;
 }
 
@@ -97,13 +100,10 @@ export function addCustomProviderAction(engine, deps) {
       secret: true,
       complete: (key) => {
         draft.key = (key || "").trim();
-        try {
-          const saved = saveCustomEndpoint(engine, draft, deps);
-          if (deps.afterSave) deps.afterSave(saved);
-          return { refresh: true, flash: `Added ${saved.id}${draft.key ? "" : " (no key yet)"}` };
-        } catch (e) {
-          return fail(String((e && e.message) || e));
-        }
+        return saveCustomEndpoint(engine, draft, deps).then(
+          (saved) => ({ refresh: true, flash: `Added ${saved.id}${draft.key ? "" : " (no key yet)"}` }),
+          (e) => fail(String((e && e.message) || e)),
+        );
       },
     },
   });

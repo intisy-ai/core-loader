@@ -12,18 +12,18 @@ import {
 const ENGINE = { id: "custom-auth", url: "u", capability: "custom-endpoints", target: "cairn", meta: { providerId: "custom", configName: "custom-auth" } };
 
 let config;
-let keys;
+let applied;
 
 function deps(overrides) {
   return {
     getConfigValue: (name, key) => (config[name] || {})[key],
     setConfigValue: (name, key, value) => { config[name] = config[name] || {}; config[name][key] = value; },
-    saveKey: (id, key) => { keys.push({ id, key }); },
+    applyEndpoint: async (endpoint, key) => { applied.push({ id: endpoint.id, key }); },
     ...(overrides || {}),
   };
 }
 
-function reset() { config = {}; keys = []; }
+function reset() { config = {}; applied = []; }
 
 describe("customProviderState", () => {
   it("offers to add once the plugin is deployed", () => {
@@ -77,40 +77,40 @@ describe("validateEndpoint", () => {
 });
 
 describe("saveCustomEndpoint", () => {
-  it("appends the endpoint and stores its key under its own id", () => {
+  it("appends the endpoint and hands its key to the plugin", async () => {
     reset();
-    saveCustomEndpoint(ENGINE, { id: "mine", baseUrl: "https://api.example.com/v1", key: "sk-secret" }, deps());
+    await saveCustomEndpoint(ENGINE, { id: "mine", baseUrl: "https://api.example.com/v1", key: "sk-secret" }, deps());
     assert.deepEqual(readCustomEndpoints(ENGINE, deps()), [
       { id: "mine", label: "mine", baseUrl: "https://api.example.com/v1", format: "openai", models: [] },
     ]);
-    assert.deepEqual(keys, [{ id: "mine", key: "sk-secret" }]);
+    assert.deepEqual(applied, [{ id: "mine", key: "sk-secret" }]);
   });
 
-  it("keeps the endpoints already configured", () => {
+  it("keeps the endpoints already configured", async () => {
     reset();
     config["custom-auth"] = { endpoints: [{ id: "first", baseUrl: "https://a.b", format: "openai", models: [] }] };
-    saveCustomEndpoint(ENGINE, { id: "second", baseUrl: "https://c.d" }, deps());
+    await saveCustomEndpoint(ENGINE, { id: "second", baseUrl: "https://c.d" }, deps());
     assert.deepEqual(readCustomEndpoints(ENGINE, deps()).map((e) => e.id), ["first", "second"]);
   });
 
-  it("saves no key when none was given, so the endpoint waits for one", () => {
+  // The plugin is still told about the endpoint so it can make it routable; only the key is absent.
+  it("passes no key when none was given, so the endpoint waits for one", async () => {
     reset();
-    saveCustomEndpoint(ENGINE, { id: "mine", baseUrl: "https://a.b", key: "" }, deps());
-    assert.deepEqual(keys, []);
+    await saveCustomEndpoint(ENGINE, { id: "mine", baseUrl: "https://a.b", key: "" }, deps());
+    assert.deepEqual(applied, [{ id: "mine", key: "" }]);
   });
 
-  it("refuses to write an endpoint that would not work", () => {
+  it("refuses to write an endpoint that would not work", async () => {
     reset();
-    assert.throws(() => saveCustomEndpoint(ENGINE, { id: "mine", baseUrl: "nope" }, deps()), /base URL/);
+    await assert.rejects(() => saveCustomEndpoint(ENGINE, { id: "mine", baseUrl: "nope" }, deps()), /base URL/);
     assert.equal(config["custom-auth"], undefined);
   });
 });
 
 describe("addCustomProviderAction", () => {
-  it("asks for an id, a base URL and a key, then saves", () => {
+  it("asks for an id, a base URL and a key, then saves", async () => {
     reset();
-    let saved = 0;
-    const first = addCustomProviderAction(ENGINE, deps({ afterSave: () => { saved++; } }));
+    const first = addCustomProviderAction(ENGINE, deps());
     assert.equal(first.input.title, "Custom provider");
 
     const second = first.input.complete("mine");
@@ -121,11 +121,10 @@ describe("addCustomProviderAction", () => {
     // A key is a credential, so the prompt must not echo it.
     assert.equal(third.input.secret, true);
 
-    const done = third.input.complete("sk-secret");
+    const done = await third.input.complete("sk-secret");
     assert.match(done.flash, /Added mine/);
     assert.equal(readCustomEndpoints(ENGINE, deps()).length, 1);
-    assert.deepEqual(keys, [{ id: "mine", key: "sk-secret" }]);
-    assert.equal(saved, 1);
+    assert.deepEqual(applied, [{ id: "mine", key: "sk-secret" }]);
   });
 
   it("says so and saves nothing when the id is already taken", () => {
@@ -150,12 +149,12 @@ describe("addCustomProviderAction", () => {
     assert.equal(result.input, undefined);
   });
 
-  it("saves the endpoint with no key when the key prompt is left empty", () => {
+  it("saves the endpoint with no key when the key prompt is left empty", async () => {
     reset();
     const step = addCustomProviderAction(ENGINE, deps()).input.complete("mine");
-    const done = step.input.complete("https://a.b").input.complete("");
+    const done = await step.input.complete("https://a.b").input.complete("");
     assert.match(done.flash, /no key yet/);
     assert.equal(readCustomEndpoints(ENGINE, deps()).length, 1);
-    assert.deepEqual(keys, []);
+    assert.deepEqual(applied, [{ id: "mine", key: "" }]);
   });
 });

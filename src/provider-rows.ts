@@ -35,8 +35,9 @@ export function extraProviderRows(ctx) {
     run: (tuiApi) => ctx.openAction(addCustomProviderAction(state.engine, {
       getConfigValue: ctx.getConfigValue,
       setConfigValue: ctx.setConfigValue,
-      saveKey: ctx.saveKey,
-      afterSave: ctx.afterSave,
+      // The plugin stores the key and re-materialises its own provider manifest; the loader
+      // only says which plugin to ask.
+      applyEndpoint: (endpoint, key) => ctx.applyEndpoint(state.engine, endpoint, key),
     }), tuiApi, label),
   }];
 }
