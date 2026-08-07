@@ -292,7 +292,10 @@ async function boot() {
   ]);
   hideCur();
   render();
-  process.stdin.setRawMode(true);
+  // Guarded like every other raw-mode call here: boot() runs on import, and stdin
+  // is not a TTY under a test runner, where the throw would surface as an
+  // unhandled rejection and fail the run even with every test passing.
+  try { process.stdin.setRawMode(true); } catch {}
   process.stdin.resume();
 }
 boot();
