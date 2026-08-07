@@ -1,0 +1,27 @@
+// @ts-nocheck
+// Reading a JSON file that may be absent, empty or malformed, which is every config file a
+// loader touches. Each caller says what an unreadable file should read as, because the useful
+// answer differs: a missing plugin list is [], a missing settings object is {}, and a missing
+// package.json is nothing at all.
+
+import { readFileSync } from "fs";
+
+export function readJson(file, fallback = null) {
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    return parsed === undefined || parsed === null ? fallback : parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+// Some app configs (opencode.json) carry // comments, which JSON.parse rejects. Stripping
+// whole-line comments only, so a // inside a string value survives.
+export function readJsonc(file, fallback = null) {
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8").replace(/^\s*\/\/[^\n]*/gm, ""));
+    return parsed === undefined || parsed === null ? fallback : parsed;
+  } catch {
+    return fallback;
+  }
+}

@@ -92,6 +92,38 @@ export function createAccountMenu() {
     // refresh / void: stay (render rebuilds)
   }
 
+
+  // Runs a menu ACTION on its own, without a provider handler behind it: the Providers view
+  // offers rows of its own (adding a custom provider) and they need the same in-tab input
+  // field, chaining and feedback as any provider menu item. A step that asks for nothing more
+  // closes the panel instead of leaving an empty menu on screen.
+  function closeOnFinish(action) {
+    if (!action || !action.input) return action;
+    const step = action.input;
+    return {
+      input: {
+        ...step,
+        complete: function (value) {
+          return Promise.resolve(step.complete(value)).then(function (next) {
+            if (next && next.input) return closeOnFinish(next);
+            return { close: true, flash: next && next.flash };
+          });
+        },
+      },
+    };
+  }
+
+  function openAction(action, tuiApi, title) {
+    if (!action) return false;
+    if (!tuiApi.setTextInput) { try { tuiApi.flash("Loader too old — update to manage providers"); } catch (e) {} return false; }
+    nav.stack = [function () { return { title: title || "", items: [] }; }];
+    nav.cur = 0;
+    nav.active = true;
+    tuiApi.setTextInput(true);
+    applyAction(closeOnFinish(action), tuiApi);
+    return true;
+  }
+
   // Load a provider handler and open its menuModel() in-tab. Falls back to a
   // provider's own menu() (suspend) when it has no model. Returns true if an
   // in-tab menu is now active.
@@ -229,5 +261,5 @@ export function createAccountMenu() {
     return true;   // swallow other keys while the menu owns the tab
   }
 
-  return { isActive: () => nav.active, open, render, handleKey, exit };
+  return { isActive: () => nav.active, open, openAction, render, handleKey, exit };
 }

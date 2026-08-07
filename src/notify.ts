@@ -6,6 +6,7 @@
 // to the model's context). opencode uses toasts instead.
 
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "fs";
+import { readJson } from "./json.js";
 import { join } from "path";
 
 // Registers the drain hooks pointing at `node "<loaderEntry>" bus-drain`, and clears
@@ -14,8 +15,7 @@ import { join } from "path";
 export function ensureNotifyDrainHook(configDir, loaderEntry) {
   try {
     const settingsPath = join(configDir, "settings.json");
-    let settings = {};
-    try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch {}
+    const settings = readJson(settingsPath, {});
     const hooks = settings.hooks || (settings.hooks = {});
     const cmd = `node "${loaderEntry}" bus-drain`;
     // Drain on BOTH Stop (end of every turn, surfaces notifications even when no tool

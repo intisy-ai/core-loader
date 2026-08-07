@@ -24,6 +24,22 @@ describe("plugins: buildConfigItems", () => {
   });
 });
 
+describe("plugins: buildConfigItems structure", () => {
+  it("leaves a nested object out, because a text row would corrupt it", () => {
+    const items = buildConfigItems({
+      defaults: { auto_update_mode: "update", auto_update_triggers: { loader: true }, logging: true },
+      current: {},
+    });
+    const keys = items.map((i) => i.key).sort();
+    assert.deepEqual(keys, ["auto_update_mode", "logging"]);
+  });
+
+  it("keeps a null value, which is editable as text", () => {
+    const items = buildConfigItems({ defaults: { token: null }, current: {} });
+    assert.deepEqual(items.map((i) => i.key), ["token"]);
+  });
+});
+
 describe("plugins: getPluginActions", () => {
   it("a foreign (host-app-native) plugin only offers actions its registered capabilities support", () => {
     S.capabilities = {};

@@ -23,8 +23,8 @@ describe("spawn env merge", () => {
       const script = join(dir, "child.mjs");
       writeFileSync(script, 'console.log(JSON.stringify({ trace: process.env.HUB_ACTIVITY_TRACE, cause: process.env.HUB_ACTIVITY_CAUSE, path: !!process.env.PATH }));\n');
 
-      // the same expression every production spawn site uses
-      const out = execFileSync(process.execPath, [script], { env: { ...process.env, ...seam.loaderActivityEnv() } });
+      // the same helper every production spawn site uses
+      const out = execFileSync(process.execPath, [script], { env: seam.spawnEnv() });
       const got = JSON.parse(out.toString());
 
       assert.strictEqual(got.trace, "trace-abc");
@@ -35,10 +35,18 @@ describe("spawn env merge", () => {
     }
   });
 
-  // A source-level assertion is normally a smell, but these five sites spawn npx,
-  // npm, and deployed bundles that are not available in a test run, so this is the
-  // only check that fails when someone deletes the merge from one of them.
-  it("is present at every site that starts a child", () => {
+  it("keeps the caller's own variables while the trace still wins", () => {
+    seam.setActivitySeam({ env: () => ({ HUB_ACTIVITY_TRACE: "wins" }) });
+    const merged = seam.spawnEnv({ PU_NAME: "demo", HUB_ACTIVITY_TRACE: "loses" });
+    assert.strictEqual(merged.PU_NAME, "demo");
+    assert.strictEqual(merged.HUB_ACTIVITY_TRACE, "wins");
+    assert.ok(merged.PATH, "PATH must survive");
+  });
+
+  // These five sites spawn npx, npm, and deployed bundles that no test run can
+  // provide, so this is the only check that fails if someone stops routing one of
+  // them through the shared helper the tests above actually cover.
+  it("every site that starts a child goes through the one helper", () => {
     const sites = [
       ["src/updater.ts", 3],
       ["src/marketplace.ts", 1],
@@ -46,8 +54,9 @@ describe("spawn env merge", () => {
     ];
     for (const [file, expected] of sites) {
       const text = readFileSync(new URL("../" + file, import.meta.url), "utf8");
-      const found = text.split("loaderActivityEnv()").length - 1;
-      assert.strictEqual(found, expected, `${file}: expected ${expected} spawn sites to merge the activity env, found ${found}`);
+      const found = text.split("spawnEnv(").length - 1;
+      assert.strictEqual(found, expected, `${file}: expected ${expected} spawn sites to use spawnEnv, found ${found}`);
+      assert.ok(!text.includes("...loaderActivityEnv()"), `${file} still spreads the activity env by hand`);
     }
   });
 });

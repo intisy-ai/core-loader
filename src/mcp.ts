@@ -3,6 +3,7 @@
 // Merges the curated MCP_CATALOG with plugin-embedded .mcp.json servers.
 
 import { existsSync, readdirSync, readFileSync } from "fs";
+import { readJson } from "./json.js";
 import { join } from "path";
 import { HOME, MCP_CATALOG } from "./env.js";
 import { loadMcpConfig, saveMcpConfig } from "./config.js";
@@ -34,7 +35,7 @@ export function scanPluginEmbeddedMcps() {
             for (var mcpFile of candidates) {
               if (existsSync(mcpFile)) {
                 try {
-                  var data = JSON.parse(readFileSync(mcpFile, "utf-8"));
+                  var data = readJson(mcpFile, {});
                   var servers = data.mcpServers || {};
                   for (var sname of Object.keys(servers)) {
                     var key = "plugin:" + repo.toLowerCase() + ":" + sname;
@@ -74,7 +75,7 @@ export function scanPluginEmbeddedMcps() {
                 for (var mcpFile of candidates) {
                   if (existsSync(mcpFile)) {
                     try {
-                      var data = JSON.parse(readFileSync(mcpFile, "utf-8"));
+                      var data = readJson(mcpFile, {});
                       var servers = data.mcpServers || {};
                       for (var sname of Object.keys(servers)) {
                         var key = "plugin:" + pname.toLowerCase() + ":" + sname;

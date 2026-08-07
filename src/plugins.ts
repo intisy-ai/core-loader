@@ -3,13 +3,14 @@
 // row, remote-update detection, and the per-plugin action menu.
 
 import { existsSync, readFileSync } from "fs";
+import { readJson } from "./json.js";
 import { join, dirname } from "path";
 import { execSync, exec } from "child_process";
-import { REPOS_DIR, PLUGINS_DIR } from "./env.js";
+import { REPOS_DIR, PLUGINS_DIR, PLUGIN_MANAGER_PACKAGE } from "./env.js";
 import { loadPlugins } from "./config.js";
 import { getFolderName, loadNpmPlugins, getUpdaterVersion } from "./updater.js";
 import { S } from "./state.js";
-import { loaderActivityEnv } from "./activity-seam.js";
+import { spawnEnv } from "./activity-seam.js";
 
 export function gitText(args, cwd) {
   try {
@@ -28,8 +29,7 @@ export function gitText(args, cwd) {
 export function readUpdateCache() {
   try {
     var cachePath = join(dirname(REPOS_DIR), "cache", "plugin-updates.json");
-    if (!existsSync(cachePath)) return null;
-    var data = JSON.parse(readFileSync(cachePath, "utf-8"));
+    var data = readJson(cachePath);
     if (!data || typeof data !== "object" || !data.plugins) return null;
     return data;
   } catch { return null; }
@@ -113,6 +113,10 @@ export function fetchPluginRemotes(pluginItems, done) {
       var refs = ["origin/HEAD", "origin/main", "origin/master"];
       var ri = 0;
       var finish = function() {
+        // The same test plugin-updater's cache.ts makes, deliberately repeated rather than
+        // shared: this library carries no core submodule (see PLUGIN_MANAGER_PACKAGE in env.ts),
+        // so sharing one boolean would mean adding one. Only reached when the cache has no
+        // answer for this plugin; a cached verdict wins above.
         p.updateAvail = !!(p.localHead && p.remoteHead && p.localHead !== p.remoteHead);
         remaining--;
         if (remaining === 0 && done) done();
@@ -138,7 +142,7 @@ export function buildCombinedPluginList() {
   // resolvable version; mark it active rather than "not installed". Under Claude
   // loadNpmPlugins is empty (no opencode.jsonc), so no npm rows appear at all.
   var npm = loadNpmPlugins().map(function(np) {
-    var isEngine = np.name === "plugin-updater";
+    var isEngine = np.name === PLUGIN_MANAGER_PACKAGE;
     var ncEntry = cache && cache.plugins && cache.plugins[np.name];
     var npmUpdateAvail = !!(ncEntry && ncEntry.kind === "npm" && ncEntry.updateAvailable);
     return {
@@ -309,7 +313,13 @@ export function buildConfigItems(schema) {
   var byKey = {};
   for (var i = 0; i < fields.length; i++) { if (fields[i] && fields[i].key) byKey[fields[i].key] = fields[i]; }
   var merged = Object.assign({}, defaults, current);
-  return Object.keys(merged).map(function (k) {
+  // A nested object cannot be edited through a text row: typing JSON into one would be
+  // stored as a string and corrupt the setting. Surfaces that can edit structure (the
+  // dashboard) read the same config directly.
+  return Object.keys(merged).filter(function (k) {
+    var v = merged[k];
+    return v === null || typeof v !== "object";
+  }).map(function (k) {
     var isSet = Object.prototype.hasOwnProperty.call(current, k);
     var value = isSet ? current[k] : defaults[k];
     var field = byKey[k];
@@ -324,7 +334,7 @@ export function buildConfigItems(schema) {
 // is the only thing that writes a file, so a config appears only once actually changed.
 export function setPluginConfig(bundle, key, valueStr) {
   try {
-    execSync('node "' + bundle + '" config set ' + JSON.stringify(key) + ' ' + JSON.stringify(String(valueStr)), { timeout: 8000, stdio: ["ignore", "ignore", "ignore"], env: { ...process.env, ...loaderActivityEnv() } });
+    execSync('node "' + bundle + '" config set ' + JSON.stringify(key) + ' ' + JSON.stringify(String(valueStr)), { timeout: 8000, stdio: ["ignore", "ignore", "ignore"], env: spawnEnv() });
     return "";
   } catch (e) { return (e && e.message) || "set failed"; }
 }

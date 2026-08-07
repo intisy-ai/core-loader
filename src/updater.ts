@@ -2,12 +2,13 @@
 // plugin-updater engine discovery and the npm-plugin / repo helpers that wrap it.
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, rmSync } from "fs";
+import { readJson, readJsonc } from "./json.js";
 import { join, dirname } from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
 import { PLUGINS_DIR, CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, IS_CLAUDE, tuiLog } from "./env.js";
 import { S } from "./state.js";
-import { loaderActivityEnv } from "./activity-seam.js";
+import { spawnEnv } from "./activity-seam.js";
 
 // Every place the deployed plugin-updater might live. The npx roots differ per OS:
 // ~/.npm/_npx on unix, %LOCALAPPDATA%/%APPDATA%\npm-cache\_npx on Windows; all must
@@ -73,7 +74,7 @@ export function getUpdaterVersion() {
     var pkgPath = S.UPDATER_PATH.endsWith("index.js")
       ? join(dirname(S.UPDATER_PATH), "package.json")
       : join(S.UPDATER_PATH, "package.json");
-    return JSON.parse(readFileSync(pkgPath, "utf-8")).version || "";
+    return (readJson(pkgPath) || {}).version || "";
   } catch { return ""; }
 }
 
@@ -95,11 +96,11 @@ export function setupPlugin(repo, done) {
   // Tell the child WHICH app + config dir to update: without these it guesses from
   // argv (no "claude") + ~/.<app>, so it updated the wrong home and the loader's own
   // repos/<name> clone never advanced (updates "did nothing" / kept showing available).
-  var childEnv = Object.assign({}, process.env, {
+  var childEnv = spawnEnv({
     PU_PATH: updaterPath, PU_NAME: repo.name, PU_URL: repo.url || "", PU_BRANCH: repo.branch || "",
     PLUGIN_UPDATER_APP: IS_CLAUDE ? "claude" : "opencode",
     HUB_CONFIG_DIR: CONFIG_DIR,
-  }, loaderActivityEnv());
+  });
   var child = require("child_process").spawn(process.execPath, ["-e", script], { stdio: ["ignore", "ignore", "pipe"], env: childEnv });
   var errBuf = "";
   child.stderr.on("data", function(d) { errBuf += d.toString(); });
@@ -141,10 +142,8 @@ export function loadNpmPlugins() {
             for (var entry of cacheEntries) {
               if (entry !== name && entry.indexOf(name + "@") !== 0) continue;
               var cachedPkg = join(pkgCache, entry, "node_modules", name, "package.json");
-              if (existsSync(cachedPkg)) {
-                version = JSON.parse(readFileSync(cachedPkg, "utf-8")).version || "";
-                break;
-              }
+              version = (readJson(cachedPkg) || {}).version || "";
+              if (version) break;
             }
           }
           if (!version) {
@@ -152,10 +151,8 @@ export function loadNpmPlugins() {
             for (var root of roots) {
               if (!root) continue;
               var pkgPath = join(root, name, "package.json");
-              if (existsSync(pkgPath)) {
-                version = JSON.parse(readFileSync(pkgPath, "utf-8")).version || "";
-                break;
-              }
+              version = (readJson(pkgPath) || {}).version || "";
+              if (version) break;
             }
           }
         } catch {}
@@ -201,7 +198,7 @@ export function updateUpdater(done) {
       ? "npx -y plugin-updater@latest run --app claude"
       : "npm update -g plugin-updater";
     // command may be either tool, so the trace is merged unconditionally
-    var child = spawn(command, { stdio: ["ignore", "ignore", "pipe"], shell: true, env: { ...process.env, ...loaderActivityEnv() } });
+    var child = spawn(command, { stdio: ["ignore", "ignore", "pipe"], shell: true, env: spawnEnv() });
     var err = "";
     child.stderr.on("data", function (d) { err += d.toString(); });
     child.on("error", function (e) { finish("updater self-update failed: " + ((e && e.message) || e)); });
@@ -224,8 +221,7 @@ export function installUpdater(configDir, appName, onStep) {
     if (appName === "Claude Code") {
       step("Registering the SessionStart hook");
       var settingsPath = join(configDir, "settings.json");
-      var settings = {};
-      try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch {}
+      var settings = readJson(settingsPath, {});
       var hooks = settings.hooks || (settings.hooks = {});
       var sessionStart = hooks.SessionStart || (hooks.SessionStart = []);
       if (!JSON.stringify(sessionStart).includes("plugin-updater")) {
@@ -237,10 +233,7 @@ export function installUpdater(configDir, appName, onStep) {
       execSync("npm install -g plugin-updater", { timeout: 180000, stdio: "ignore" });
       step("Registering it in opencode.json");
       var ocPath = join(configDir, "opencode.json");
-      var ocData = {};
-      if (existsSync(ocPath)) {
-        try { ocData = JSON.parse(readFileSync(ocPath, "utf-8").replace(/^\s*\/\/[^\n]*/gm, "")); } catch {}
-      }
+      var ocData = readJsonc(ocPath, {});
       if (!Array.isArray(ocData.plugin)) ocData.plugin = [];
       if (ocData.plugin.indexOf("plugin-updater") === -1) ocData.plugin.unshift("plugin-updater");
       writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");
@@ -248,7 +241,7 @@ export function installUpdater(configDir, appName, onStep) {
     // Run the engine now so it's fetched + resolvable immediately (populates the npx
     // cache getUpdater() looks in); installing shouldn't require an app restart.
     step("Fetching + building the engine");
-    try { execSync("npx -y plugin-updater@latest run --app " + appFlag, { timeout: 180000, stdio: "ignore", env: { ...process.env, ...loaderActivityEnv() } }); } catch { /* best effort; getUpdater re-checks */ }
+    try { execSync("npx -y plugin-updater@latest run --app " + appFlag, { timeout: 180000, stdio: "ignore", env: spawnEnv() }); } catch { /* best effort; getUpdater re-checks */ }
     step("Done");
     return "";
   } catch (e) {

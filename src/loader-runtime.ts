@@ -4,6 +4,7 @@
 // core-loader stays independent of the core bundle.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { readJson } from "./json.js";
 import { execSync } from "child_process";
 import { join } from "path";
 import { homedir } from "os";
@@ -66,9 +67,9 @@ export function readDeployedProviders(reposDir: string): Array<{
   let repos = [];
   try { repos = readdirSync(reposDir); } catch { /* no repos dir */ }
   for (const repo of repos) {
-    let pkg = null;
-    try { pkg = JSON.parse(readFileSync(join(reposDir, repo, "package.json"), "utf-8")); } catch { continue; }
-    const declared = (pkg && pkg.claudeHub && pkg.claudeHub.authProviders) || (pkg && pkg.authProviders) || [];
+    const pkg = readJson(join(reposDir, repo, "package.json"));
+    if (!pkg) continue;
+    const declared = (pkg.claudeHub && pkg.claudeHub.authProviders) || pkg.authProviders || [];
     for (const provider of declared) {
       if (!provider.handler) continue;
       const name = provider.name || repo;
@@ -93,12 +94,7 @@ export function readDeployedProviders(reposDir: string): Array<{
 // entries, so plugins that never write one see no change in behavior.
 function readDynamicProviders(reposDir, repo) {
   const out = [];
-  let manifest;
-  try {
-    manifest = JSON.parse(readFileSync(join(reposDir, repo, ".dynamic-providers.json"), "utf-8"));
-  } catch {
-    return out;
-  }
+  const manifest = readJson(join(reposDir, repo, ".dynamic-providers.json"));
   if (!Array.isArray(manifest)) return out;
   for (const entry of manifest) {
     if (!entry || typeof entry.name !== "string" || typeof entry.handler !== "string") continue;
