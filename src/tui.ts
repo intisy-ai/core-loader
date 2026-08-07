@@ -7,6 +7,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
 import { S } from "./state.js";
+import { librariesTab } from "./views/libraries.js";
 import { APP_NAME, CLI_CMD, NPM_PKG, CONFIG_DIR, CACHE_DIR, UPDATE_CHECK_PATH, REPOS_DIR, PLUGINS_DIR, tuiLog } from "./env.js";
 import { hideCur, showCur, cleanup } from "./out.js";
 import { getFolderName, installUpdater, clearUpdaterCache, preloadUpdater } from "./updater.js";
@@ -152,6 +153,9 @@ function runBlocking(fn) {
 
 async function loadCustomTabs() {
   S.customTabs = [];
+  // Built in, but registered here so it survives the reset above and plugin tabs
+  // append after it rather than in front of it.
+  tuiApi.registerTab(librariesTab);
   const { pathToFileURL } = require("url");
   async function loadExt(extPath) {
     if (!extPath || !existsSync(extPath)) return;
