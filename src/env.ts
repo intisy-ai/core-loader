@@ -23,20 +23,37 @@ export const NPM_PKG = process.env.HUB_NPM_PKG || "opencode-ai";
 // resolved without its name anyway, so the name lives here once instead of in every call site.
 export const PLUGIN_MANAGER_PACKAGE = "plugin-updater";
 export const CONFIG_DIR = process.env.HUB_CONFIG_DIR || join(HOME, ".config", "opencode");
-export const CACHE_PKG_DIR = join(CONFIG_DIR, "cache", "node_modules");
+
+// The storage subdirectory names. core owns these (an app declares them in the
+// registry and core's appPaths resolves them), but this library carries no core
+// submodule, so the loader that does passes the resolved names down through the
+// environment. Only a single path segment is accepted, matching core: a separator
+// or a traversal would move storage outside the home it belongs to.
+function subdir(envVar: string, fallback: string): string {
+  const declared = (process.env[envVar] || "").trim();
+  if (!declared || declared === "." || declared === ".." || /[\\/]/.test(declared)) return fallback;
+  return declared;
+}
+
+export const REPOS_SUBDIR = subdir("HUB_REPOS_SUBDIR", "repos");
+export const PLUGIN_SUBDIR = subdir("HUB_PLUGIN_SUBDIR", "plugin");
+export const CACHE_SUBDIR = subdir("HUB_CACHE_SUBDIR", "cache");
+export const CONFIG_SUBDIR = subdir("HUB_CONFIG_SUBDIR", "config");
+
+export const CACHE_PKG_DIR = join(CONFIG_DIR, CACHE_SUBDIR, "node_modules");
 
 // opencode keeps its session database in the XDG data dir, not the config dir
 export const DB_PATH = [
   join(HOME, ".local", "share", "opencode", "opencode.db"),
   join(CONFIG_DIR, "opencode.db"),
 ].find(function(p) { return existsSync(p); }) || join(HOME, ".local", "share", "opencode", "opencode.db");
-export const CONFIG_FOLDER = join(CONFIG_DIR, "config");
-export const CACHE_DIR = join(CONFIG_DIR, "cache");
+export const CONFIG_FOLDER = join(CONFIG_DIR, CONFIG_SUBDIR);
+export const CACHE_DIR = join(CONFIG_DIR, CACHE_SUBDIR);
 export const CONFIG_PATH = join(CONFIG_FOLDER, "oc-config.json");
 export const UPDATE_CHECK_PATH = join(CACHE_DIR, "oc-last-update-check");
 export const PLUGINS_JSON = join(CONFIG_FOLDER, "plugins.json");
-export const REPOS_DIR = join(CONFIG_DIR, "repos");
-export const PLUGINS_DIR = join(CONFIG_DIR, "plugin");
+export const REPOS_DIR = join(CONFIG_DIR, REPOS_SUBDIR);
+export const PLUGINS_DIR = join(CONFIG_DIR, PLUGIN_SUBDIR);
 export const MCP_CONFIG_PATH = join(CONFIG_DIR, ".mcp.json");
 export const CATALOG_CACHE_PATH = join(CACHE_DIR, "marketplace-catalog.json");
 export const SEED_CACHE_PATH = join(CACHE_DIR, "seed-marketplaces.json");

@@ -1,3 +1,4 @@
+import { CONFIG_SUBDIR } from "./env.js";
 // @ts-nocheck
 // Shared slash-command engine for BOTH loaders. Each loader deploys ONLY to its
 // own app's command dir (not cross-app), so its /plugins + /accounts don't collide
@@ -68,7 +69,7 @@ export function makeLoaderCommands(opts) {
   }
 
   function listPlugins(configDir) {
-    for (const p of [join(configDir, "config", "plugins.json"), join(configDir, "plugins.json")]) {
+    for (const p of [join(configDir, CONFIG_SUBDIR, "plugins.json"), join(configDir, "plugins.json")]) {
       const arr = readJson(p);
       if (arr === null) continue;
       if (!Array.isArray(arr) || !arr.length) return console.log("No plugins configured.");
@@ -79,7 +80,7 @@ export function makeLoaderCommands(opts) {
   }
 
   function listAccounts(configDir) {
-    for (const p of [join(configDir, "config", "accounts.json"), join(configDir, "accounts.json"), join(configDir, "config", "core-auth-accounts.json"), join(configDir, "core-auth-accounts.json")]) {
+    for (const p of [join(configDir, CONFIG_SUBDIR, "accounts.json"), join(configDir, "accounts.json"), join(configDir, CONFIG_SUBDIR, "core-auth-accounts.json"), join(configDir, "core-auth-accounts.json")]) {
       const store = readJson(p);
       if (store === null || typeof store !== "object") continue;
       const lines = [];
