@@ -4,6 +4,40 @@
 
 const CLI_SUBCOMMANDS = ["plugins", "providers", "proxy", "doctor"];
 
+// The storage subdirectory names the TUI should use. This library reads them from
+// the environment because it carries no core submodule, so the loader (which does)
+// resolves them from the app's registry entry and writes them into the wrapper.
+// Only names that differ from the convention are emitted, so an app that never
+// renamed anything gets no extra lines.
+export interface SubdirNames {
+  repos?: string;
+  plugin?: string;
+  cache?: string;
+  config?: string;
+}
+
+const SUBDIR_ENV: Record<keyof SubdirNames, [string, string]> = {
+  repos: ["HUB_REPOS_SUBDIR", "repos"],
+  plugin: ["HUB_PLUGIN_SUBDIR", "plugin"],
+  cache: ["HUB_CACHE_SUBDIR", "cache"],
+  config: ["HUB_CONFIG_SUBDIR", "config"],
+};
+
+function changedSubdirs(names: SubdirNames): [string, string][] {
+  return (Object.keys(SUBDIR_ENV) as (keyof SubdirNames)[])
+    .map((kind) => [SUBDIR_ENV[kind][0], names[kind], SUBDIR_ENV[kind][1]] as const)
+    .filter((entry): entry is readonly [string, string, string] => typeof entry[1] === "string" && entry[1] !== entry[2])
+    .map(([envVar, value]) => [envVar, value] as [string, string]);
+}
+
+export function subdirEnvCmdLines(names: SubdirNames): string[] {
+  return changedSubdirs(names).map(([envVar, value]) => `set "${envVar}=${value}"`);
+}
+
+export function subdirEnvShLines(names: SubdirNames): string[] {
+  return changedSubdirs(names).map(([envVar, value]) => `export ${envVar}="${value}"`);
+}
+
 // cmd.exe: flag %1 as a CLI subcommand, then dispatch to the first candidate
 // node CLI script that exists on disk.
 export function cliDispatchCmdLines(cliCandidates: string[]): string[] {
