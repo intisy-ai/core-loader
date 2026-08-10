@@ -65,6 +65,8 @@ export const S = {
   cfgScrollOff: 0,
   configTarget: null,
   configEditKey: "",
+  // the action row armed by a first enter, waiting for the confirming second one
+  configConfirm: null,
 
   // Activity page: read-only feed from the injected `capabilities.activity` reader.
   // activityRecords caches the last read() result; refreshed on tab entry and 'r'.

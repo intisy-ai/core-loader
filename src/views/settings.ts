@@ -6,10 +6,15 @@
 
 import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
-import { buildGlobalSection, buildSettingsEntries, firstSelectableIndex } from "../settings-model.js";
+import { buildGlobalSection, buildSettingsEntries, firstSelectableIndex, splitBySections } from "../settings-model.js";
 import { probeConfigSchemaAsync } from "../plugins.js";
 import { hints, messageLine, spinnerFrame, scheduleRender } from "./common.js";
 import { buildVersioning } from "./versioning.js";
+
+// An action row carries a human label; a setting row is addressed by its key.
+function rowLabel(row) {
+  return row.kind === "action" ? row.label : row.key;
+}
 
 // Rebuild the section model + entry list from ALREADY-PROBED schemas only (no spawning).
 // Un-probed plugins become "loading" placeholders; buildSectionsFromCache never blocks.
@@ -20,10 +25,7 @@ function buildSectionsFromCache() {
   for (const p of plugins) {
     if (p._cfgProbed === true) {
       const cfg = p._cfg;
-      if (cfg && cfg.items && cfg.items.length) {
-        const name = cfg.name || p.name;
-        sections.push({ label: name, kind: "plugin", file: name + ".json", bundle: cfg.bundle, items: cfg.items });
-      }
+      if (cfg) sections.push(...splitBySections({ ...cfg, name: cfg.name || p.name }));
     } else {
       loading.push(p.name);
     }
@@ -75,30 +77,36 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     var cname = (ct && ct.name) || "settings";
     var cfile = (ct && ct.file) || "settings.json";
     pushBody("  " + BOLD + WHITE + "Configure " + trunc(cname, cols - 16) + RST, false);
-    pushBody("  " + GRAY + "changes save to config/" + cfile + " (restart to apply)" + RST, false);
+    var origin = (ct && ct.addedBy) ? ("added by " + ct.addedBy + " · ") : "";
+    pushBody("  " + GRAY + origin + "changes save to config/" + cfile + " (restart to apply)" + RST, false);
     pushBody("", false);
     var keyW = 6;
-    for (var ck = 0; ck < S.configItems.length; ck++) keyW = Math.max(keyW, stringWidth(S.configItems[ck].key));
+    for (var ck = 0; ck < S.configItems.length; ck++) keyW = Math.max(keyW, stringWidth(rowLabel(S.configItems[ck])));
     keyW = Math.min(keyW, Math.max(12, Math.floor(cols / 2)));
     for (var ci = 0; ci < S.configItems.length; ci++) {
       var it = S.configItems[ci];
       var csel = ci === S.cfgcursor;
       var editing = S.mode === "pcfginput" && csel;
       var valStr;
-      if (editing) valStr = BG_SEL + " " + S.inputBuf + BOLD + "|" + RST;
-      else if (it.type === "boolean") valStr = (it.value ? OK + "true" : GRAY + "false") + RST;
-      else valStr = WHITE + JSON.stringify(it.value) + RST;
-      var mark = it.isSet ? "" : (GRAY + " (default)" + RST);
+      var mark = "";
+      if (it.kind === "action") {
+        valStr = (S.configConfirm === it.key ? (ACCENT + (it.confirm || "Run this?") + " enter to confirm") : (GRAY + "↵ run")) + RST;
+      } else {
+        if (editing) valStr = BG_SEL + " " + S.inputBuf + BOLD + "|" + RST;
+        else if (it.type === "boolean") valStr = (it.value ? OK + "true" : GRAY + "false") + RST;
+        else valStr = WHITE + JSON.stringify(it.value) + RST;
+        mark = it.isSet ? "" : (GRAY + " (default)" + RST);
+      }
       var carrow = csel ? (ACCENT + " ❯ " + RST) : "   ";
       var cbg = csel ? BG_SEL : "";
       var cNameStyle = csel ? (BOLD + WHITE) : DIM;
-      pushBody("  " + cbg + carrow + cNameStyle + pad(trunc(it.key, keyW), keyW) + RST + cbg + "  " + valStr + mark + RST, csel);
+      pushBody("  " + cbg + carrow + cNameStyle + pad(trunc(rowLabel(it), keyW), keyW) + RST + cbg + "  " + valStr + mark + RST, csel);
     }
     pushBody("", false);
     if (S.message) pushFoot(messageLine(cols));
     pushFoot("  " + rule(barW));
     if (S.mode === "pcfginput") pushFoot(hints([["enter", "save"], ["esc", "cancel"]]));
-    else pushFoot(hints([["↑↓", "move"], ["enter", "edit/toggle"], ["esc", "back"]]));
+    else pushFoot(hints([["↑↓", "move"], ["enter", "edit/toggle/run"], ["esc", "back"]]));
     return;
   }
 
@@ -130,8 +138,9 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     var nameStyle = sel ? (BOLD + WHITE) : DIM;
     var sec = en.section;
     var n = sec.items.length;
-    var count = n + (n === 1 ? " setting" : " settings");
-    pushBody("  " + bg + arrow + nameStyle + pad(trunc(sec.label, nameW), nameW) + RST + bg + "  " + GRAY + pad(count, 12) + RST, sel);
+    var count = n + (n === 1 ? " control" : " controls");
+    var by = sec.addedBy ? (GRAY + "  added by " + sec.addedBy + RST) : "";
+    pushBody("  " + bg + arrow + nameStyle + pad(trunc(sec.label, nameW), nameW) + RST + bg + "  " + GRAY + pad(count, 12) + RST + by, sel);
   }
 
   pushBody("", false);

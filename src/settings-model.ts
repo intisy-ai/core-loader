@@ -8,12 +8,20 @@ import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "./config.js";
 import { S } from "./state.js";
 
 export type SettingsItem = { key: string; value: unknown; def: unknown; isSet: boolean; type: string };
+export type SettingsAction = { kind: "action"; key: string; label: string; description?: string; confirm?: string; danger?: boolean };
+export type SettingsRow = SettingsItem | SettingsAction;
 export type SettingsSection = {
   label: string;
   kind: "global" | "plugin";
   file: string;
   bundle: string | null;
-  items: SettingsItem[];
+  items: SettingsRow[];
+  // Set on a section a plugin CONTRIBUTED (as opposed to its own flat config), so every
+  // surface can say who added it and re-resolve it after a write.
+  addedBy?: string;
+  sectionId?: string;
+  description?: string;
+  order?: number;
 };
 
 // The host loader injects core's own declaration of the shared settings (defaults plus
@@ -27,15 +35,60 @@ export function buildGlobalSection(): SettingsSection {
   return { label: "Global", kind: "global", file: "settings.json", bundle: null, items };
 }
 
+function actionRow(action: any): SettingsAction {
+  const row: SettingsAction = { kind: "action", key: action.id, label: action.label };
+  if (typeof action.description === "string") row.description = action.description;
+  if (typeof action.confirm === "string") row.confirm = action.confirm;
+  if (action.danger === true) row.danger = true;
+  return row;
+}
+
+// The claim rule, applied to this surface's flat rows: a setting or action NAMED by a
+// contributed section belongs to that section, and whatever no section claimed stays the
+// plugin's own group. A section that claims nothing resolvable is dropped rather than
+// listed empty.
+export function splitBySections(cfg: any): SettingsSection[] {
+  const name = cfg.name;
+  const file = name + ".json";
+  const itemByKey = new Map<string, SettingsRow>((cfg.items || []).map((i: SettingsItem) => [i.key, i]));
+  const actionById = new Map<string, any>((cfg.actions || []).map((a: any) => [a.id, a]));
+  const claimed = new Set<string>();
+  const sections: SettingsSection[] = [];
+
+  for (const spec of cfg.sections || []) {
+    if (!spec || typeof spec.id !== "string" || typeof spec.label !== "string") continue;
+    const rows: SettingsRow[] = [];
+    for (const key of spec.fields || []) {
+      const item = itemByKey.get(key);
+      if (item && !claimed.has("f:" + key)) { rows.push(item); claimed.add("f:" + key); }
+    }
+    for (const id of spec.actions || []) {
+      const action = actionById.get(id);
+      if (action && !claimed.has("a:" + id)) { rows.push(actionRow(action)); claimed.add("a:" + id); }
+    }
+    if (!rows.length) continue;
+    const section: SettingsSection = { label: spec.label, kind: "plugin", file, bundle: cfg.bundle, items: rows, addedBy: name, sectionId: spec.id };
+    if (typeof spec.description === "string") section.description = spec.description;
+    if (typeof spec.order === "number") section.order = spec.order;
+    sections.push(section);
+  }
+
+  const rest: SettingsRow[] = (cfg.items || []).filter((i: SettingsItem) => !claimed.has("f:" + i.key));
+  for (const action of cfg.actions || []) {
+    if (!claimed.has("a:" + action.id)) rest.push(actionRow(action));
+  }
+  if (rest.length) sections.push({ label: name, kind: "plugin", file, bundle: cfg.bundle, items: rest });
+  return sections;
+}
+
 export function buildPluginSections(pluginItems: any[]): SettingsSection[] {
   const out: SettingsSection[] = [];
   for (const p of pluginItems || []) {
     // reuse a cached probe if the Plugins tab already ran it; else probe now
     let cfg = p && p._cfg;
     if (p && p._cfgProbed !== true) { cfg = probeConfigSchema(p); p._cfg = cfg; p._cfgProbed = true; }
-    if (!cfg || !cfg.items || !cfg.items.length) continue;
-    const name = cfg.name || p.name;
-    out.push({ label: name, kind: "plugin", file: name + ".json", bundle: cfg.bundle, items: cfg.items });
+    if (!cfg) continue;
+    out.push(...splitBySections({ ...cfg, name: cfg.name || p.name }));
   }
   return out;
 }
@@ -57,7 +110,13 @@ export function buildSettingsEntries(sections: SettingsSection[], loading: strin
   }
   if (plugins.length || loading.length) {
     entries.push({ type: "header", label: "Plugins" });
-    for (const s of plugins) entries.push({ type: "group", section: s });
+    // A contributed section is a feature the user came looking for ("Sync"); a plugin's own
+    // group is where they go to tune one plugin. The first kind leads.
+    const contributed = plugins.filter((s) => s.addedBy).sort(
+      (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.label.localeCompare(b.label),
+    );
+    for (const s of contributed) entries.push({ type: "group", section: s });
+    for (const s of plugins) if (!s.addedBy) entries.push({ type: "group", section: s });
     for (const l of loading) entries.push({ type: "loading", label: l });
   }
   return entries;

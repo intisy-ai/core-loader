@@ -278,9 +278,7 @@ export function probeConfigSchema(pitem) {
     var out = execSync('node "' + bundle + '" config schema', { encoding: "utf-8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] });
     var data = JSON.parse(String(out).trim());
     if (!data || typeof data !== "object") return null;
-    var items = buildConfigItems(data);
-    if (!items.length) return null;
-    return { name: data.name || pitem.name, bundle: bundle, items: items };
+    return declarationOf(data, pitem.name, bundle);
   } catch { return null; }
 }
 
@@ -296,12 +294,43 @@ export function probeConfigSchemaAsync(pitem) {
       try {
         var data = JSON.parse(String(stdout).trim());
         if (!data || typeof data !== "object") { resolve(null); return; }
-        var items = buildConfigItems(data);
-        if (!items.length) { resolve(null); return; }
-        resolve({ name: data.name || pitem.name, bundle: bundle, items: items });
+        resolve(declarationOf(data, pitem.name, bundle));
       } catch (e) { resolve(null); }
     });
   });
+}
+
+// A plugin's whole declaration as the Settings tab consumes it: editable rows plus the
+// actions and contributed sections it declared. A plugin offering neither settings nor
+// actions has nothing to configure, which is what yields null (no Configure entry).
+function declarationOf(data, fallbackName, bundle) {
+  var items = buildConfigItems(data);
+  var actions = Array.isArray(data.actions) ? data.actions : [];
+  if (!items.length && !actions.length) return null;
+  return {
+    name: data.name || fallbackName,
+    bundle: bundle,
+    items: items,
+    actions: actions,
+    sections: Array.isArray(data.sections) ? data.sections : [],
+  };
+}
+
+function digPath(obj, dotKey) {
+  var node = obj;
+  var parts = dotKey.split(".");
+  for (var i = 0; i < parts.length; i++) {
+    if (!node || typeof node !== "object" || !(parts[i] in node)) return undefined;
+    node = node[parts[i]];
+  }
+  return node;
+}
+
+function configRow(key, value, def, isSet, field) {
+  var item = { key: key, value: value, def: def, isSet: isSet, type: typeof value };
+  // A declared choice list turns a free-text row into one that steps through its options.
+  if (field && Array.isArray(field.options) && field.options.length) item.options = field.options;
+  return item;
 }
 
 // Flatten a schema into editable rows: every key (declared default or on-disk),
@@ -316,18 +345,39 @@ export function buildConfigItems(schema) {
   // A nested object cannot be edited through a text row: typing JSON into one would be
   // stored as a string and corrupt the setting. Surfaces that can edit structure (the
   // dashboard) read the same config directly.
-  return Object.keys(merged).filter(function (k) {
+  var rows = Object.keys(merged).filter(function (k) {
     var v = merged[k];
     return v === null || typeof v !== "object";
   }).map(function (k) {
     var isSet = Object.prototype.hasOwnProperty.call(current, k);
-    var value = isSet ? current[k] : defaults[k];
-    var field = byKey[k];
-    var item = { key: k, value: value, def: defaults[k], isSet: isSet, type: typeof value };
-    // A declared choice list turns a free-text row into one that steps through its options.
-    if (field && Array.isArray(field.options) && field.options.length) item.options = field.options;
-    return item;
+    return configRow(k, isSet ? current[k] : defaults[k], defaults[k], isSet, byKey[k]);
   });
+
+  // A declared key may address a leaf INSIDE one of those objects ("categories.accounts").
+  // Those are editable after all, since core's config get/set both take a dot path, and
+  // without this the only way to reach them is the dashboard.
+  var seen = {};
+  for (var r = 0; r < rows.length; r++) seen[rows[r].key] = true;
+  for (var f = 0; f < fields.length; f++) {
+    var field = fields[f];
+    if (!field || typeof field.key !== "string" || field.key.indexOf(".") < 0 || seen[field.key]) continue;
+    var cur = digPath(current, field.key);
+    var def = digPath(defaults, field.key);
+    if (cur === undefined && def === undefined) continue;
+    var value = cur !== undefined ? cur : def;
+    if (value !== null && typeof value === "object") continue;
+    rows.push(configRow(field.key, value, def, cur !== undefined, field));
+  }
+  return rows;
+}
+
+// Run a plugin's declared action by shelling into its own bundle, the same route the
+// dashboard and the slash-command take. Returns "" on success, else the error text.
+export function runPluginAction(bundle, actionId) {
+  try {
+    execSync('node "' + bundle + '" ' + JSON.stringify(actionId), { timeout: 600000, stdio: ["ignore", "ignore", "pipe"], env: spawnEnv() });
+    return "";
+  } catch (e) { return (e && e.message) || "action failed"; }
 }
 
 // Persist one setting by shelling back into the plugin's own config CLI: `config set`

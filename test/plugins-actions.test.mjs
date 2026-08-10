@@ -38,6 +38,29 @@ describe("plugins: buildConfigItems structure", () => {
     const items = buildConfigItems({ defaults: { token: null }, current: {} });
     assert.deepEqual(items.map((i) => i.key), ["token"]);
   });
+
+  it("adds a row for a declared key that addresses a leaf inside a nested object", () => {
+    const items = buildConfigItems({
+      defaults: { categories: { accounts: true, plugins: true }, logging: true },
+      current: { categories: { accounts: false } },
+      fields: [{ key: "categories.accounts", type: "boolean" }, { key: "categories.plugins", type: "boolean" }],
+    });
+    const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
+    assert.deepEqual(Object.keys(byKey).sort(), ["categories.accounts", "categories.plugins", "logging"]);
+    assert.equal(byKey["categories.accounts"].value, false);
+    assert.equal(byKey["categories.accounts"].isSet, true);
+    assert.equal(byKey["categories.plugins"].value, true);
+    assert.equal(byKey["categories.plugins"].isSet, false);
+  });
+
+  it("ignores a declared nested key that resolves to nothing, or to another object", () => {
+    const items = buildConfigItems({
+      defaults: { categories: { accounts: true }, nested: { deep: { a: 1 } } },
+      current: {},
+      fields: [{ key: "categories.missing", type: "boolean" }, { key: "nested.deep", type: "string" }],
+    });
+    assert.deepEqual(items.map((i) => i.key), []);
+  });
 });
 
 describe("plugins: getPluginActions", () => {

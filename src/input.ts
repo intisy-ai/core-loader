@@ -12,7 +12,7 @@ import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
 import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater, clearUpdaterCache } from "./updater.js";
 import { openProject, openProjectSession, listSessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
-import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
+import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig, runPluginAction } from "./plugins.js";
 import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync } from "./marketplace.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
@@ -20,16 +20,31 @@ import { flash } from "./views/common.js";
 import { refreshSettings } from "./views/settings.js";
 import { getConfigLedger, configLedgerReady, configLedgerInstalled, preloadConfigLedger } from "./config-ledger.js";
 import { refreshVersioning, reconcileConfigLedger, VG_INIT_OPTS, VG_MENU_ITEMS } from "./views/versioning.js";
-import { buildGlobalSection, buildPluginSections } from "./settings-model.js";
+import { buildGlobalSection, buildPluginSections, splitBySections } from "./settings-model.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
 import { emitLoaderActivity } from "./activity-seam.js";
 
 // Enter on a config row: a boolean flips, a field with a declared choice list steps to
 // its next option, anything else opens the text input. Shared by both config editors so
+// A declared action runs the plugin's own bundle. One declaring `confirm` arms on the
+// first enter and runs on the second, which keeps a destructive action two keystrokes
+// away without a modal the config screen has no room for.
+function activateConfigAction(citem) {
+  if (!S.configTarget || !S.configTarget.bundle) return;
+  if (citem.confirm && S.configConfirm !== citem.key) { S.configConfirm = citem.key; return; }
+  S.configConfirm = null;
+  var err = runPluginAction(S.configTarget.bundle, citem.key);
+  if (err) { flash(citem.label + ": " + err); return; }
+  refreshConfigItems();
+  flash(citem.label + ": done.");
+}
+
 // the write path exists once.
 function activateConfigItem(citem, textMode) {
   if (!citem) return;
+  if (citem.kind === "action") { activateConfigAction(citem); return; }
+  S.configConfirm = null;
   var next = null;
   if (citem.type === "boolean") next = !citem.value;
   else if (Array.isArray(citem.options) && citem.options.length) {
@@ -808,9 +823,9 @@ export function handlePluginKey(key) {
     else if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; }
   } else if (S.mode === "pconfig") {
     var citem = S.configItems[S.cfgcursor];
-    if (key === "up" || key === "w") { S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
-    else if (key === "down" || key === "s") { S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
-    else if (key === "escape" || key === "q" || key === "left") { S.mode = "pactions"; }
+    if (key === "up" || key === "w") { S.configConfirm = null; S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
+    else if (key === "down" || key === "s") { S.configConfirm = null; S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
+    else if (key === "escape" || key === "q" || key === "left") { S.configConfirm = null; S.mode = "pactions"; }
     else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
   } else if (S.mode === "confirm") {
     if (key === "y") {
@@ -1132,9 +1147,9 @@ export function handleSettingsKey(key) {
     // Shared config editor: cursor nav + boolean toggle / open text input.
     // pcfginput text is captured by handleConfigInputData in the onData router.
     var citem = S.configItems[S.cfgcursor];
-    if (key === "up" || key === "w") { S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
-    else if (key === "down" || key === "s") { S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
-    else if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; }
+    if (key === "up" || key === "w") { S.configConfirm = null; S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
+    else if (key === "down" || key === "s") { S.configConfirm = null; S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
+    else if (key === "escape" || key === "q" || key === "left") { S.configConfirm = null; S.mode = "list"; }
     else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
     return;
   }
@@ -1165,8 +1180,9 @@ export function handleSettingsKey(key) {
     var sec = en.section;
     S.configTarget = (sec.kind === "global")
       ? { name: "settings", global: true, file: sec.file, items: sec.items }
-      : { name: sec.label, bundle: sec.bundle, file: sec.file, items: sec.items };
+      : { name: sec.label, bundle: sec.bundle, file: sec.file, items: sec.items, addedBy: sec.addedBy, sectionId: sec.sectionId };
     S.configItems = sec.items;
+    S.configConfirm = null;
     S.cfgcursor = 0;
     S.cfgScrollOff = 0;
     S.mode = "pconfig";
@@ -1465,14 +1481,23 @@ function refreshConfigItems() {
     try {
       var out = execSync('node "' + S.configTarget.bundle + '" config schema', { encoding: "utf-8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] });
       var data = JSON.parse(String(out).trim());
-      S.configItems = buildConfigItems(data);
-      S.configTarget.items = S.configItems;
+      var fresh = buildConfigItems(data);
       // Keep the Settings tab's cached plugin section in sync so its rebuilt rows
       // show the freshly saved value (buildPluginSections reuses the cached probe).
       for (var pi = 0; pi < (S.pluginItems || []).length; pi++) {
         var pit = S.pluginItems[pi];
-        if (pit && pit._cfg && pit._cfg.bundle === S.configTarget.bundle) { pit._cfg.items = S.configItems; break; }
+        if (pit && pit._cfg && pit._cfg.bundle === S.configTarget.bundle) { pit._cfg.items = fresh; break; }
       }
+      // A contributed section shows only the controls it claimed, so re-resolve it rather
+      // than replacing its rows with the plugin's whole flat list.
+      if (S.configTarget.sectionId) {
+        var split = splitBySections({ ...data, name: S.configTarget.addedBy, bundle: S.configTarget.bundle, items: fresh });
+        var mine = split.filter(function (s) { return s.sectionId === S.configTarget.sectionId; })[0];
+        S.configItems = mine ? mine.items : fresh;
+      } else {
+        S.configItems = fresh;
+      }
+      S.configTarget.items = S.configItems;
     } catch { /* keep stale view */ }
   }
   if (S.cfgcursor >= S.configItems.length) S.cfgcursor = Math.max(0, S.configItems.length - 1);

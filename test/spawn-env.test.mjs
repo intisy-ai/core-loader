@@ -50,7 +50,7 @@ describe("spawn env merge", () => {
     const sites = [
       ["src/updater.ts", 3],
       ["src/marketplace.ts", 1],
-      ["src/plugins.ts", 1],
+      ["src/plugins.ts", 2],
     ];
     for (const [file, expected] of sites) {
       const text = readFileSync(new URL("../" + file, import.meta.url), "utf8");
