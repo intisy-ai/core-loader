@@ -709,6 +709,20 @@ export function handlePluginKey(key) {
         flash(pitem.name + ": auto-update " + (newVal ? "ON" : "OFF"));
         S.mode = "list";
       }
+      else if (action === "channel-experimental" || action === "channel-stable") {
+        var toExperimental = action === "channel-experimental";
+        // Written explicitly both ways. Writing "inherit" for stable would leave a plugin
+        // riding a global yes exactly where it was.
+        pitem.onExperimental = toExperimental;
+        var cplugins = loadPlugins();
+        var cmatch = cplugins.find(function(r) { return r.name === pitem.name; });
+        if (cmatch) {
+          cmatch.channel = toExperimental ? "experimental" : "stable";
+          savePlugins(cplugins);
+        }
+        S.mode = "list";
+        runUpdateSequence([pitem], null);
+      }
       else if (action === "disable-plugin") {
         var updater = getUpdater();
         if (updater && updater.disable) {

@@ -92,4 +92,23 @@ describe("plugins: getPluginActions", () => {
     assert.equal(auto.find((a) => a.key === "disable-auto").label, "Set to manual update");
     assert.equal(manual.find((a) => a.key === "enable-auto").label, "Enable auto-update");
   });
+
+  it("offers switching to experimental only when detection is a definite yes and the plugin isn't on it yet", () => {
+    const onStable = getPluginActions({ enabled: true, experimentalAvailable: true, onExperimental: false });
+    assert.ok(onStable.some((a) => a.key === "channel-experimental"));
+    assert.ok(!onStable.some((a) => a.key === "channel-stable"));
+  });
+
+  it("offers switching back to stable when the RESOLVED state already has it on the channel", () => {
+    const onExperimental = getPluginActions({ enabled: true, experimentalAvailable: true, onExperimental: true });
+    assert.ok(onExperimental.some((a) => a.key === "channel-stable"));
+    assert.ok(!onExperimental.some((a) => a.key === "channel-experimental"));
+  });
+
+  it("offers neither channel action when availability is unknown or false", () => {
+    const unknown = getPluginActions({ enabled: true, experimentalAvailable: null, onExperimental: false });
+    const unavailable = getPluginActions({ enabled: true, experimentalAvailable: false, onExperimental: false });
+    assert.ok(!unknown.some((a) => a.key === "channel-experimental" || a.key === "channel-stable"));
+    assert.ok(!unavailable.some((a) => a.key === "channel-experimental" || a.key === "channel-stable"));
+  });
 });

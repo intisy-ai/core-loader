@@ -266,6 +266,16 @@ export function getPluginActions(pitem) {
   } else {
     a.push({ cat: "Settings", key: "enable-auto", label: "Enable auto-update" });
   }
+  // Only offered on a definite yes: a switch that cannot be confirmed is worse than none.
+  // Which way it points comes from the RESOLVED state, so a plugin riding a global yes
+  // offers "back to stable" rather than offering to turn on what is already on.
+  if (pitem.experimentalAvailable === true) {
+    if (pitem.onExperimental) {
+      a.push({ cat: "Settings", key: "channel-stable", label: "Switch back to stable" });
+    } else {
+      a.push({ cat: "Settings", key: "channel-experimental", label: "Switch to experimental build" });
+    }
+  }
   a.push({ cat: "Settings", key: "commits", label: "Select specific commit (Downgrade)" });
   a.push({ cat: "Manage", key: "disable-plugin", label: "Disable plugin" });
   a.push({ cat: "Manage", key: "uninstall-plugin", label: "Uninstall plugin" });
