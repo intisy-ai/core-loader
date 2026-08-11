@@ -77,6 +77,9 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
       statusParts.push(BAD + "missing" + RST);
     }
   }
+  if (pitem.onExperimental) {
+    statusParts.push(ACCENT + "experimental" + RST);
+  }
 
   var statusStr = statusParts.join(GRAY + " | " + RST);
   var versionStr = pitem.latestTag

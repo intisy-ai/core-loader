@@ -8,7 +8,7 @@ import { join, dirname } from "path";
 import { execSync, exec } from "child_process";
 import { REPOS_DIR, PLUGINS_DIR, PLUGIN_MANAGER_PACKAGE } from "./env.js";
 import { loadPlugins } from "./config.js";
-import { getFolderName, loadNpmPlugins, getUpdaterVersion } from "./updater.js";
+import { getFolderName, loadNpmPlugins, getUpdaterVersion, getUpdater } from "./updater.js";
 import { S } from "./state.js";
 import { spawnEnv } from "./activity-seam.js";
 
@@ -39,6 +39,8 @@ export function buildPluginList() {
   var plugins = loadPlugins();
   var list = [];
   var cache = readUpdateCache();
+  var channelUpdater = getUpdater();
+  var configDir = dirname(REPOS_DIR);
   for (var p of plugins) {
     var folderName = getFolderName(p);
     var dir = join(REPOS_DIR, folderName);
@@ -71,6 +73,10 @@ export function buildPluginList() {
       if (centry.updatedAt) updatedAt = centry.updatedAt;
     }
 
+    var channelState = channelUpdater && typeof channelUpdater.pluginChannelState === "function"
+      ? channelUpdater.pluginChannelState(configDir, p.name)
+      : { onExperimental: false, experimentalAvailable: null };
+
     list.push({
       name: p.name,
       folderName: folderName,
@@ -85,6 +91,8 @@ export function buildPluginList() {
       subject: subject,
       updateAvail: updateAvail,
       updatedAt: updatedAt,
+      experimentalAvailable: channelState.experimentalAvailable,
+      onExperimental: channelState.onExperimental,
       hasBuild: !!(p.build || p.bundle),
       pluginFile: p.pluginFile,
       _raw: p
