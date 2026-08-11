@@ -774,6 +774,7 @@ export function handlePluginKey(key) {
         if (cfg && cfg.items && cfg.items.length) {
           S.configTarget = cfg;
           S.configItems = cfg.items;
+          S.configConfirm = null;
           S.cfgcursor = 0; S.cfgScrollOff = 0;
           S.mode = "pconfig";
         } else {

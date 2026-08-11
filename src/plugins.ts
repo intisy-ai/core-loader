@@ -377,7 +377,11 @@ export function runPluginAction(bundle, actionId) {
   try {
     execSync('node "' + bundle + '" ' + JSON.stringify(actionId), { timeout: 600000, stdio: ["ignore", "ignore", "pipe"], env: spawnEnv() });
     return "";
-  } catch (e) { return (e && e.message) || "action failed"; }
+  } catch (e) {
+    // The bundle's own stderr says what went wrong; execSync's message only repeats the command.
+    var stderr = e && e.stderr ? String(e.stderr).trim() : "";
+    return stderr || (e && e.message) || "action failed";
+  }
 }
 
 // Persist one setting by shelling back into the plugin's own config CLI: `config set`
