@@ -711,8 +711,7 @@ export function handlePluginKey(key) {
       }
       else if (action === "channel-experimental" || action === "channel-stable") {
         var toExperimental = action === "channel-experimental";
-        // Written explicitly both ways. Writing "inherit" for stable would leave a plugin
-        // riding a global yes exactly where it was.
+        // Explicit both ways: "inherit" here would no-op for a plugin riding a global yes.
         pitem.onExperimental = toExperimental;
         var cplugins = loadPlugins();
         var cmatch = cplugins.find(function(r) { return r.name === pitem.name; });

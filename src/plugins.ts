@@ -266,9 +266,7 @@ export function getPluginActions(pitem) {
   } else {
     a.push({ cat: "Settings", key: "enable-auto", label: "Enable auto-update" });
   }
-  // Only offered on a definite yes: a switch that cannot be confirmed is worse than none.
-  // Which way it points comes from the RESOLVED state, so a plugin riding a global yes
-  // offers "back to stable" rather than offering to turn on what is already on.
+  // Gate on the resolved state: a plugin riding the home's global yes is already on the channel.
   if (pitem.experimentalAvailable === true) {
     if (pitem.onExperimental) {
       a.push({ cat: "Settings", key: "channel-stable", label: "Switch back to stable" });
