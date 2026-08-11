@@ -1,8 +1,9 @@
-import { describe, it } from "vitest";
+import { describe, it, beforeEach, afterEach } from "vitest";
 import assert from "node:assert";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 
 // buildPluginList reads env.js's REPOS_DIR, which is derived from HUB_CONFIG_DIR at
 // module-evaluation time, so the fake configDir must be set up and the env var
@@ -42,7 +43,12 @@ writeFileSync(
   }),
 );
 
-const { buildPluginList } = await import("../dist/plugins.js");
+// require(), not import(): vitest's module runner gives an ESM import of a CJS dist
+// file a different instance than the function-under-test's own internal require(), so
+// stubbing S via import silently wouldn't reach buildPluginList (see marketplace.test.mjs).
+const require = createRequire(import.meta.url);
+const { buildPluginList } = require("../dist/plugins.js");
+const { S } = require("../dist/state.js");
 
 describe("plugin-updates cache drives buildPluginList", () => {
   it("sets updateAvail (and remoteHead/updatedAt) from cache.plugins[name], false when the plugin has no cache entry", () => {
@@ -57,5 +63,50 @@ describe("plugin-updates cache drives buildPluginList", () => {
 
     assert.equal(byName["unchecked-plugin"].updateAvail, false);
     assert.equal(byName["unchecked-plugin"].updatedAt, null);
+  });
+});
+
+describe("pluginChannelState drives buildPluginList's channel fields", () => {
+  let previous;
+  beforeEach(() => {
+    previous = S.UPDATER_MODULE;
+  });
+  afterEach(() => {
+    S.UPDATER_MODULE = previous;
+  });
+
+  it("carries the updater's resolved onExperimental/experimentalAvailable onto the item, called with this home's configDir and the plugin's name", () => {
+    const calls = [];
+    S.UPDATER_MODULE = {
+      pluginChannelState(dir, name) {
+        calls.push([dir, name]);
+        return name === "current-plugin"
+          ? { onExperimental: true, experimentalAvailable: true }
+          : { onExperimental: false, experimentalAvailable: false };
+      },
+    };
+
+    const list = buildPluginList();
+    const byName = Object.fromEntries(list.map((p) => [p.name, p]));
+
+    assert.equal(byName["current-plugin"].onExperimental, true);
+    assert.equal(byName["current-plugin"].experimentalAvailable, true);
+
+    // Case 2 stops case 1 from passing for the wrong reason (a hardcoded true).
+    assert.equal(byName["behind-plugin"].onExperimental, false);
+    assert.equal(byName["behind-plugin"].experimentalAvailable, false);
+
+    assert.deepEqual(calls.find((c) => c[1] === "current-plugin"), [configDir, "current-plugin"]);
+    assert.deepEqual(calls.find((c) => c[1] === "behind-plugin"), [configDir, "behind-plugin"]);
+  });
+
+  it("falls back to onExperimental: false, experimentalAvailable: null when no updater is loaded", () => {
+    S.UPDATER_MODULE = null;
+
+    const list = buildPluginList();
+    const byName = Object.fromEntries(list.map((p) => [p.name, p]));
+
+    assert.equal(byName["current-plugin"].onExperimental, false);
+    assert.equal(byName["current-plugin"].experimentalAvailable, null);
   });
 });
