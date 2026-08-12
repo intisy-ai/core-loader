@@ -329,6 +329,7 @@ function declarationOf(data, fallbackName, bundle) {
     items: items,
     actions: actions,
     sections: Array.isArray(data.sections) ? data.sections : [],
+    screens: Array.isArray(data.screens) ? data.screens : [],
   };
 }
 
