@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { PluginError, setDiagnosticSink } from "@intisy-ai/api";
 import type { Plugin, PluginManifest, PluginRuntime } from "@intisy-ai/api";
 import { callCapability, ledgerRows, startPlugins } from "./plugin-host.js";
+
+function settingsCapability() {
+  return { schema: () => ({}), run: async () => ({ ok: true }) };
+}
 
 function runtime(): PluginRuntime {
   return {
@@ -169,14 +174,184 @@ describe("startPlugins", () => {
     expect(loaded.quarantined[0].fix).toContain("deploy");
   });
 
-  it("carries a manifest that failed to read straight into the quarantine list", async () => {
+  it("records a manifest that failed to read in the ledger as well as the quarantine list", async () => {
     const loaded = await startPlugins(options({
       loaded: [],
-      failed: [new (await import("@intisy-ai/api")).PluginError("bad", "unreadable", "redeploy it")],
+      failed: [new PluginError("bad", "unreadable", "redeploy it")],
       modules: new Map(),
     } as never));
 
     expect(loaded.quarantined.map((error) => error.pluginId)).toEqual(["bad"]);
+    expect(loaded.host.ledger.entry("bad")?.status).toBe("broken");
+    expect(loaded.host.ledger.entry("bad")?.error).toEqual({ detail: "unreadable", fix: "redeploy it" });
+  });
+
+  it("attributes a PluginError thrown by another plugin's service to the plugin that called it", async () => {
+    const scan = scanOf(
+      {
+        manifest: manifest("store", { capabilities: [], services: { provides: ["store:api"] } }),
+        module: {
+          default: {
+            activate: (ctx) => {
+              ctx.services.register("store:api", {
+                open: () => { throw new PluginError("store", "the store is closed", "start the store first"); },
+              });
+            },
+            deactivate: () => {},
+          },
+        },
+      },
+      {
+        manifest: manifest("reader", { capabilities: [], services: { consumes: ["store:api"] } }),
+        module: {
+          default: {
+            activate: (ctx) => { (ctx.services.get("store:api") as { open: () => void }).open(); },
+            deactivate: () => {},
+          },
+        },
+      },
+    );
+    const loaded = await startPlugins(options(scan));
+
+    expect(loaded.started).toEqual(["store"]);
+    expect(loaded.quarantined.map((error) => error.pluginId)).toEqual(["reader"]);
+    expect(loaded.quarantined[0].detail).toBe("the store is closed");
+    expect(loaded.quarantined[0].fix).toBe("start the store first");
+    expect(loaded.host.ledger.entry("store")?.status).toBe("active");
+  });
+
+  it("falls back to the host's own fix when a thrown PluginError carries none", async () => {
+    const scan = scanOf({
+      manifest: manifest("hand-rolled"),
+      module: { default: { activate: () => { throw { name: "PluginError", message: "improvised" }; }, deactivate: () => {} } },
+    });
+    const loaded = await startPlugins(options(scan));
+
+    expect(loaded.quarantined[0].pluginId).toBe("hand-rolled");
+    expect(loaded.quarantined[0].detail).toBe("improvised");
+    expect(loaded.quarantined[0].fix).toContain("disable the plugin");
+  });
+
+  it("deactivates a plugin quarantined for a capability it never declared", async () => {
+    const stopped: string[] = [];
+    const scan = scanOf({
+      manifest: manifest("extra", { capabilities: [] }),
+      module: {
+        default: {
+          activate: (ctx) => { ctx.provide("settings", settingsCapability()); },
+          deactivate: () => { stopped.push("extra"); },
+        },
+      },
+    });
+    const loaded = await startPlugins(options(scan));
+
+    expect(loaded.quarantined[0].detail).toContain("provided but never declared");
+    expect(stopped).toEqual(["extra"]);
+  });
+
+  it("deactivates a plugin quarantined at its activate deadline", async () => {
+    const stopped: string[] = [];
+    const scan = scanOf({
+      manifest: manifest("hung"),
+      module: { default: { activate: () => new Promise(() => {}), deactivate: () => { stopped.push("hung"); } } },
+    });
+    const loaded = await startPlugins(options(scan, { activateTimeoutMs: 20 }));
+
+    expect(loaded.quarantined[0].detail).toContain("20ms");
+    expect(stopped).toEqual(["hung"]);
+  });
+
+  it("completes the quarantine even when the plugin's deactivate hangs", async () => {
+    const scan = scanOf(
+      {
+        manifest: manifest("stuck", { capabilities: [] }),
+        module: {
+          default: {
+            activate: (ctx) => { ctx.provide("settings", settingsCapability()); },
+            deactivate: () => new Promise(() => {}),
+          },
+        },
+      },
+      { manifest: manifest("calm"), module: settingsPlugin([], "calm") },
+    );
+    const loaded = await startPlugins(options(scan, { activateTimeoutMs: 20 }));
+
+    expect(loaded.quarantined.map((error) => error.pluginId)).toEqual(["stuck"]);
+    expect(loaded.host.ledger.entry("stuck")?.status).toBe("broken");
+    expect(loaded.started).toEqual(["calm"]);
+  });
+
+  it("refuses a service a plugin registers after its quarantine", async () => {
+    const reported: string[] = [];
+    setDiagnosticSink((message) => reported.push(message));
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const scan = scanOf({
+      manifest: manifest("late", { capabilities: [], services: { provides: ["late:store"] } }),
+      module: {
+        default: {
+          activate: async (ctx) => { await gate; ctx.services.register("late:store", {}); },
+          deactivate: () => {},
+        },
+      },
+    });
+    const loaded = await startPlugins(options(scan, { activateTimeoutMs: 20 }));
+
+    expect(loaded.quarantined[0].pluginId).toBe("late");
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(loaded.host.service("late:store")).toBeUndefined();
+    expect(reported.some((message) => message.includes("late:store"))).toBe(true);
+    setDiagnosticSink(null);
+  });
+
+  it("bounds each deactivate on stop, so one hanging plugin does not block the rest", async () => {
+    const stopped: string[] = [];
+    const scan = scanOf(
+      {
+        manifest: manifest("first"),
+        module: {
+          default: {
+            activate: (ctx) => { ctx.provide("settings", settingsCapability()); },
+            deactivate: () => { stopped.push("first"); },
+          },
+        },
+      },
+      {
+        manifest: manifest("hangs"),
+        module: {
+          default: {
+            activate: (ctx) => { ctx.provide("settings", settingsCapability()); },
+            deactivate: () => new Promise(() => {}),
+          },
+        },
+      },
+    );
+    const loaded = await startPlugins(options(scan, { activateTimeoutMs: 20 }));
+    await loaded.stop();
+
+    expect(stopped).toEqual(["first"]);
+    expect(loaded.host.ledger.entry("hangs")?.status).toBe("broken");
+    expect(loaded.host.ledger.entry("first")?.status).toBe("stopped");
+  });
+
+  it("deactivates each plugin once however often stop is called", async () => {
+    const stopped: string[] = [];
+    const scan = scanOf({
+      manifest: manifest("closer"),
+      module: {
+        default: {
+          activate: (ctx) => { ctx.provide("settings", settingsCapability()); },
+          deactivate: () => { stopped.push("closer"); },
+        },
+      },
+    });
+    const loaded = await startPlugins(options(scan));
+    await Promise.all([loaded.stop(), loaded.stop()]);
+    await loaded.stop();
+
+    expect(stopped).toEqual(["closer"]);
   });
 
   it("deactivates every started plugin on stop", async () => {

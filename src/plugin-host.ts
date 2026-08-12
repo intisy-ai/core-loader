@@ -39,7 +39,13 @@ export interface LoadedHost {
   started: string[];
   /** One error per plugin that could not be loaded, each naming the plugin and the fix. */
   quarantined: PluginError[];
-  /** Deactivates every started plugin, newest first. */
+  /**
+   * Deactivates every started plugin, newest first, each under its own deadline.
+   *
+   * @remarks
+   * Calling it again waits on the shutdown already running rather than deactivating anything a
+   * second time.
+   */
   stop: () => Promise<void>;
 }
 
@@ -51,9 +57,23 @@ function asPlugin(module: unknown): Plugin | null {
   return plugin as Plugin;
 }
 
+function detailOf(error: unknown): string {
+  if (isPluginError(error) && error.detail) return error.detail;
+  const message = (error as { message?: unknown } | null)?.message;
+  return typeof message === "string" && message ? message : String(error);
+}
+
+/**
+ * Attributes a caught failure to the plugin the host was calling.
+ *
+ * @remarks
+ * A caught {@link PluginError} carries whatever `pluginId` its thrower chose, and the thrower may
+ * be another plugin's service. Its detail and fix are worth keeping, its attribution is not: the
+ * quarantine belongs to the plugin whose call failed.
+ */
 function errorFor(pluginId: string, error: unknown, fix: string): PluginError {
-  if (isPluginError(error)) return error;
-  return new PluginError(pluginId, error instanceof Error ? error.message : String(error), fix);
+  const carried = isPluginError(error) && error.fix ? error.fix : fix;
+  return new PluginError(pluginId, detailOf(error), carried);
 }
 
 /**
@@ -100,6 +120,32 @@ async function withTimeout(pluginId: string, timeoutMs: number, run: () => void 
   );
 }
 
+async function callDeactivate(pluginId: string, timeoutMs: number, plugin: Plugin): Promise<void> {
+  await callWithDeadline(
+    pluginId,
+    timeoutMs,
+    `deactivate did not finish within ${timeoutMs}ms`,
+    "return from deactivate promptly and do slow work in the background, or raise the host's activate timeout",
+    async () => { await Promise.resolve(plugin.deactivate()); },
+  );
+}
+
+/**
+ * Stops a plugin that is about to be quarantined.
+ *
+ * @remarks
+ * `activate` ran, so the plugin's timers, watchers and child processes are live, and quarantine
+ * drops it from the started list where `stop` would otherwise have reached it. A `deactivate` that
+ * throws or hangs is swallowed: the quarantine that follows is already the answer to it.
+ */
+async function stopBeforeQuarantine(pluginId: string, timeoutMs: number, plugin: Plugin): Promise<void> {
+  try {
+    await callDeactivate(pluginId, timeoutMs, plugin);
+  } catch {
+    return;
+  }
+}
+
 /**
  * Loads every plugin deployed in a home: manifests first, then dependency order, then one
  * `activate` at a time under its own timeout.
@@ -108,7 +154,9 @@ async function withTimeout(pluginId: string, timeoutMs: number, run: () => void 
  * Nothing here branches on a plugin id, and nothing can. Every failure ends as a quarantine naming
  * the plugin and the fix, so one bad plugin costs its own capabilities and nothing else: a cycle
  * quarantines only its members, a throwing `activate` quarantines only its own plugin, and a
- * hanging one is cut loose at the timeout with the host still up.
+ * hanging one is cut loose at the timeout with the host still up. A plugin quarantined once
+ * `activate` has been entered gets its `deactivate` called first, since it may have started work
+ * the host would otherwise leave running with nothing holding it.
  */
 export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHost> {
   const timeoutMs = options.activateTimeoutMs ?? DEFAULT_ACTIVATE_TIMEOUT_MS;
@@ -116,25 +164,26 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
   const scan = options.scan ?? readDeployedManifests(options.pluginDir);
 
   const host = createPluginHost({ app: options.app, surfaces: options.surfaces ?? [] });
-  const quarantined: PluginError[] = [...scan.failed];
+  const quarantined: PluginError[] = [];
   const started: string[] = [];
   const plugins = new Map<string, Plugin>();
   const byId = new Map<string, DeployedPlugin>(scan.loaded.map((plugin) => [plugin.manifest.id, plugin]));
+
+  for (const failure of scan.failed) {
+    host.markBroken(failure.pluginId, failure);
+    quarantined.push(failure);
+  }
 
   const plan = activationOrder(scan.loaded.map((plugin) => plugin.manifest));
   for (const cycle of plan.cycles) {
     for (const pluginId of cycle) {
       const manifest = byId.get(pluginId)?.manifest;
-      const error = new PluginError(
+      if (!manifest) continue;
+      quarantine(host, quarantined, manifest, new PluginError(
         pluginId,
         `is in a dependency cycle: ${cycle.join(" -> ")} -> ${cycle[0]}`,
         "break the cycle by removing one plugin's entry from services.consumes in its plugin.json",
-      );
-      if (manifest) quarantine(host, quarantined, manifest, error);
-      else {
-        host.markBroken(pluginId, error);
-        quarantined.push(error);
-      }
+      ));
     }
   }
 
@@ -191,6 +240,7 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
       await withTimeout(pluginId, timeoutMs, () => plugin.activate(context));
     } catch (error) {
       const failure = errorFor(pluginId, error, "fix the error activate threw, or disable the plugin");
+      await stopBeforeQuarantine(pluginId, timeoutMs, plugin);
       host.markBroken(pluginId, failure);
       quarantined.push(failure);
       continue;
@@ -198,6 +248,7 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
 
     const mismatch = host.verifyActivation(manifest);
     if (mismatch) {
+      await stopBeforeQuarantine(pluginId, timeoutMs, plugin);
       host.markBroken(pluginId, mismatch);
       quarantined.push(mismatch);
       continue;
@@ -207,22 +258,28 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
     started.push(pluginId);
   }
 
+  async function shutDown(): Promise<void> {
+    for (const pluginId of [...started].reverse()) {
+      const plugin = plugins.get(pluginId);
+      if (!plugin) continue;
+      try {
+        await callDeactivate(pluginId, timeoutMs, plugin);
+      } catch (error) {
+        host.markBroken(pluginId, errorFor(pluginId, error, "fix the error deactivate threw; the plugin was stopped anyway"));
+        continue;
+      }
+      host.release(pluginId);
+    }
+  }
+
+  let shutdown: Promise<void> | null = null;
   return {
     host,
     started,
     quarantined,
     stop: async () => {
-      for (const pluginId of [...started].reverse()) {
-        const plugin = plugins.get(pluginId);
-        if (!plugin) continue;
-        try {
-          await plugin.deactivate();
-        } catch (error) {
-          host.markBroken(pluginId, errorFor(pluginId, error, "fix the error deactivate threw; the plugin was stopped anyway"));
-          continue;
-        }
-        host.release(pluginId);
-      }
+      shutdown ??= shutDown();
+      await shutdown;
     },
   };
 }
@@ -307,9 +364,9 @@ export interface PluginLedgerRow {
  *
  * @remarks
  * The ledger is kept as the relationships are made, because a relationship is only observable at
- * the moment it happens. `unresolved` is derived here rather than recorded by asking the live
- * registry, since whether a consumed service is answered depends on what is registered right now
- * and that changes as plugins are enabled and disabled.
+ * the moment it happens. `unresolved` asks the live registry for each consumed id instead, since
+ * whether a consumed service is answered depends on what is registered right now and that changes
+ * as plugins are enabled and disabled.
  */
 export function ledgerRows(loaded: LoadedHost): PluginLedgerRow[] {
   const entries = loaded.host.ledger.entries();
