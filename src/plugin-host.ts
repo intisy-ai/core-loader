@@ -215,6 +215,50 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
   };
 }
 
+/** How long a capability read may take. Matches the graphical dashboard's budget for the same call. */
+export const DEFAULT_CALL_TIMEOUT_MS = 10000;
+
+/** How long a capability action may take, since one may do real work such as a multi-file restore. */
+export const DEFAULT_INVOKE_TIMEOUT_MS = 600000;
+
+/** What one bounded capability call produced. */
+export type CapabilityCall<T> = { ok: true; value: T } | { ok: false; error: PluginError };
+
+/**
+ * Calls into a plugin with a deadline.
+ *
+ * @remarks
+ * Plugins run in this process, so a capability that hangs or throws would otherwise be the host's
+ * problem. A failure here is NOT a quarantine: a slow screen read says nothing about the plugin's
+ * services, and dropping its registrations over one call would take out far more than the surface
+ * that failed.
+ *
+ * @param label - what was being called, for example `screens.read`, which appears in the error
+ */
+export async function callCapability<T>(
+  loaded: LoadedHost,
+  pluginId: string,
+  label: string,
+  timeoutMs: number,
+  call: () => Promise<T>,
+): Promise<CapabilityCall<T>> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const expiry = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new PluginError(
+      pluginId,
+      `${label} did not answer within ${timeoutMs}ms`,
+      "make the call return promptly, or check whether the plugin is waiting on something that never arrives",
+    )), timeoutMs);
+  });
+  try {
+    return { ok: true, value: await Promise.race([Promise.resolve().then(call), expiry]) };
+  } catch (error) {
+    return { ok: false, error: errorFor(pluginId, error, `fix what ${label} threw, or disable the plugin`) };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /** One plugin's whole relationship record, in the shape a surface renders. */
 export interface PluginLedgerRow {
   /** The plugin this row describes. */

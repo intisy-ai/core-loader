@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Plugin, PluginManifest, PluginRuntime } from "@intisy-ai/api";
-import { ledgerRows, startPlugins } from "./plugin-host.js";
+import { callCapability, ledgerRows, startPlugins } from "./plugin-host.js";
 
 function runtime(): PluginRuntime {
   return {
@@ -298,5 +298,39 @@ describe("ledgerRows", () => {
     expect(consumerRow.pluginId).toBe("consumer");
     expect(consumerRow.services.consumes).toEqual(["provider:falsy"]);
     expect(consumerRow.unresolved).toEqual([]);
+  });
+});
+
+describe("callCapability", () => {
+  it("returns the value a capability produced", async () => {
+    const scan = scanOf({ manifest: manifest("quick"), module: settingsPlugin([], "quick") });
+    const loaded = await startPlugins(options(scan));
+    const result = await callCapability(loaded, "quick", "settings.schema", 50, async () => ({ fields: [] }));
+
+    expect(result).toEqual({ ok: true, value: { fields: [] } });
+  });
+
+  it("reports a call that never settles as a failure naming the plugin", async () => {
+    const scan = scanOf({ manifest: manifest("slow"), module: settingsPlugin([], "slow") });
+    const loaded = await startPlugins(options(scan));
+    const result = await callCapability(loaded, "slow", "screens.read", 20, () => new Promise(() => {}));
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected a failure");
+    expect(result.error.pluginId).toBe("slow");
+    expect(result.error.detail).toContain("screens.read");
+    expect(result.error.detail).toContain("20ms");
+  });
+
+  it("reports a throwing call as a failure and leaves the plugin active", async () => {
+    const scan = scanOf({ manifest: manifest("angry-call"), module: settingsPlugin([], "angry-call") });
+    const loaded = await startPlugins(options(scan));
+    const result = await callCapability(loaded, "angry-call", "settings.run", 50, async () => { throw new Error("refused"); });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected a failure");
+    expect(result.error.detail).toContain("refused");
+    expect(loaded.host.ledger.entry("angry-call")?.status).toBe("active");
+    expect(loaded.host.capability("settings")).toHaveLength(1);
   });
 });
