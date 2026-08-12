@@ -304,16 +304,16 @@ describe("ledgerRows", () => {
 describe("callCapability", () => {
   it("returns the value a capability produced", async () => {
     const scan = scanOf({ manifest: manifest("quick"), module: settingsPlugin([], "quick") });
-    const loaded = await startPlugins(options(scan));
-    const result = await callCapability(loaded, "quick", "settings.schema", 50, async () => ({ fields: [] }));
+    await startPlugins(options(scan));
+    const result = await callCapability("quick", "settings.schema", 50, async () => ({ fields: [] }));
 
     expect(result).toEqual({ ok: true, value: { fields: [] } });
   });
 
   it("reports a call that never settles as a failure naming the plugin", async () => {
     const scan = scanOf({ manifest: manifest("slow"), module: settingsPlugin([], "slow") });
-    const loaded = await startPlugins(options(scan));
-    const result = await callCapability(loaded, "slow", "screens.read", 20, () => new Promise(() => {}));
+    await startPlugins(options(scan));
+    const result = await callCapability("slow", "screens.read", 20, () => new Promise(() => {}));
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected a failure");
@@ -325,12 +325,41 @@ describe("callCapability", () => {
   it("reports a throwing call as a failure and leaves the plugin active", async () => {
     const scan = scanOf({ manifest: manifest("angry-call"), module: settingsPlugin([], "angry-call") });
     const loaded = await startPlugins(options(scan));
-    const result = await callCapability(loaded, "angry-call", "settings.run", 50, async () => { throw new Error("refused"); });
+    const result = await callCapability("angry-call", "settings.run", 50, async () => { throw new Error("refused"); });
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected a failure");
     expect(result.error.detail).toContain("refused");
     expect(loaded.host.ledger.entry("angry-call")?.status).toBe("active");
     expect(loaded.host.capability("settings")).toHaveLength(1);
+  });
+
+  it("does not raise an unhandled rejection when a call rejects after the deadline fires", async () => {
+    const unhandledRejections: Error[] = [];
+    const handler = (reason: unknown) => {
+      unhandledRejections.push(reason instanceof Error ? reason : new Error(String(reason)));
+    };
+    process.on("unhandledRejection", handler);
+
+    const scan = scanOf({ manifest: manifest("late-reject"), module: settingsPlugin([], "late-reject") });
+    await startPlugins(options(scan));
+
+    let resolve: () => void = () => {};
+    const deferred = new Promise<void>((r) => { resolve = r; });
+    const result = await callCapability("late-reject", "screens.read", 10, async () => {
+      await deferred;
+      throw new Error("rejected after deadline");
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected a failure");
+    expect(result.error.detail).toContain("did not answer");
+
+    await new Promise((r) => setTimeout(r, 50));
+    resolve();
+    await new Promise((r) => setTimeout(r, 50));
+
+    process.removeListener("unhandledRejection", handler);
+    expect(unhandledRejections).toEqual([]);
   });
 });

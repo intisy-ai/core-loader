@@ -72,20 +72,32 @@ function quarantine(host: PluginHost, quarantined: PluginError[], manifest: Plug
   quarantined.push(error);
 }
 
-async function withTimeout(pluginId: string, timeoutMs: number, run: () => void | Promise<void>): Promise<void> {
+async function callWithDeadline<T>(
+  pluginId: string,
+  timeoutMs: number,
+  detail: string,
+  fix: string,
+  work: () => Promise<T>,
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const expiry = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new PluginError(
-      pluginId,
-      `activate did not finish within ${timeoutMs}ms`,
-      "return from activate promptly and do slow work in the background, or raise the host's activate timeout",
-    )), timeoutMs);
+    timer = setTimeout(() => reject(new PluginError(pluginId, detail, fix)), timeoutMs);
   });
   try {
-    await Promise.race([Promise.resolve().then(run), expiry]);
+    return await Promise.race([Promise.resolve().then(work), expiry]);
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+async function withTimeout(pluginId: string, timeoutMs: number, run: () => void | Promise<void>): Promise<void> {
+  await callWithDeadline(
+    pluginId,
+    timeoutMs,
+    `activate did not finish within ${timeoutMs}ms`,
+    "return from activate promptly and do slow work in the background, or raise the host's activate timeout",
+    async () => { await Promise.resolve(run()); },
+  );
 }
 
 /**
@@ -231,31 +243,30 @@ export type CapabilityCall<T> = { ok: true; value: T } | { ok: false; error: Plu
  * Plugins run in this process, so a capability that hangs or throws would otherwise be the host's
  * problem. A failure here is NOT a quarantine: a slow screen read says nothing about the plugin's
  * services, and dropping its registrations over one call would take out far more than the surface
- * that failed.
+ * that failed. Every call always returns a result object, never throws.
  *
+ * @param pluginId - the plugin being called
  * @param label - what was being called, for example `screens.read`, which appears in the error
+ * @param timeoutMs - deadline in milliseconds
+ * @param call - the async work to perform
  */
 export async function callCapability<T>(
-  loaded: LoadedHost,
   pluginId: string,
   label: string,
   timeoutMs: number,
   call: () => Promise<T>,
 ): Promise<CapabilityCall<T>> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const expiry = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new PluginError(
+  try {
+    const value = await callWithDeadline(
       pluginId,
+      timeoutMs,
       `${label} did not answer within ${timeoutMs}ms`,
       "make the call return promptly, or check whether the plugin is waiting on something that never arrives",
-    )), timeoutMs);
-  });
-  try {
-    return { ok: true, value: await Promise.race([Promise.resolve().then(call), expiry]) };
+      call,
+    );
+    return { ok: true, value };
   } catch (error) {
     return { ok: false, error: errorFor(pluginId, error, `fix what ${label} threw, or disable the plugin`) };
-  } finally {
-    if (timer) clearTimeout(timer);
   }
 }
 
