@@ -17,7 +17,8 @@ import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectIn
 import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
-import { refreshSettings } from "./views/settings.js";
+import { refreshSettings, settingsSubPages } from "./views/settings.js";
+import { refreshScreen, runScreenAction } from "./views/screens.js";
 import { getConfigLedger, configLedgerReady, configLedgerInstalled, preloadConfigLedger } from "./config-ledger.js";
 import { refreshVersioning, reconcileConfigLedger, VG_INIT_OPTS, VG_MENU_ITEMS } from "./views/versioning.js";
 import { buildGlobalSection, buildPluginSections, splitBySections } from "./settings-model.js";
@@ -1149,13 +1150,26 @@ function runSetupAction(action) {
   flash("Unknown setup action."); S.mode = "list";
 }
 
+// Every Settings sub-page's key handler: Tab cycles them all (Settings, the hardcoded
+// Versioning sub-page, and one per contributed screen), from that sub-page's own top
+// level; a drilled-in sub-mode (pconfig, sgdiff, ...) owns Tab itself, never this branch.
 export function handleSettingsKey(key) {
-  // The Settings tab has two sub-tabs (Tab switches). Versioning owns all of its own keys.
-  if ((S.settingsSubPage || "settings") === "versioning") {
-    if (key === "tab" && S.mode === "list") { S.settingsSubPage = "settings"; S.mode = "list"; refreshSettings(); return; }
-    handleVersioningKey(key);
+  var sub = S.settingsSubPage || "settings";
+
+  if (key === "tab" && S.mode === "list") {
+    var pages = settingsSubPages();
+    var at = pages.findIndex(function (p) { return p.id === sub; });
+    var next = pages[(at + 1) % pages.length] || pages[0];
+    S.settingsSubPage = next.id;
+    S.mode = "list";
+    if (next.id === "settings") { refreshSettings(); }
+    else if (next.id === "versioning") { S.versioningCursor = 0; try { reconcileConfigLedger(); } catch (e) {} }
+    else { S.screenCursor = 0; S.screenRows = []; refreshScreen(next.entry); }
     return;
   }
+
+  if (sub === "versioning") { handleVersioningKey(key); return; }
+  if (sub !== "settings") { handleScreenKey(key, sub); return; }
 
   if (S.mode === "pconfig" || S.mode === "pcfginput") {
     // Shared config editor: cursor nav + boolean toggle / open text input.
@@ -1167,9 +1181,6 @@ export function handleSettingsKey(key) {
     else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
     return;
   }
-
-  // Tab → Versioning sub-tab (and re-detect config-ledger, in case it was just installed).
-  if (key === "tab" && S.mode === "list") { S.settingsSubPage = "versioning"; S.mode = "list"; S.versioningCursor = 0; try { reconcileConfigLedger(); } catch (e) {} return; }
 
   // list mode: "Global"/"Plugins" grouped list (nav skips headers). Enter drills into a
   // group's editor. Versioning/git lives in the Versioning sub-tab.
@@ -1200,6 +1211,41 @@ export function handleSettingsKey(key) {
     S.cfgcursor = 0;
     S.cfgScrollOff = 0;
     S.mode = "pconfig";
+    return;
+  }
+}
+
+// A contributed screen's own top level: rows only ever have a depth (indent) and,
+// optionally, an actionId. Cursor movement skips straight past non-actionable rows,
+// mirroring Settings' own stepEntry (which skips headers the same way).
+function handleScreenKey(key, sub) {
+  if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
+  var page = settingsSubPages().find(function (p) { return p.id === sub; });
+  var entry = page && page.entry;
+  if (!entry) { S.settingsSubPage = "settings"; refreshSettings(); return; }
+  var rows = S.screenRows || [];
+
+  function stepRow(dir) {
+    var n = rows.length;
+    var i = S.screenCursor;
+    for (var step = 0; step < n; step++) {
+      i += dir;
+      if (i < 0 || i >= n) return;
+      if (rows[i] && rows[i].actionId) { S.screenCursor = i; return; }
+    }
+  }
+  if (key === "up" || key === "w") { stepRow(-1); return; }
+  if (key === "down" || key === "s") { stepRow(1); return; }
+
+  if (key === "enter" || key === "space") {
+    var row = rows[S.screenCursor];
+    if (!row || !row.actionId) return;
+    S.busy = true;
+    runScreenAction(entry, row, function (answer) {
+      S.busy = false;
+      if (answer && answer.message) flash(answer.message);
+      render();
+    });
     return;
   }
 }

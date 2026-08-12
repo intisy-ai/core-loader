@@ -92,9 +92,18 @@ export const S = {
   // Settings page (unified global + per-plugin settings editor)
   settingsCursor: 0,
   settingsScrollOff: 0,
-  settingsSubPage: "settings",  // "settings" | "versioning", sub-tabs of the Settings tab (Tab switches)
+  // "settings" | "versioning" | "<plugin>:<screenId>", sub-tabs of the Settings tab (Tab
+  // cycles). "versioning" is the one hardcoded sub-page; every other non-"settings" id
+  // names a screen a plugin contributed (see views/screens.ts).
+  settingsSubPage: "settings",
   settingsSections: [],  // SettingsSection[] (Global + one per plugin)
   settingsEntries: [],   // SettingsEntry[] the renderer + key handler walk (headers + groups)
+
+  // Contributed-screen sub-page (views/screens.ts): rows are refreshed by running the
+  // owning plugin's bundle in a child process, so they never block the render loop.
+  screenRows: [],
+  screenCursor: 0,
+  screenScrollOff: 0,
 
   // Versioning tab (config-ledger git UI). versioningCursor drives the home/setup menus;
   // the history file→key pickers use vg* fields; git sub-screens reuse the sg*/cl* fields.

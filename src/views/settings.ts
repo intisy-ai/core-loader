@@ -10,10 +10,21 @@ import { buildGlobalSection, buildSettingsEntries, firstSelectableIndex, splitBy
 import { probeConfigSchemaAsync } from "../plugins.js";
 import { hints, messageLine, spinnerFrame, scheduleRender } from "./common.js";
 import { buildVersioning } from "./versioning.js";
+import { collectScreens, subPages, buildContributedScreen } from "./screens.js";
 
 // An action row carries a human label; a setting row is addressed by its key.
 function rowLabel(row) {
   return row.kind === "action" ? row.label : row.key;
+}
+
+// Every sub-page of the Settings tab, in tab-bar/Tab-cycle order: Settings, then the one
+// hardcoded "Versioning" sub-page, then one per contributed screen. "Versioning" is
+// spliced in here (not inside views/screens.ts) because it is the pre-existing hardcoded
+// wiring a later task removes; the contributed-screens module stays unaware of it.
+export function settingsSubPages() {
+  var pages = subPages(collectScreens(S.pluginItems));
+  pages.splice(1, 0, { id: "versioning", label: "Versioning" });
+  return pages;
 }
 
 // Rebuild the section model + entry list from ALREADY-PROBED schemas only (no spawning).
@@ -60,16 +71,25 @@ export function refreshSettings(): void {
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   var sub = S.settingsSubPage || "settings";
+  var pages = settingsSubPages();
 
-  // Sub-tab bar (Settings | Versioning) + a blank line, shown only at the list level.
+  // Sub-tab bar (Settings | Versioning | one per contributed screen) + a blank line,
+  // shown only at the list level.
   if (S.mode === "list") {
-    var t1 = sub === "settings" ? (BOLD + ACCENT + BG_SEL + " Settings " + RST) : (GRAY + " Settings " + RST);
-    var t2 = sub === "versioning" ? (BOLD + ACCENT + BG_SEL + " Versioning " + RST) : (GRAY + " Versioning " + RST);
-    pushSticky("  " + t1 + "  " + t2 + "    " + DIM + "tab switch" + RST);
+    var tabsStr = pages.map(function (p) {
+      return p.id === sub ? (BOLD + ACCENT + BG_SEL + " " + p.label + " " + RST) : (GRAY + " " + p.label + " " + RST);
+    }).join("  ");
+    pushSticky("  " + tabsStr + "    " + DIM + "tab switch" + RST);
     pushSticky("");
   }
 
   if (sub === "versioning") { buildVersioning(pushBody, pushFoot, cols, barW, pushSticky); return; }
+
+  if (sub !== "settings") {
+    var page = pages.find(function (p) { return p.id === sub; });
+    buildContributedScreen(pushBody, pushFoot, cols, barW, pushSticky, page && page.entry);
+    return;
+  }
 
   // --- Settings sub-tab ---
   if (S.mode === "pconfig" || S.mode === "pcfginput") {

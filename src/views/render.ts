@@ -82,10 +82,15 @@ export function render() {
   // header/tabs and the sticky region (which are always shown in full).
   var maxBody = Math.max(2, totalRows - headLines.length - stickyLines.length - footLines.length);
   
+  // A contributed screen sub-page scrolls on its own offset; every other Settings
+  // sub-page (including the hardcoded Versioning one) keeps sharing settingsScrollOff.
+  var onScreenSubPage = S.page === "settings" && S.settingsSubPage && S.settingsSubPage !== "settings" && S.settingsSubPage !== "versioning";
+
   var activeScroll = 0;
   if (S.page === "projects") activeScroll = S.scrollOff;
   else if (S.page === "mcp") activeScroll = S.mcpScrollOff;
   else if (S.page === "activity") activeScroll = S.activityScrollOff;
+  else if (onScreenSubPage) activeScroll = S.screenScrollOff;
   else if (S.page === "settings") activeScroll = S.settingsScrollOff;
   else if (S.mode === "pcommits") activeScroll = S.cscrollOff;
   else if (S.page === "plugins" && S.pluginSubPage === "marketplace") activeScroll = S.mkScrollOff;
@@ -108,6 +113,7 @@ export function render() {
     if (S.page === "projects") S.scrollOff = activeScroll;
     else if (S.page === "mcp") S.mcpScrollOff = activeScroll;
     else if (S.page === "activity") S.activityScrollOff = activeScroll;
+    else if (onScreenSubPage) S.screenScrollOff = activeScroll;
     else if (S.page === "settings") S.settingsScrollOff = activeScroll;
     else if (S.mode === "pcommits") S.cscrollOff = activeScroll;
     else if (S.page === "plugins" && S.pluginSubPage === "marketplace") S.mkScrollOff = activeScroll;
