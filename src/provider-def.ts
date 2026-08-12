@@ -32,16 +32,28 @@ function normalizeProviderDef(raw: unknown): ProviderDef | null {
   };
 }
 
+export interface ProviderDefsResult {
+  defs: ProviderDef[];
+  error?: string;
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 // Loads a handler's provider metadata for consumers that only need the def(s), not
 // the request-handling side of the module (e.g. Cairn listing providers). Supports
-// three export shapes, checked in order, and never throws: a failed import or a
-// handler exporting none of these shapes both resolve to [].
-export async function loadProviderDefs(handlerPath: string): Promise<ProviderDef[]> {
+// three export shapes, checked in order: `defs` array, `resolveProviders()`, `def`
+// object. A handler exporting none of these legitimately has no defs, not an error.
+// `error` is a string (not an Error) because it crosses a process boundary to a
+// renderer as JSON, and carries the underlying failure's own message so a UI row
+// can name what broke.
+export async function loadProviderDefsResult(handlerPath: string): Promise<ProviderDefsResult> {
   let mod: any;
   try {
     mod = await import(pathToFileURL(handlerPath).href);
-  } catch {
-    return [];
+  } catch (err) {
+    return { defs: [], error: `Failed to load provider handler: ${messageOf(err)}` };
   }
 
   let raw: unknown[] = [];
@@ -49,19 +61,25 @@ export async function loadProviderDefs(handlerPath: string): Promise<ProviderDef
     raw = mod.defs;
   } else if (typeof mod.resolveProviders === "function") {
     try {
-      raw = await mod.resolveProviders();
-      if (!Array.isArray(raw)) raw = [];
-    } catch {
-      raw = [];
+      const resolved = await mod.resolveProviders();
+      raw = Array.isArray(resolved) ? resolved : [];
+    } catch (err) {
+      return { defs: [], error: `resolveProviders() failed: ${messageOf(err)}` };
     }
   } else if (mod.def && typeof mod.def === "object") {
     raw = [mod.def];
   }
 
-  const out: ProviderDef[] = [];
+  const defs: ProviderDef[] = [];
   for (const entry of raw) {
     const normalized = normalizeProviderDef(entry);
-    if (normalized) out.push(normalized);
+    if (normalized) defs.push(normalized);
   }
-  return out;
+  return { defs };
+}
+
+// Kept for callers that only want the defs and never handled `error`; never throws
+// and returns [] on any failure, matching its behavior before loadProviderDefsResult existed.
+export async function loadProviderDefs(handlerPath: string): Promise<ProviderDef[]> {
+  return (await loadProviderDefsResult(handlerPath)).defs;
 }

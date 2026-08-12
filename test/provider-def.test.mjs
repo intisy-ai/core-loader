@@ -3,7 +3,7 @@ import assert from "node:assert";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { loadProviderDefs } from "../dist/provider-def.js";
+import { loadProviderDefs, loadProviderDefsResult } from "../dist/provider-def.js";
 
 function writeHandler(source) {
   const dir = mkdtempSync(join(tmpdir(), "core-loader-provider-def-"));
@@ -90,5 +90,70 @@ describe("loadProviderDefs: no usable export", () => {
     `);
     const defs = await loadProviderDefs(handlerPath);
     assert.deepEqual(defs.map((d) => d.id), ["valid"]);
+  });
+});
+
+describe("loadProviderDefsResult", () => {
+  it("resolves defs with no error for a handler exporting defs", async () => {
+    const handlerPath = writeHandler(`
+      export const defs = [{ id: "stub", label: "Stub", models: {}, hasOAuth: false }];
+    `);
+    const result = await loadProviderDefsResult(handlerPath);
+    assert.deepEqual(result.defs.map((d) => d.id), ["stub"]);
+    assert.equal(result.error, undefined);
+  });
+
+  it("resolves an error naming the failure when the module fails to import", async () => {
+    const handlerPath = join(tmpdir(), "core-loader-provider-def-missing", "nope.mjs");
+    const result = await loadProviderDefsResult(handlerPath);
+    assert.deepEqual(result.defs, []);
+    assert.equal(typeof result.error, "string");
+    assert.ok(result.error.length > 0);
+  });
+
+  it("resolves an error when resolveProviders throws", async () => {
+    const handlerPath = writeHandler(`
+      export function resolveProviders() { throw new Error("config unreadable"); }
+    `);
+    const result = await loadProviderDefsResult(handlerPath);
+    assert.deepEqual(result.defs, []);
+    assert.match(result.error, /config unreadable/);
+  });
+
+  it("resolves defs: [] with no error for a handler exporting none of the three shapes", async () => {
+    const handlerPath = writeHandler(`export const somethingElse = 1;`);
+    const result = await loadProviderDefsResult(handlerPath);
+    assert.deepEqual(result.defs, []);
+    assert.equal(result.error, undefined);
+  });
+
+  it("resolves defs: [] with no error when resolveProviders resolves to something other than an array", async () => {
+    const handlerPath = writeHandler(`export async function resolveProviders() { return "nope"; }`);
+    const result = await loadProviderDefsResult(handlerPath);
+    assert.deepEqual(result.defs, []);
+    assert.equal(result.error, undefined);
+  });
+});
+
+describe("loadProviderDefs delegates to loadProviderDefsResult", () => {
+  it("still returns a bare array", async () => {
+    const handlerPath = writeHandler(`
+      export const defs = [{ id: "stub", label: "Stub", models: {}, hasOAuth: false }];
+    `);
+    const defs = await loadProviderDefs(handlerPath);
+    assert.ok(Array.isArray(defs));
+    assert.deepEqual(defs.map((d) => d.id), ["stub"]);
+  });
+
+  it("still returns [] when the module fails to import", async () => {
+    const handlerPath = join(tmpdir(), "core-loader-provider-def-missing", "nope.mjs");
+    assert.deepEqual(await loadProviderDefs(handlerPath), []);
+  });
+
+  it("still returns [] when resolveProviders throws", async () => {
+    const handlerPath = writeHandler(`
+      export function resolveProviders() { throw new Error("config unreadable"); }
+    `);
+    assert.deepEqual(await loadProviderDefs(handlerPath), []);
   });
 });
