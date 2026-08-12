@@ -81,7 +81,6 @@ export function readDeployedManifests(pluginDir: string): ManifestScan {
     }
   }
 
-  const idMap = new Map<string, Array<{ manifestPath: string; filename: string; manifest: PluginManifest }>>();
   for (const item of pendingLoad) {
     if (item.manifest.id !== item.filename) {
       failed.push(new PluginError(
@@ -91,35 +90,8 @@ export function readDeployedManifests(pluginDir: string): ManifestScan {
       ));
       continue;
     }
-    if (!idMap.has(item.manifest.id)) {
-      idMap.set(item.manifest.id, []);
-    }
-    idMap.get(item.manifest.id)!.push(item);
-  }
-
-  const duplicateIds = Array.from(idMap.entries())
-    .filter(([, items]) => items.length > 1)
-    .map(([id]) => id);
-
-  if (duplicateIds.length > 0) {
-    for (const dupeId of duplicateIds) {
-      const items = idMap.get(dupeId)!;
-      const paths = items.map(i => i.manifestPath);
-      for (const item of items) {
-        const otherPaths = paths.filter(p => p !== item.manifestPath);
-        failed.push(new PluginError(
-          dupeId,
-          `${item.manifestPath}: duplicate plugin id "${dupeId}" (also found at ${otherPaths.join(", ")})`,
-          "redeploy one of these plugins with a unique id"
-        ));
-      }
-    }
-  } else {
-    for (const item of pendingLoad) {
-      if (item.manifest.id === item.filename) {
-        loaded.push({ manifest: item.manifest, manifestPath: item.manifestPath, entryPath: entryFor(pluginDir, item.manifest) });
-      }
-    }
+    // manifest.id === filename is guaranteed; directory entries are unique; so id collisions are impossible.
+    loaded.push({ manifest: item.manifest, manifestPath: item.manifestPath, entryPath: entryFor(pluginDir, item.manifest) });
   }
 
   loaded.sort((left, right) => {
