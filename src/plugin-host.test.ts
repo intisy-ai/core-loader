@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Plugin, PluginManifest, PluginRuntime } from "@intisy-ai/api";
-import { startPlugins } from "./plugin-host.js";
+import { ledgerRows, startPlugins } from "./plugin-host.js";
 
 function runtime(): PluginRuntime {
   return {
@@ -196,5 +196,54 @@ describe("startPlugins", () => {
     expect(stopped).toEqual(["closer"]);
     expect(loaded.host.capability("settings")).toEqual([]);
     expect(loaded.host.ledger.entry("closer")?.status).toBe("stopped");
+  });
+});
+
+describe("ledgerRows", () => {
+  it("reports what each plugin declared, provided, consumed and subscribed to", async () => {
+    const scan = scanOf({
+      manifest: manifest("recorder", { permissions: ["network"], services: { provides: ["recorder:store"] } }),
+      module: {
+        default: {
+          activate: (ctx) => {
+            ctx.provide("settings", { schema: () => ({}), run: async () => ({ ok: true }) });
+            ctx.services.register("recorder:store", {});
+            ctx.services.get("accounts");
+            ctx.events.subscribe("config.changed", () => {});
+          },
+          deactivate: () => {},
+        },
+      },
+    });
+    const loaded = await startPlugins(options(scan));
+    const [row] = ledgerRows(loaded);
+
+    expect(row.pluginId).toBe("recorder");
+    expect(row.status).toBe("active");
+    expect(row.capabilities).toEqual(["settings"]);
+    expect(row.services.provides).toEqual(["recorder:store"]);
+    expect(row.services.consumes).toEqual(["accounts"]);
+    expect(row.topics).toEqual(["config.changed"]);
+    expect(row.permissions).toEqual(["network"]);
+    expect(row.error).toBeUndefined();
+  });
+
+  it("names a consumed service nothing in this home provides", async () => {
+    const scan = scanOf({
+      manifest: manifest("lonely", { capabilities: [] }),
+      module: { default: { activate: (ctx) => { ctx.services.get("routing"); }, deactivate: () => {} } },
+    });
+    const [row] = ledgerRows(await startPlugins(options(scan)));
+
+    expect(row.unresolved).toEqual(["routing"]);
+  });
+
+  it("carries a quarantined plugin's error and fix", async () => {
+    const scan = scanOf({ manifest: manifest("angry"), module: { default: { activate: () => { throw new Error("no disk"); }, deactivate: () => {} } } });
+    const [row] = ledgerRows(await startPlugins(options(scan)));
+
+    expect(row.status).toBe("broken");
+    expect(row.error?.detail).toContain("no disk");
+    expect(row.error?.fix).toBeTruthy();
   });
 });

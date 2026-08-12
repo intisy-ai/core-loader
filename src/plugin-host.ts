@@ -214,3 +214,58 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
     },
   };
 }
+
+/** One plugin's whole relationship record, in the shape a surface renders. */
+export interface PluginLedgerRow {
+  /** The plugin this row describes. */
+  pluginId: string;
+  /** Where the plugin stands: activating, active, broken or stopped. */
+  status: string;
+  /** Capability ids it actually provided. */
+  capabilities: string[];
+  /** What it offers other plugins and what it asked of them. */
+  services: {
+    /** Service ids it registered. */
+    provides: string[];
+    /** Service ids it asked for, whether or not anything answered. */
+    consumes: string[];
+  };
+  /** Event topics it subscribed to. */
+  topics: string[];
+  /** Permissions its manifest declares. */
+  permissions: string[];
+  /** Service ids it consumed that nothing in this home provides. */
+  unresolved: string[];
+  /** Why it is broken, when it is. */
+  error?: {
+    /** What went wrong. */
+    detail: string;
+    /** How to fix it. */
+    fix: string;
+  };
+}
+
+/**
+ * Renders the host's ledger as rows.
+ *
+ * @remarks
+ * The ledger is kept as the relationships are made, because a relationship is only observable at
+ * the moment it happens. `unresolved` is derived here rather than recorded, since whether a
+ * consumed service is answered depends on what else is registered right now.
+ */
+export function ledgerRows(loaded: LoadedHost): PluginLedgerRow[] {
+  const registered = new Set(loaded.host.ledger.entries().flatMap((entry) => entry.servicesProvided));
+  return loaded.host.ledger.entries().map((entry) => {
+    const row: PluginLedgerRow = {
+      pluginId: entry.pluginId,
+      status: entry.status,
+      capabilities: entry.capabilitiesProvided,
+      services: { provides: entry.servicesProvided, consumes: entry.servicesConsumed },
+      topics: entry.topics,
+      permissions: entry.permissions,
+      unresolved: entry.servicesConsumed.filter((serviceId) => !registered.has(serviceId)),
+    };
+    if (entry.error) row.error = entry.error;
+    return row;
+  });
+}
