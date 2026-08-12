@@ -220,6 +220,7 @@ describe("ledgerRows", () => {
 
     expect(row.pluginId).toBe("recorder");
     expect(row.status).toBe("active");
+    expect(row.capabilitiesDeclared).toEqual(["settings"]);
     expect(row.capabilities).toEqual(["settings"]);
     expect(row.services.provides).toEqual(["recorder:store"]);
     expect(row.services.consumes).toEqual(["accounts"]);
@@ -245,5 +246,43 @@ describe("ledgerRows", () => {
     expect(row.status).toBe("broken");
     expect(row.error?.detail).toContain("no disk");
     expect(row.error?.fix).toBeTruthy();
+  });
+
+  it("does not list a consumed service as unresolved if another active plugin provides it", async () => {
+    const scan = scanOf(
+      { manifest: manifest("provider", { capabilities: [], services: { provides: ["provider:store"] } }), module: { default: { activate: (ctx) => { ctx.services.register("provider:store", {}); }, deactivate: () => {} } } },
+      { manifest: manifest("consumer", { capabilities: [], services: { consumes: ["provider:store"] } }), module: { default: { activate: (ctx) => { ctx.services.get("provider:store"); }, deactivate: () => {} } } },
+    );
+    const loaded = await startPlugins(options(scan));
+    const [, consumerRow] = ledgerRows(loaded);
+
+    expect(consumerRow.pluginId).toBe("consumer");
+    expect(consumerRow.services.consumes).toEqual(["provider:store"]);
+    expect(consumerRow.unresolved).toEqual([]);
+  });
+
+  it("lists a consumed service as unresolved if its provider was quarantined or stopped", async () => {
+    const scan = scanOf(
+      { manifest: manifest("provider", { capabilities: [], services: { provides: ["provider:store"] } }), module: { default: { activate: (ctx) => { ctx.services.register("provider:store", {}); }, deactivate: () => {} } } },
+      { manifest: manifest("consumer", { capabilities: [], services: { consumes: ["provider:store"] } }), module: { default: { activate: (ctx) => { ctx.services.get("provider:store"); }, deactivate: () => {} } } },
+    );
+    const loaded = await startPlugins(options(scan));
+    await loaded.host.markBroken("provider", new (await import("@intisy-ai/api")).PluginError("provider", "stopped", "restart it"));
+    const rows = ledgerRows(loaded);
+    const consumerRow = rows.find((row) => row.pluginId === "consumer")!;
+
+    expect(consumerRow.services.consumes).toEqual(["provider:store"]);
+    expect(consumerRow.unresolved).toEqual(["provider:store"]);
+  });
+
+  it("carries capabilitiesDeclared for an early-quarantined plugin", async () => {
+    const scan = scanOf({ manifest: manifest("future", { api: 99 }), module: { default: { activate: () => {}, deactivate: () => {} } } });
+    const [row] = ledgerRows(await startPlugins(options(scan)));
+
+    expect(row.pluginId).toBe("future");
+    expect(row.status).toBe("broken");
+    expect(row.capabilitiesDeclared).toEqual(["settings"]);
+    expect(row.capabilities).toEqual([]);
+    expect(row.error).toBeTruthy();
   });
 });

@@ -221,6 +221,8 @@ export interface PluginLedgerRow {
   pluginId: string;
   /** Where the plugin stands: activating, active, broken or stopped. */
   status: string;
+  /** Capability ids its manifest declared. */
+  capabilitiesDeclared: string[];
   /** Capability ids it actually provided. */
   capabilities: string[];
   /** What it offers other plugins and what it asked of them. */
@@ -250,20 +252,22 @@ export interface PluginLedgerRow {
  *
  * @remarks
  * The ledger is kept as the relationships are made, because a relationship is only observable at
- * the moment it happens. `unresolved` is derived here rather than recorded, since whether a
- * consumed service is answered depends on what else is registered right now.
+ * the moment it happens. `unresolved` is derived here rather than recorded by asking the live
+ * registry, since whether a consumed service is answered depends on what is registered right now
+ * and that changes as plugins are enabled and disabled.
  */
 export function ledgerRows(loaded: LoadedHost): PluginLedgerRow[] {
-  const registered = new Set(loaded.host.ledger.entries().flatMap((entry) => entry.servicesProvided));
-  return loaded.host.ledger.entries().map((entry) => {
+  const entries = loaded.host.ledger.entries();
+  return entries.map((entry) => {
     const row: PluginLedgerRow = {
       pluginId: entry.pluginId,
       status: entry.status,
+      capabilitiesDeclared: entry.capabilitiesDeclared,
       capabilities: entry.capabilitiesProvided,
       services: { provides: entry.servicesProvided, consumes: entry.servicesConsumed },
       topics: entry.topics,
       permissions: entry.permissions,
-      unresolved: entry.servicesConsumed.filter((serviceId) => !registered.has(serviceId)),
+      unresolved: entry.servicesConsumed.filter((serviceId) => !loaded.host.service(serviceId)),
     };
     if (entry.error) row.error = entry.error;
     return row;
