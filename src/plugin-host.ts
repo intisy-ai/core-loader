@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { activationOrder, createPluginHost, isPluginError, PluginError } from "@intisy-ai/api";
-import type { Plugin, PluginHost, PluginManifest, PluginRuntime } from "@intisy-ai/api";
+import type { Plugin, PluginContext, PluginHost, PluginManifest, PluginRuntime } from "@intisy-ai/api";
 import { readDeployedManifests } from "./plugin-manifests.js";
 import type { DeployedPlugin, ManifestScan } from "./plugin-manifests.js";
 
@@ -47,13 +47,29 @@ function asPlugin(module: unknown): Plugin | null {
   const candidate = (module as { default?: unknown })?.default;
   if (!candidate || typeof candidate !== "object") return null;
   const plugin = candidate as Partial<Plugin>;
-  if (typeof plugin.activate !== "function") return null;
+  if (typeof plugin.activate !== "function" || typeof plugin.deactivate !== "function") return null;
   return plugin as Plugin;
 }
 
 function errorFor(pluginId: string, error: unknown, fix: string): PluginError {
   if (isPluginError(error)) return error;
   return new PluginError(pluginId, error instanceof Error ? error.message : String(error), fix);
+}
+
+/**
+ * Quarantines a plugin before its context ever opened.
+ *
+ * @remarks
+ * `recordDeclared` runs first so the ledger entry carries what the manifest actually declared
+ * (capabilities, permissions) alongside the error, rather than a blank entry a reader would
+ * mistake for "declared nothing". `markBroken` runs after, so its status and error survive:
+ * `recordDeclared` resets status to `activating` and clears any error, and reversing the order
+ * would silently undo the quarantine.
+ */
+function quarantine(host: PluginHost, quarantined: PluginError[], manifest: PluginManifest, error: PluginError): void {
+  host.ledger.recordDeclared(manifest);
+  host.markBroken(manifest.id, error);
+  quarantined.push(error);
 }
 
 async function withTimeout(pluginId: string, timeoutMs: number, run: () => void | Promise<void>): Promise<void> {
@@ -96,13 +112,17 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
   const plan = activationOrder(scan.loaded.map((plugin) => plugin.manifest));
   for (const cycle of plan.cycles) {
     for (const pluginId of cycle) {
+      const manifest = byId.get(pluginId)?.manifest;
       const error = new PluginError(
         pluginId,
         `is in a dependency cycle: ${cycle.join(" -> ")} -> ${cycle[0]}`,
         "break the cycle by removing one plugin's entry from services.consumes in its plugin.json",
       );
-      host.markBroken(pluginId, error);
-      quarantined.push(error);
+      if (manifest) quarantine(host, quarantined, manifest, error);
+      else {
+        host.markBroken(pluginId, error);
+        quarantined.push(error);
+      }
     }
   }
 
@@ -113,8 +133,7 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
 
     const unsupported = host.supports(manifest);
     if (unsupported) {
-      host.markBroken(pluginId, unsupported);
-      quarantined.push(unsupported);
+      quarantine(host, quarantined, manifest, unsupported);
       continue;
     }
 
@@ -124,8 +143,7 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
         manifest.entry ? "declares an entry but no bundle is deployed beside its manifest" : "declares no entry, so there is nothing to activate",
         manifest.entry ? "deploy the plugin again so its bundle lands beside the sidecar" : "add \"entry\": \"dist/index.js\" to plugin.json if this plugin has capabilities",
       );
-      host.markBroken(pluginId, error);
-      quarantined.push(error);
+      quarantine(host, quarantined, manifest, error);
       continue;
     }
 
@@ -134,8 +152,7 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
       plugin = asPlugin(await importEntry(entryPath));
     } catch (error) {
       const failure = errorFor(pluginId, error, "rebuild the plugin: its deployed bundle could not be imported");
-      host.markBroken(pluginId, failure);
-      quarantined.push(failure);
+      quarantine(host, quarantined, manifest, failure);
       continue;
     }
 
@@ -145,12 +162,19 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
         "its entry module exports no plugin",
         "export default a class implementing Plugin, or definePlugin({ activate, deactivate })",
       );
-      host.markBroken(pluginId, error);
-      quarantined.push(error);
+      quarantine(host, quarantined, manifest, error);
       continue;
     }
 
-    const context = host.contextFor(manifest, options.runtimeFor(manifest));
+    let context: PluginContext;
+    try {
+      context = host.contextFor(manifest, options.runtimeFor(manifest));
+    } catch (error) {
+      const failure = errorFor(pluginId, error, "fix the plugin's own configuration; its runtime could not be built");
+      quarantine(host, quarantined, manifest, failure);
+      continue;
+    }
+
     try {
       await withTimeout(pluginId, timeoutMs, () => plugin.activate(context));
     } catch (error) {

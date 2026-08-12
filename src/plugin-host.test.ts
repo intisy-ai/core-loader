@@ -123,14 +123,38 @@ describe("startPlugins", () => {
 
     expect(loaded.started).toEqual([]);
     expect(loaded.quarantined[0].detail).toContain("needs api 99");
+    expect(loaded.host.ledger.entry("future")?.capabilitiesDeclared).toEqual(["settings"]);
   });
 
-  it("quarantines a plugin whose entry exports no plugin", async () => {
-    const scan = scanOf({ manifest: manifest("empty"), module: { default: { nothing: true } } });
+  it("quarantines a plugin whose entry exports no plugin, or exports one missing deactivate", async () => {
+    const scan = scanOf(
+      { manifest: manifest("empty"), module: { default: { nothing: true } } },
+      { manifest: manifest("halfway"), module: { default: { activate: () => {} } } },
+    );
     const loaded = await startPlugins(options(scan));
 
-    expect(loaded.quarantined[0].pluginId).toBe("empty");
+    expect(loaded.quarantined.map((error) => error.pluginId)).toEqual(["empty", "halfway"]);
     expect(loaded.quarantined[0].fix).toContain("export default");
+    expect(loaded.quarantined[1].fix).toContain("export default");
+  });
+
+  it("quarantines a plugin whose runtime cannot be built, and keeps the rest running", async () => {
+    const order: string[] = [];
+    const scan = scanOf(
+      { manifest: manifest("badconfig"), module: settingsPlugin(order, "badconfig") },
+      { manifest: manifest("ok"), module: settingsPlugin(order, "ok") },
+    );
+    const loaded = await startPlugins(options(scan, {
+      runtimeFor: (target: PluginManifest) => {
+        if (target.id === "badconfig") throw new Error("malformed config/badconfig.json");
+        return runtime();
+      },
+    }));
+
+    expect(loaded.started).toEqual(["ok"]);
+    expect(loaded.quarantined.map((error) => error.pluginId)).toEqual(["badconfig"]);
+    expect(loaded.quarantined[0].detail).toContain("malformed config/badconfig.json");
+    expect(order).toEqual(["ok"]);
   });
 
   it("skips a manifest with no deployed bundle rather than failing the run", async () => {
