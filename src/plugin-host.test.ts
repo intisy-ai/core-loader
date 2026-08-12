@@ -275,14 +275,28 @@ describe("ledgerRows", () => {
     expect(consumerRow.unresolved).toEqual(["provider:store"]);
   });
 
-  it("carries capabilitiesDeclared for an early-quarantined plugin", async () => {
-    const scan = scanOf({ manifest: manifest("future", { api: 99 }), module: { default: { activate: () => {}, deactivate: () => {} } } });
+  it("carries capabilitiesDeclared and permissions for an early-quarantined plugin", async () => {
+    const scan = scanOf({ manifest: manifest("future", { api: 99, permissions: ["network", "disk"] }), module: { default: { activate: () => {}, deactivate: () => {} } } });
     const [row] = ledgerRows(await startPlugins(options(scan)));
 
     expect(row.pluginId).toBe("future");
     expect(row.status).toBe("broken");
     expect(row.capabilitiesDeclared).toEqual(["settings"]);
     expect(row.capabilities).toEqual([]);
+    expect(row.permissions).toEqual(["network", "disk"]);
     expect(row.error).toBeTruthy();
+  });
+
+  it("does not report falsy service values as unresolved", async () => {
+    const scan = scanOf(
+      { manifest: manifest("provider", { capabilities: [], services: { provides: ["provider:falsy"] } }), module: { default: { activate: (ctx) => { ctx.services.register("provider:falsy", false); }, deactivate: () => {} } } },
+      { manifest: manifest("consumer", { capabilities: [], services: { consumes: ["provider:falsy"] } }), module: { default: { activate: (ctx) => { ctx.services.get("provider:falsy"); }, deactivate: () => {} } } },
+    );
+    const loaded = await startPlugins(options(scan));
+    const [, consumerRow] = ledgerRows(loaded);
+
+    expect(consumerRow.pluginId).toBe("consumer");
+    expect(consumerRow.services.consumes).toEqual(["provider:falsy"]);
+    expect(consumerRow.unresolved).toEqual([]);
   });
 });

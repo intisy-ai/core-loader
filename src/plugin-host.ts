@@ -267,7 +267,7 @@ export function ledgerRows(loaded: LoadedHost): PluginLedgerRow[] {
       services: { provides: entry.servicesProvided, consumes: entry.servicesConsumed },
       topics: entry.topics,
       permissions: entry.permissions,
-      unresolved: entry.servicesConsumed.filter((serviceId) => !loaded.host.service(serviceId)),
+      unresolved: entry.servicesConsumed.filter((serviceId) => loaded.host.service(serviceId) === undefined),
     };
     if (entry.error) row.error = entry.error;
     return row;
