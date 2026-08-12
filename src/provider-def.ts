@@ -34,6 +34,7 @@ function normalizeProviderDef(raw: unknown): ProviderDef | null {
 
 export interface ProviderDefsResult {
   defs: ProviderDef[];
+  /** A string, not an Error: crosses a process boundary to a UI as JSON. */
   error?: string;
 }
 
@@ -42,12 +43,8 @@ function messageOf(err: unknown): string {
 }
 
 // Loads a handler's provider metadata for consumers that only need the def(s), not
-// the request-handling side of the module (e.g. Cairn listing providers). Supports
-// three export shapes, checked in order: `defs` array, `resolveProviders()`, `def`
-// object. A handler exporting none of these legitimately has no defs, not an error.
-// `error` is a string (not an Error) because it crosses a process boundary to a
-// renderer as JSON, and carries the underlying failure's own message so a UI row
-// can name what broke.
+// the request-handling side of the module (e.g. a UI listing providers). A handler
+// exporting none of the supported shapes legitimately has no defs, not an error.
 export async function loadProviderDefsResult(handlerPath: string): Promise<ProviderDefsResult> {
   let mod: any;
   try {
@@ -79,7 +76,7 @@ export async function loadProviderDefsResult(handlerPath: string): Promise<Provi
 }
 
 // Kept for callers that only want the defs and never handled `error`; never throws
-// and returns [] on any failure, matching its behavior before loadProviderDefsResult existed.
+// and returns [] on any failure.
 export async function loadProviderDefs(handlerPath: string): Promise<ProviderDef[]> {
   return (await loadProviderDefsResult(handlerPath)).defs;
 }
