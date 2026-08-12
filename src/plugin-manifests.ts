@@ -39,30 +39,94 @@ function entryFor(pluginDir: string, manifest: PluginManifest): string | null {
  * @param pluginDir - the home's plugin directory, normally `<home>/plugin`
  */
 export function readDeployedManifests(pluginDir: string): ManifestScan {
-  const loaded: DeployedPlugin[] = [];
+  let loaded: DeployedPlugin[] = [];
   const failed: PluginError[] = [];
 
   let names: string[];
   try {
     names = readdirSync(pluginDir);
-  } catch {
+  } catch (error) {
+    const err = error as any;
+    if (err.code === "ENOENT") {
+      return { loaded, failed };
+    }
+    failed.push(new PluginError(
+      "plugin-dir",
+      `Plugin directory ${pluginDir} is not accessible: ${String(error)}`,
+      "ensure the directory exists and is readable"
+    ));
     return { loaded, failed };
   }
 
+  const pendingLoad: Array<{ manifestPath: string; filename: string; manifest: PluginManifest }> = [];
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
     const manifestPath = join(pluginDir, name);
-    const id = basename(name, ".json");
+    const filename = basename(name, ".json");
     try {
       const manifest = assertManifest(JSON.parse(readFileSync(manifestPath, "utf-8")));
-      loaded.push({ manifest, manifestPath, entryPath: entryFor(pluginDir, manifest) });
+      pendingLoad.push({ manifestPath, filename, manifest });
     } catch (error) {
-      failed.push(isPluginError(error)
-        ? error
-        : new PluginError(id, `${manifestPath} is not readable as JSON: ${String(error)}`, "redeploy the plugin so its plugin.json sidecar is written again"));
+      let detail: string;
+      let fix: string;
+      if (isPluginError(error)) {
+        const apiError = error as PluginError;
+        detail = `${manifestPath}: ${apiError.detail}`;
+        fix = apiError.fix;
+      } else {
+        detail = `${manifestPath} is not readable as JSON: ${String(error)}`;
+        fix = "redeploy the plugin so its plugin.json sidecar is written again";
+      }
+      failed.push(new PluginError(filename, detail, fix));
     }
   }
 
-  loaded.sort((left, right) => left.manifest.id.localeCompare(right.manifest.id));
+  const idMap = new Map<string, Array<{ manifestPath: string; filename: string; manifest: PluginManifest }>>();
+  for (const item of pendingLoad) {
+    if (item.manifest.id !== item.filename) {
+      failed.push(new PluginError(
+        item.filename,
+        `${item.manifestPath}: plugin id "${item.manifest.id}" does not match filename "${item.filename}.json"`,
+        "redeploy the plugin so the sidecar and bundle filenames match the declared id"
+      ));
+      continue;
+    }
+    if (!idMap.has(item.manifest.id)) {
+      idMap.set(item.manifest.id, []);
+    }
+    idMap.get(item.manifest.id)!.push(item);
+  }
+
+  const duplicateIds = Array.from(idMap.entries())
+    .filter(([, items]) => items.length > 1)
+    .map(([id]) => id);
+
+  if (duplicateIds.length > 0) {
+    for (const dupeId of duplicateIds) {
+      const items = idMap.get(dupeId)!;
+      const paths = items.map(i => i.manifestPath);
+      for (const item of items) {
+        const otherPaths = paths.filter(p => p !== item.manifestPath);
+        failed.push(new PluginError(
+          dupeId,
+          `${item.manifestPath}: duplicate plugin id "${dupeId}" (also found at ${otherPaths.join(", ")})`,
+          "redeploy one of these plugins with a unique id"
+        ));
+      }
+    }
+  } else {
+    for (const item of pendingLoad) {
+      if (item.manifest.id === item.filename) {
+        loaded.push({ manifest: item.manifest, manifestPath: item.manifestPath, entryPath: entryFor(pluginDir, item.manifest) });
+      }
+    }
+  }
+
+  loaded.sort((left, right) => {
+    const leftId = left.manifest.id;
+    const rightId = right.manifest.id;
+    return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+  });
+
   return { loaded, failed };
 }

@@ -48,11 +48,13 @@ describe("readDeployedManifests", () => {
   it("reports an invalid manifest without discarding the valid ones", () => {
     const dir = home();
     write(dir, "good", { id: "good", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
-    writeFileSync(join(dir, "bad.json"), JSON.stringify({ api: 1 }), "utf-8");
+    const badPath = join(dir, "bad.json");
+    writeFileSync(badPath, JSON.stringify({ api: 1 }), "utf-8");
     const scan = readDeployedManifests(dir);
     expect(scan.loaded.map((plugin) => plugin.manifest.id)).toEqual(["good"]);
     expect(scan.failed).toHaveLength(1);
     expect(scan.failed[0].detail).toContain("id");
+    expect(scan.failed[0].detail).toContain(badPath);
   });
 
   it("reports unparseable JSON as a failure naming the file", () => {
@@ -69,7 +71,9 @@ describe("readDeployedManifests", () => {
     const dir = home();
     write(dir, "demo", { id: "demo", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
     writeFileSync(join(dir, "notes.txt"), "hello", "utf-8");
-    expect(readDeployedManifests(dir).loaded).toHaveLength(1);
+    const scan = readDeployedManifests(dir);
+    expect(scan.loaded).toHaveLength(1);
+    expect(scan.failed).toEqual([]);
   });
 
   it("orders the result by id so a host activates deterministically", () => {
@@ -77,5 +81,40 @@ describe("readDeployedManifests", () => {
     write(dir, "zebra", { id: "zebra", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
     write(dir, "alpha", { id: "alpha", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
     expect(readDeployedManifests(dir).loaded.map((plugin) => plugin.manifest.id)).toEqual(["alpha", "zebra"]);
+  });
+
+  it("reports a non-directory plugin path as a failure", () => {
+    const dir = home();
+    write(dir, "demo", { id: "demo", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
+    const filePath = join(dir, "demo.js");
+    const scan = readDeployedManifests(filePath);
+    expect(scan.loaded).toEqual([]);
+    expect(scan.failed).toHaveLength(1);
+    expect(scan.failed[0].pluginId).toBe("plugin-dir");
+    expect(scan.failed[0].detail).toContain(filePath);
+  });
+
+  it("reports a manifest whose id does not match its filename", () => {
+    const dir = home();
+    write(dir, "demo", { id: "different", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
+    const scan = readDeployedManifests(dir);
+    expect(scan.loaded).toEqual([]);
+    expect(scan.failed).toHaveLength(1);
+    expect(scan.failed[0].pluginId).toBe("demo");
+    expect(scan.failed[0].detail).toContain("different");
+    expect(scan.failed[0].detail).toContain("demo");
+  });
+
+  it("reports when a manifest id does not match another plugin and allows only valid ones", () => {
+    const dir = home();
+    write(dir, "good1", { id: "good1", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
+    write(dir, "good2", { id: "good2", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
+    write(dir, "bad", { id: "wrong", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
+    const scan = readDeployedManifests(dir);
+    expect(scan.loaded.map(p => p.manifest.id)).toEqual(["good1", "good2"]);
+    expect(scan.failed).toHaveLength(1);
+    expect(scan.failed[0].pluginId).toBe("bad");
+    expect(scan.failed[0].detail).toContain("wrong");
+    expect(scan.failed[0].detail).toContain("bad");
   });
 });
