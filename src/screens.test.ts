@@ -22,4 +22,23 @@ describe("core-loader flatten", () => {
   it("keeps an unknown kind as a labelled row rather than dropping it silently", () => {
     expect(flattenScreen({ kind: "stack", children: [{ kind: "sparkline" }] })).toHaveLength(1);
   });
+
+  it("surfaces a row it cannot render (form, fields, actions, meter) instead of vanishing it", () => {
+    const spec = {
+      id: "s",
+      label: "S",
+      layout: {
+        kind: "stack",
+        children: [
+          { kind: "form", fields: [], submit: "go" },
+          { kind: "fields", keys: ["token"] },
+          { kind: "actions", ids: ["go"] },
+          { kind: "meter", source: "quota" },
+        ],
+      },
+    };
+    const rows = screenRows(spec, {});
+    expect(rows).toHaveLength(4);
+    expect(rows.every((r) => r.text === "Not available in the terminal.")).toBe(true);
+  });
 });

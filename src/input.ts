@@ -18,7 +18,7 @@ import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
 import { refreshSettings, settingsSubPages } from "./views/settings.js";
-import { refreshScreen, runScreenAction } from "./views/screens.js";
+import { refreshScreen, runScreenAction, resolveScreenAction } from "./views/screens.js";
 import { getConfigLedger, configLedgerReady, configLedgerInstalled, preloadConfigLedger } from "./config-ledger.js";
 import { refreshVersioning, reconcileConfigLedger, VG_INIT_OPTS, VG_MENU_ITEMS } from "./views/versioning.js";
 import { buildGlobalSection, buildPluginSections, splitBySections } from "./settings-model.js";
@@ -1040,6 +1040,9 @@ export function handleConfirmKey(key) {
       S.pluginItems = buildCombinedPluginList();
       if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
       flash(ures && ures.ok ? (fpitem.name + " uninstalled.") : ("Failed: " + ((ures && ures.error) || "unknown error")));
+    } else if (S.confirmAction && S.confirmAction.type === "screen-action") {
+      var sa = S.confirmAction.target;
+      runContributedScreenAction(sa.entry, sa.row);
     }
     S.confirmAction = null;
     S.confirmLabel = "";
@@ -1240,14 +1243,26 @@ function handleScreenKey(key, sub) {
   if (key === "enter" || key === "space") {
     var row = rows[S.screenCursor];
     if (!row || !row.actionId) return;
-    S.busy = true;
-    runScreenAction(entry, row, function (answer) {
-      S.busy = false;
-      if (answer && answer.message) flash(answer.message);
-      render();
-    });
+    var action = resolveScreenAction(entry, row.actionId);
+    if (action.confirm) {
+      S.confirmAction = { type: "screen-action", target: { entry: entry, row: row } };
+      S.confirmLabel = action.confirm;
+      S.confirmCursor = 0;
+      S.mode = "confirm";
+      return;
+    }
+    runContributedScreenAction(entry, row);
     return;
   }
+}
+
+function runContributedScreenAction(entry, row) {
+  S.busy = true;
+  runScreenAction(entry, row, function (answer) {
+    S.busy = false;
+    if (answer && answer.message) flash(answer.message);
+    render();
+  });
 }
 
 // The Versioning tab (config-ledger git UI). Sub-screens are keyed by S.mode; the default

@@ -1,12 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { collectScreens, subPages, entryId } from "./screens.js";
+import { collectScreens, subPages, entryId, resolveScreenAction } from "./screens.js";
 
 const spec = { id: "config", label: "Config", layout: { kind: "stack", children: [{ kind: "text", text: "hi" }] } };
 
 describe("contributed screens in the loader", () => {
   it("collects one entry per screen a plugin declares", () => {
     const entries = collectScreens([{ name: "p", _cfg: { name: "p", screens: [spec] } }]);
-    expect(entries).toEqual([{ plugin: "p", spec }]);
+    expect(entries).toEqual([{ plugin: "p", spec, actions: [] }]);
+  });
+
+  it("carries the plugin's declared actions on each entry, for resolving a row action's metadata", () => {
+    const action = { id: "restore", label: "Restore", confirm: "Overwrite uncommitted changes?", danger: true };
+    const entries = collectScreens([{ name: "p", _cfg: { name: "p", screens: [spec], actions: [action] } }]);
+    expect(entries).toEqual([{ plugin: "p", spec, actions: [action] }]);
   });
 
   it("ignores a plugin with no screens", () => {
@@ -24,5 +30,16 @@ describe("contributed screens in the loader", () => {
     const entry = { plugin: "p", spec };
     expect(entryId(entry)).toBe("p:config");
     expect(subPages([entry])[1].id).toBe(entryId(entry));
+  });
+});
+
+describe("resolveScreenAction", () => {
+  it("resolves a row action id to its declared metadata", () => {
+    const action = { id: "restore", label: "Restore", confirm: "Sure?", danger: true };
+    expect(resolveScreenAction({ actions: [action] }, "restore")).toEqual(action);
+  });
+
+  it("falls back to the id as the label for a screen-only action the plugin never declared", () => {
+    expect(resolveScreenAction({ actions: [] }, "go")).toEqual({ id: "go", label: "go" });
   });
 });

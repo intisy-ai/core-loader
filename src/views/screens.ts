@@ -17,9 +17,18 @@ export function collectScreens(pluginItems) {
   const out = [];
   for (const item of pluginItems || []) {
     const screens = (item && item._cfg && item._cfg.screens) || [];
-    for (const spec of screens) out.push({ plugin: (item._cfg && item._cfg.name) || item.name, spec });
+    const actions = (item && item._cfg && item._cfg.actions) || [];
+    for (const spec of screens) out.push({ plugin: (item._cfg && item._cfg.name) || item.name, spec, actions });
   }
   return out;
+}
+
+// Declared metadata (label/confirm/danger) for a screen row's action id, the terminal's
+// analogue of what the dashboard's Actions.svelte resolves. An id the plugin never declared
+// (a screen-only action) still has to run, just without that metadata.
+export function resolveScreenAction(entry, actionId) {
+  const actions = (entry && entry.actions) || [];
+  return actions.find((a) => a && a.id === actionId) || { id: actionId, label: actionId };
 }
 
 // The sub-page id a screen renders under, shared by subPages (which assigns it) and
@@ -49,12 +58,13 @@ function bundleFor(pluginName) {
   return null;
 }
 
-// A read is expected back quickly (matches probeConfigSchema's own 8s bundle probe in
-// plugins.ts). An invoke may do real work (a multi-file restore, a network round-trip):
-// execFile's timeout SIGTERMs the child on expiry, so an invoke budget as short as the
-// read's would kill legitimate work mid-write with no atomicity guarantee. 600000 matches
-// runPluginAction's own action timeout in plugins.ts, the directly analogous case.
-var UI_DATA_TIMEOUT_MS = 8000;
+// A read is expected back quickly. 10000 matches the dashboard's own uiProbe.ts budget for
+// the same protocol against the same bundle, so a plugin does not work in one surface and
+// time out in the other. An invoke may do real work (a multi-file restore, a network
+// round-trip): execFile's timeout SIGTERMs the child on expiry, so an invoke budget as short
+// as the read's would kill legitimate work mid-write with no atomicity guarantee. 600000
+// matches runPluginAction's own action timeout in plugins.ts, the directly analogous case.
+var UI_DATA_TIMEOUT_MS = 10000;
 var UI_INVOKE_TIMEOUT_MS = 600000;
 
 // node <bundle> ui data <screenId> --home <CONFIG_DIR> answers { sources }. Runs async

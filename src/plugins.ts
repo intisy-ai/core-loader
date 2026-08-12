@@ -319,17 +319,18 @@ export function probeConfigSchemaAsync(pitem) {
 // A plugin's whole declaration as the Settings tab consumes it: editable rows plus the
 // actions and contributed sections it declared. A plugin offering neither settings nor
 // actions has nothing to configure, which is what yields null (no Configure entry).
-function declarationOf(data, fallbackName, bundle) {
+export function declarationOf(data, fallbackName, bundle) {
   var items = buildConfigItems(data);
   var actions = Array.isArray(data.actions) ? data.actions : [];
-  if (!items.length && !actions.length) return null;
+  var screens = Array.isArray(data.screens) ? data.screens : [];
+  if (!items.length && !actions.length && !screens.length) return null;
   return {
     name: data.name || fallbackName,
     bundle: bundle,
     items: items,
     actions: actions,
     sections: Array.isArray(data.sections) ? data.sections : [],
-    screens: Array.isArray(data.screens) ? data.screens : [],
+    screens: screens,
   };
 }
 
