@@ -229,7 +229,7 @@ export const HELP_BINDINGS = {
   ],
   settings: [
     ["^v / WS", "Move"], ["Enter", "Open a group / edit a setting"],
-    ["Tab", "Switch sub-tab (Settings / Versioning)"],
+    ["Tab", "Switch sub-tab (Settings / Versioning / contributed screens)"],
     ["C", "Commit (Versioning)"], ["I", "Import from repo (Versioning)"],
     ["<- ->", "Switch page"], ["Q / Esc", "Quit"],
   ],

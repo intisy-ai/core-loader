@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { collectScreens, subPages } from "./screens.js";
+import { collectScreens, subPages, entryId } from "./screens.js";
 
 const spec = { id: "config", label: "Config", layout: { kind: "stack", children: [{ kind: "text", text: "hi" }] } };
 
@@ -18,5 +18,11 @@ describe("contributed screens in the loader", () => {
     const b = { ...spec, id: "b", label: "Beta", order: 10 };
     const pages = subPages([{ plugin: "p", spec: a }, { plugin: "p", spec: b }]);
     expect(pages.map((page) => page.label)).toEqual(["Settings", "Beta", "Alpha"]);
+  });
+
+  it("computes the same sub-page id subPages assigns, so a stale refresh can recognize it's no longer active", () => {
+    const entry = { plugin: "p", spec };
+    expect(entryId(entry)).toBe("p:config");
+    expect(subPages([entry])[1].id).toBe(entryId(entry));
   });
 });

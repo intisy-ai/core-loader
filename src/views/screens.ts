@@ -22,11 +22,18 @@ export function collectScreens(pluginItems) {
   return out;
 }
 
+// The sub-page id a screen renders under, shared by subPages (which assigns it) and
+// refreshScreen's staleness guard (which must agree on the same id to detect "the user
+// tabbed away before this response landed").
+export function entryId(entry) {
+  return entry && entry.spec ? entry.plugin + ":" + entry.spec.id : null;
+}
+
 export function subPages(entries) {
   const sorted = entries.slice().sort(
     (a, b) => (a.spec.order ?? Number.MAX_SAFE_INTEGER) - (b.spec.order ?? Number.MAX_SAFE_INTEGER) || a.spec.label.localeCompare(b.spec.label),
   );
-  return [{ id: "settings", label: "Settings" }].concat(sorted.map((entry) => ({ id: entry.plugin + ":" + entry.spec.id, label: entry.spec.label, entry })));
+  return [{ id: "settings", label: "Settings" }].concat(sorted.map((entry) => ({ id: entryId(entry), label: entry.spec.label, entry })));
 }
 
 // The deployed bundle backing a contributed screen's plugin, resolved from the already-
@@ -42,7 +49,13 @@ function bundleFor(pluginName) {
   return null;
 }
 
-var SCREEN_TIMEOUT_MS = 8000;
+// A read is expected back quickly (matches probeConfigSchema's own 8s bundle probe in
+// plugins.ts). An invoke may do real work (a multi-file restore, a network round-trip):
+// execFile's timeout SIGTERMs the child on expiry, so an invoke budget as short as the
+// read's would kill legitimate work mid-write with no atomicity guarantee. 600000 matches
+// runPluginAction's own action timeout in plugins.ts, the directly analogous case.
+var UI_DATA_TIMEOUT_MS = 8000;
+var UI_INVOKE_TIMEOUT_MS = 600000;
 
 // node <bundle> ui data <screenId> --home <CONFIG_DIR> answers { sources }. Runs async
 // via execFile (a real child process with its own timeout), so a hung plugin never
@@ -51,13 +64,19 @@ export function refreshScreen(entry) {
   if (!entry || !entry.spec) return;
   var bundle = bundleFor(entry.plugin);
   if (!bundle) { tuiLog("screen " + entry.plugin + ":" + entry.spec.id + " has no resolvable bundle", true); return; }
+  var pageId = entryId(entry);
   execFile(process.execPath, [bundle, "ui", "data", entry.spec.id, "--home", CONFIG_DIR],
-    { timeout: SCREEN_TIMEOUT_MS, windowsHide: true, env: spawnEnv() },
+    { timeout: UI_DATA_TIMEOUT_MS, windowsHide: true, env: spawnEnv() },
     function (err, stdout) {
       if (err) { tuiLog("screen " + entry.spec.id + " refresh failed: " + ((err && err.message) || err), true); return; }
       var data;
       try { data = JSON.parse(String(stdout).trim()); }
       catch (e) { tuiLog("screen " + entry.spec.id + " returned unparseable data: " + e, true); return; }
+      // Stale guard: the user may have tabbed to a different sub-page while this child
+      // process was running (this can take up to UI_DATA_TIMEOUT_MS, or longer still when
+      // it was kicked off by a refresh:true action answer under UI_INVOKE_TIMEOUT_MS).
+      // Only the still-active screen's rows may land, or they'd render under the wrong header.
+      if (S.settingsSubPage !== pageId) return;
       S.screenRows = screenRows(entry.spec, (data && data.sources) || {});
       scheduleRender();
     });
@@ -73,7 +92,7 @@ export function runScreenAction(entry, row, done) {
   if (!bundle) { tuiLog("screen action " + row.actionId + " has no resolvable bundle for " + entry.plugin, true); finish({ ok: false, message: "plugin not available" }); return; }
   var args = row.argId !== undefined ? { id: row.argId } : {};
   execFile(process.execPath, [bundle, "ui", "invoke", row.actionId, "--home", CONFIG_DIR, "--args", JSON.stringify(args)],
-    { timeout: SCREEN_TIMEOUT_MS, windowsHide: true, env: spawnEnv() },
+    { timeout: UI_INVOKE_TIMEOUT_MS, windowsHide: true, env: spawnEnv() },
     function (err, stdout) {
       if (err) {
         var msg = (err && err.message) || String(err);
