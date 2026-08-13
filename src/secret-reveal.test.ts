@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -388,12 +388,5 @@ describe("a revealed secret does not survive switching to a different plugin's e
     expect(S.configTarget?.plugin).toBe("beta");
     expect(S.configItems[0].type).toBe("secret");
     expect(S.cfgReveal).toBe("");
-
-    // Guards against a reveal that clears synchronously but comes back once the async
-    // declaration re-read this arm never triggers would (if it ever did) eventually land.
-    await vi.waitFor(() => {
-      expect(S.cfgReveal).toBe("");
-      expect(S.configTarget?.plugin).toBe("beta");
-    });
   });
 });

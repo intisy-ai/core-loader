@@ -240,4 +240,14 @@ describe("the settings tab's config editor", () => {
     const row = body.find((line) => line.includes("flag"));
     assert.ok(row.includes("true"), "a boolean row must render its value regardless of cfgReveal, got: " + row);
   });
+
+  it("offers the reveal hint in the footer only when a secret row is present", () => {
+    openSettingsEditor([boolRow()]);
+    const { foot: footNoSecret } = render();
+    assert.ok(!footNoSecret.some((line) => line.includes("reveal")), "no secret row, no reveal hint, got:\n" + footNoSecret.join("\n"));
+
+    openSettingsEditor([secretRow()]);
+    const { foot: footWithSecret } = render();
+    assert.ok(footWithSecret.some((line) => line.includes("reveal")), "a secret row must offer the reveal hint, got:\n" + footWithSecret.join("\n"));
+  });
 });
