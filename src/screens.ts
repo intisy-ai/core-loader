@@ -13,7 +13,7 @@ export interface ScreenSpec {
   id: string;
   label: string;
   layout: ScreenNode;
-  surfaces?: { tui?: ScreenNode };
+  surfaces?: Record<string, ScreenNode>;
 }
 
 export interface FlatRow {
@@ -67,8 +67,8 @@ export function flattenScreen(node: ScreenNode): FlatRow[] {
   return rows;
 }
 
-function screenLayoutFor(spec: ScreenSpec, surface: "gui" | "tui"): ScreenNode {
-  return (surface === "tui" && spec.surfaces?.tui) || spec.layout;
+function screenLayoutFor(spec: ScreenSpec, surface: string): ScreenNode {
+  return spec.surfaces?.[surface] ?? spec.layout;
 }
 
 export interface ScreenRow {

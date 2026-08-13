@@ -42,3 +42,18 @@ describe("core-loader flatten", () => {
     expect(rows.every((r) => r.text === "Not available in the terminal.")).toBe(true);
   });
 });
+
+describe("per-surface layout", () => {
+  it("prefers this surface's own tree and falls back to the shared layout", () => {
+    const spec = {
+      id: "s",
+      label: "S",
+      layout: { kind: "stack", children: [{ kind: "text", text: "shared" }] },
+      surfaces: { tui: { kind: "table", source: "rows", empty: "No rows yet." }, watch: { kind: "text", text: "wrist" } },
+    };
+    expect(screenRows(spec, { rows: [] })).toEqual([{ text: "No rows yet.", depth: 0 }]);
+    expect(screenRows({ ...spec, surfaces: { watch: { kind: "text", text: "wrist" } } }, {})).toEqual([
+      { text: "shared", depth: 0 },
+    ]);
+  });
+});
