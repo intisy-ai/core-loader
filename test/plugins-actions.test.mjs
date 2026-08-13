@@ -11,6 +11,60 @@ const { S } = require("../dist/state.js");
 
 afterEach(() => { S.capabilities = {}; });
 
+describe("plugins: the diagnostics screen's keys and its hint", () => {
+  const STRIP = /\x1b\[[0-9;]*m/g;
+
+  function openDiagnostics() {
+    S.page = "plugins";
+    S.mode = "pdiag";
+    S.pluginItems = [{ name: "demo", subject: "", url: "" }];
+    S.pcursor = 0;
+    // The Installed sub-page is gated on the updater engine being loadable, which it is not here.
+    S.hasUpdater = true;
+    return S;
+  }
+
+  afterEach(() => { S.mode = "list"; S.pluginItems = []; S.hasUpdater = false; });
+
+  it("dismisses on esc and on enter", () => {
+    const { handlePluginKey } = require("../dist/input.js");
+
+    openDiagnostics();
+    handlePluginKey("escape");
+    assert.strictEqual(S.mode, "list");
+
+    openDiagnostics();
+    handlePluginKey("enter");
+    assert.strictEqual(S.mode, "list");
+  });
+
+  it("quits on q, like every other page of this loader", () => {
+    const { handlePluginKey } = require("../dist/input.js");
+    const savedExit = process.exit;
+    let exitedWith = null;
+    openDiagnostics();
+    try {
+      process.exit = (code) => { exitedWith = code; };
+      handlePluginKey("q");
+    } finally {
+      process.exit = savedExit;
+    }
+
+    assert.strictEqual(exitedWith, 1, "q must quit the loader, not back out of the screen");
+  });
+
+  it("advertises exactly what its keys do", () => {
+    const { buildPlugins } = require("../dist/views/plugins.js");
+    openDiagnostics();
+    const foot = [];
+    buildPlugins(() => {}, (line) => foot.push(String(line).replace(STRIP, "")), 120, 110, () => {});
+
+    const hint = foot.find((line) => line.includes("back"));
+    assert.ok(hint && hint.includes("esc/enter back"), "expected the dismiss keys advertised, got: " + hint);
+    assert.ok(hint.includes("q quit"), "expected quit advertised, got: " + hint);
+  });
+});
+
 describe("plugins: buildConfigItems", () => {
   it("merges defaults with current values, tracking which keys are explicitly set and their type", () => {
     const items = buildConfigItems({ defaults: { logging: true, port: 3000 }, current: { port: 4000 } });

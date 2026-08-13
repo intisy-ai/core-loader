@@ -386,7 +386,8 @@ export function handleProjectKey(key) {
 
 export function handlePluginKey(key) {
   if (S.mode === "pdiag") {
-    if (key === "escape" || key === "q" || key === "left" || key === "enter" || key === "space") S.mode = "list";
+    if (key === "q") { cleanup(); process.exit(1); return; }
+    if (key === "escape" || key === "left" || key === "enter" || key === "space") S.mode = "list";
     return;
   }
   if (S.mode === "list") {

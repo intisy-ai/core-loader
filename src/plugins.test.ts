@@ -23,7 +23,10 @@ describe("declarationOf", () => {
     expect(declarationOf("p", "/bundle.js", {}, { defaults: {}, current: {} })).toBeNull();
   });
 
-  it("builds editable rows from the probed values and the declared fields", () => {
+  // A row's `type` is inferred from the value, so the declared `secret` does not reach the editor
+  // and the terminal prints the token as it stands. That is a known gap this pins as it is, not as
+  // it should be: masking is a rendering decision, and the row-building this asserts is unaffected.
+  it("builds editable rows from the probed values, typed by the value rather than by the declaration", () => {
     const declaration = declarationOf("p", "/bundle.js", { fields: [{ key: "token", type: "secret" }] }, values);
     expect(declaration.name).toBe("p");
     expect(declaration.bundle).toBe("/bundle.js");
@@ -106,7 +109,7 @@ async function hostWith(...plugins: Array<{ id: string; capabilities: string[]; 
 
 // Every id any test below reads or caches, cleared between tests so one test's cached
 // declaration can never satisfy the next one's assertion.
-const TEST_IDS = ["cache-demo", "has-settings", "no-settings", "empty-settings", "gated", "sloppy"];
+const TEST_IDS = ["cache-demo", "has-settings", "no-settings", "empty-settings", "gated", "sloppy", "seen"];
 
 afterEach(() => {
   resetPluginHostForTests(null);
@@ -147,6 +150,21 @@ describe("a declaration whose lists are not lists", () => {
     expect(() => splitBySections(declaration)).not.toThrow();
     // Its section claimed nothing resolvable, so the action stays in the plugin's own group.
     expect(splitBySections(declaration).map((section: { label: string }) => section.label)).toEqual(["sloppy"]);
+  });
+});
+
+describe("the diagnostics action", () => {
+  const keysOf = (actions: Array<{ key: string }>) => actions.map((action) => action.key);
+
+  it("is offered wherever the host recorded a row, and never for a plugin it never loads", async () => {
+    await hostWith({ id: "seen", capabilities: [], module: silentPlugin });
+
+    expect(keysOf(getPluginActions({ type: "npm", name: "seen" }))).toEqual(["diagnostics", "update-npm", "uninstall-npm", "cancel"]);
+    expect(keysOf(getPluginActions({ name: "seen", enabled: false }))).toEqual(["enable-plugin", "diagnostics", "cancel"]);
+    expect(keysOf(getPluginActions({ name: "seen", enabled: true }))).toContain("diagnostics");
+    // The host never loads a plugin the app itself manages, so there is never a row to show.
+    expect(keysOf(getPluginActions({ foreign: true, name: "seen", enabled: true }))).not.toContain("diagnostics");
+    expect(keysOf(getPluginActions({ name: "stranger", enabled: false }))).toEqual(["enable-plugin", "cancel"]);
   });
 });
 
@@ -204,11 +222,11 @@ describe("probeConfigValuesAsync against a real bundle", () => {
     expect(declaration.configName).toBe("gated-config");
 
     const listedByItsOwnName = getPluginActions({ type: "npm", name: "gated" });
-    expect(listedByItsOwnName.map((action: { key: string }) => action.key)).toEqual(["configure", "update-npm", "uninstall-npm", "cancel"]);
+    expect(listedByItsOwnName.map((action: { key: string }) => action.key)).toEqual(["configure", "diagnostics", "update-npm", "uninstall-npm", "cancel"]);
     expect(listedByItsOwnName[0].label).toBe("Configure settings (2)");
 
     const deployedUnderAnotherName = getPluginActions({ type: "npm", name: "listed-as", pluginFile: "gated.js" });
-    expect(deployedUnderAnotherName.map((action: { key: string }) => action.key)).toEqual(["configure", "update-npm", "uninstall-npm", "cancel"]);
+    expect(deployedUnderAnotherName.map((action: { key: string }) => action.key)).toEqual(["configure", "diagnostics", "update-npm", "uninstall-npm", "cancel"]);
 
     expect(getPluginActions({ type: "npm", name: "stranger" }).map((action: { key: string }) => action.key)).toEqual(["update-npm", "uninstall-npm", "cancel"]);
   });

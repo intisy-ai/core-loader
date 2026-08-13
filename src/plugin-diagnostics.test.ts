@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { diagnosticLines } from "./plugin-diagnostics.js";
+import { DIM, RED, WHITE } from "./format.js";
+import { startPlugins } from "./plugin-host.js";
+import { resetPluginHostForTests } from "./plugin-surface.js";
+import { S } from "./state.js";
+import { buildPlugins } from "./views/plugins.js";
 
 describe("diagnosticLines", () => {
   it("says so when the host never saw the plugin", () => {
@@ -56,5 +61,58 @@ describe("diagnosticLines", () => {
       unresolved: ["routing"],
     });
     expect(lines).toContain("Unresolved: routing");
+  });
+});
+
+describe("the diagnostics screen", () => {
+  afterEach(() => {
+    resetPluginHostForTests(null);
+    S.mode = "list";
+    S.pluginItems = [];
+    S.hasUpdater = false;
+  });
+
+  async function hostWithBrokenPlugin() {
+    const loaded = await startPlugins({
+      app: "test",
+      pluginDir: "/home/plugin",
+      surfaces: ["tui"],
+      runtimeFor: () => ({
+        config: { all: () => ({}), get: () => undefined, set: async () => {} },
+        log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+        paths: { home: "/home", repos: "/home/repos", plugin: "/home/plugin", cache: "/home/cache", config: "/home/config" },
+        events: { publish: () => {}, subscribe: () => () => {} },
+      }) as never,
+      scan: {
+        loaded: [{
+          manifest: { id: "broken", api: 1, entry: "dist/index.js", capabilities: ["settings"] },
+          manifestPath: "/home/plugin/broken.json",
+          entryPath: "/home/plugin/broken.js",
+        }],
+        failed: [],
+      },
+      importEntry: async () => ({ default: { activate: () => { throw new Error("activate failed"); }, deactivate: () => {} } }),
+    });
+    resetPluginHostForTests(loaded);
+  }
+
+  it("colours the reason as a problem and the status as the heading", async () => {
+    await hostWithBrokenPlugin();
+    S.page = "plugins";
+    S.mode = "pdiag";
+    S.pluginItems = [{ name: "broken", subject: "", url: "" }];
+    S.pcursor = 0;
+    // The Installed sub-page is gated on the updater engine being loadable, which it is not here.
+    S.hasUpdater = true;
+
+    const body: string[] = [];
+    buildPlugins((line: string) => body.push(String(line)), () => {}, 120, 110, () => {});
+
+    const status = body.find((line) => line.includes("Status: "));
+    const reason = body.find((line) => line.includes("Reason: "));
+    const fix = body.find((line) => line.includes("Fix: "));
+    expect(status).toContain(WHITE);
+    expect(reason).toContain(RED);
+    expect(fix).toContain(DIM);
   });
 });

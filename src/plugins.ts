@@ -2,7 +2,7 @@
 // Plugin list building: git-backed repos + npm plugins + the updater engine
 // row, remote-update detection, and the per-plugin action menu.
 
-import { existsSync, readFileSync } from "fs";
+import { existsSync } from "fs";
 import { readJson } from "./json.js";
 import { join, dirname, basename } from "path";
 import { execSync, exec } from "child_process";
@@ -218,8 +218,17 @@ export function buildForeignPluginList() {
   });
 }
 
+// The host records a row for every plugin it saw, loaded or broken, so diagnostics are offered
+// wherever there is one to show: a disabled plugin's row is often the most interesting of all.
+function pushDiagnostics(actions, pluginId) {
+  if (ledgerRowFor(pluginId)) {
+    actions.push({ cat: "Configure", key: "diagnostics", label: "Show plugin diagnostics" });
+  }
+}
+
 export function getPluginActions(pitem) {
   var a = [];
+  var pluginId = hostPluginId(pitem);
   if (pitem.foreign) {
     // App-managed plugin (native to the host app): only what the capabilities
     // actually support. Neither registered (opencode) -> Cancel only.
@@ -237,10 +246,11 @@ export function getPluginActions(pitem) {
   if (pitem.type === "npm") {
     // managed via opencode.json, no disable state, only update/uninstall (+ Configure
     // when its settings declaration has something editable, same gate as git plugins)
-    var npmDeclaration = declarationFor(hostPluginId(pitem));
+    var npmDeclaration = declarationFor(pluginId);
     if (npmDeclaration && npmDeclaration.items.length) {
       a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + npmDeclaration.items.length + ")" });
     }
+    pushDiagnostics(a, pluginId);
     a.push({ cat: "Update", key: "update-npm", label: "Update npm plugin" });
     a.push({ cat: "Manage", key: "uninstall-npm", label: "Uninstall npm plugin (removes from opencode.json)" });
     a.push({ key: "cancel", label: "Cancel" });
@@ -248,17 +258,16 @@ export function getPluginActions(pitem) {
   }
   if (!pitem.enabled) {
     a.push({ key: "enable-plugin", label: "Enable plugin" });
+    pushDiagnostics(a, pluginId);
     a.push({ key: "cancel", label: "Cancel" });
     return a;
   }
   // Configure: shown only for a plugin whose settings capability declared something editable.
-  var declaration = declarationFor(hostPluginId(pitem));
+  var declaration = declarationFor(pluginId);
   if (declaration && declaration.items.length) {
     a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + declaration.items.length + ")" });
   }
-  if (ledgerRowFor(hostPluginId(pitem))) {
-    a.push({ cat: "Configure", key: "diagnostics", label: "Show plugin diagnostics" });
-  }
+  pushDiagnostics(a, pluginId);
   if (pitem.updateAvail || !pitem.deployed) {
     a.push({ cat: "Update", key: "update", label: "Update now" });
   }

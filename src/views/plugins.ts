@@ -196,14 +196,14 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
     pushBody("", false);
     var dlines = diagnosticLines(ledgerRowFor(hostPluginId(dpitem)));
     for (var dj = 0; dj < dlines.length; dj++) {
-      var style = dj === 0 || dlines[dj].indexOf("Reason: ") === 0 ? WHITE : DIM;
+      var style = dj === 0 ? WHITE : DIM;
       if (dlines[dj].indexOf("Reason: ") === 0 || dlines[dj].indexOf("Unresolved: ") === 0) style = RED;
       pushBody("    " + style + trunc(dlines[dj], Math.max(20, cols - 8)) + RST, false);
     }
     pushBody("", false);
     if (S.message) pushFoot(messageLine(cols));
     pushFoot("  " + rule(barW));
-    pushFoot(hints([["esc", "back"]]));
+    pushFoot(hints([["esc/enter", "back"], ["q", "quit"]]));
     return;
   }
 
