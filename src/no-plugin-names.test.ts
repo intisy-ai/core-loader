@@ -8,9 +8,9 @@ import { dirname, join } from "node:path";
 // because they legitimately use real names as fixture data, exactly as core's own guard test does.
 const FORBIDDEN = ["plugin-updater", "config-ledger", "sync-bridge", "custom-auth"];
 
-// data/ is excluded until part 5 deletes data/official-plugins.json, which still lists two of these
-// as installable plugins. Part 5 widens this list.
-const ROOTS = ["src"];
+// data/ is scanned so a JSON catalog can never reintroduce a plugin name behind the guard that
+// exists to catch exactly that. The directory may be absent, which is not a failure.
+const ROOTS = ["src", "data"];
 
 // Every root markdown and json file, not just README.md: a fixed name list repeats the exact failure
 // shape (a stale root file the guard never scanned) that is the reason this guard scans the root at
@@ -25,7 +25,13 @@ function rootFiles(repoRoot: string): string[] {
 
 function sourceFiles(dir: string): string[] {
   const found: string[] = [];
-  for (const name of readdirSync(dir)) {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return found;
+  }
+  for (const name of names) {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) {
       found.push(...sourceFiles(path));

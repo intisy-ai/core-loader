@@ -130,10 +130,10 @@ export const S = {
   mkLevel: "markets",
   mkMarket: null,
   // Kind of the drilled-in marketplace, captured from its Level-1 row's
-  // builtin/capability tag ("official" | "community" | "capability" | null).
-  // buildMarketplacePluginsList() routes on THIS, not on comparing mkMarket's
-  // display name to "intisy-ai (official)"/"community": a capability
-  // marketplace could otherwise share one of those names and be misrouted.
+  // builtin/capability tag: "source" | "community" | "featured" | "seed" |
+  // "capability" | null. buildMarketplacePluginsList() routes on THIS, not on
+  // comparing mkMarket's display name: a capability marketplace could
+  // otherwise share a built-in name and be misrouted.
   mkMarketKind: null,
   // The declared source a Level-2 list is showing, captured off its Level-1 row, because a source is
   // identified by its id while the row is labelled by the source's own label.

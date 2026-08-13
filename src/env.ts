@@ -6,7 +6,6 @@ import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { subdirName } from "./home-paths.js";
-import officialPluginsData from "../data/official-plugins.json";
 
 // The manager runs its full update sequence on import and logs to the
 // console; library mode limits it to the API so nothing prints over the TUI
@@ -121,16 +120,6 @@ export const CURATED_MCP_REPOS = {
 // known) lets enrichment fetch stars directly. registry entries pushed in at
 // runtime carry no curated flag, which is correct.
 MCP_CATALOG.forEach(function (e) { e.curated = true; if (CURATED_MCP_REPOS[e.name]) e.full_name = CURATED_MCP_REPOS[e.name]; });
-
-// First-party plugins maintained by the intisy-ai org, loaded from data/official-plugins.json
-// (kept as data, not code, so this module carries no hardcoded plugin catalog). Statically
-// imported (not readFileSync'd at runtime) so esbuild inlines the data when core-loader gets
-// bundled into a loader's single dist/plugin.js, where __dirname no longer has a data/ sibling.
-// Always shown at the top of the marketplace in a dedicated "Official · intisy-ai" section,
-// present regardless of whether the remote catalog fetch has completed.
-export const OFFICIAL_PLUGINS = officialPluginsData;
-// each entry carries this flag as a stable identity marker, verified by its own test
-OFFICIAL_PLUGINS.forEach(function(e) { e.official = true; });
 
 // Popular marketplaces seeded into Level 1 for every user, even before they've
 // added them to the host app. name -> github "owner/repo"; marketplace.ts fetches

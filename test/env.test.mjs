@@ -15,7 +15,7 @@ process.env.HUB_APP_NAME = "Claude Code";
 const {
   CONFIG_DIR, CONFIG_FOLDER, CACHE_DIR, PLUGINS_JSON, REPOS_DIR, PLUGINS_DIR,
   MCP_CONFIG_PATH, CATALOG_CACHE_PATH, SEED_CACHE_PATH, IS_CLAUDE,
-  MCP_CATALOG, OFFICIAL_PLUGINS, FEATURED_PLUGINS,
+  MCP_CATALOG, FEATURED_PLUGINS,
 } = await import("../dist/env.js");
 
 describe("env: path helpers", () => {
@@ -42,11 +42,6 @@ describe("env: static catalogs", () => {
     assert.ok(MCP_CATALOG.every((e) => e.curated === true));
     const github = MCP_CATALOG.find((e) => e.name === "github");
     assert.equal(github.full_name, "modelcontextprotocol/servers");
-  });
-
-  it("marks every OFFICIAL_PLUGINS entry official", () => {
-    assert.ok(OFFICIAL_PLUGINS.length > 0);
-    assert.ok(OFFICIAL_PLUGINS.every((e) => e.official === true));
   });
 
   it("derives FEATURED_PLUGINS' author/repoName/full_name/url/category from its repo field", () => {

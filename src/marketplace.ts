@@ -5,7 +5,7 @@
 import { existsSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { readJson } from "./json.js";
 import { exec } from "child_process";
-import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, FEATURED_PLUGINS, APP_NAME, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, CONFIG_DIR, tuiLog } from "./env.js";
+import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, FEATURED_PLUGINS, APP_NAME, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { loadPlugins, catalogCacheHours, registerPlugin } from "./config.js";
 import { scheduleRender } from "./views/common.js";
@@ -191,59 +191,11 @@ export function sourceRowsFrom(sources, entries) {
   return rows;
 }
 
-// Ensure every official plugin is present in the catalog exactly once.
-// If a remote search already returned the repo (case-insensitive full_name or
-// name match), enrich that entry in place (mark category Official, fix desc/url)
-// WITHOUT overwriting an existing star count. If no match exists, push a shallow
-// copy. This is safe to call multiple times because the deduplication check is
-// always performed first.
-function seedOfficialPlugins() {
-  // Official status is AUTHORITATIVE from OFFICIAL_PLUGINS (by full_name): an entry
-  // is official iff its full_name is one of ours. First clear any stale Official
-  // category, e.g. a fork whose name-match got wrongly promoted and baked into the
-  // on-disk catalog cache (vibheksoni/opencode-antigravity-auth, whose stripped
-  // name collided with our "antigravity-auth"). This self-heals bad caches.
-  var officialKeys = {};
-  for (var ok = 0; ok < OFFICIAL_PLUGINS.length; ok++) {
-    officialKeys[OFFICIAL_PLUGINS[ok].full_name.toLowerCase()] = true;
-  }
-  for (var ei = 0; ei < S.MARKETPLACE_CATALOG.length; ei++) {
-    var ce = S.MARKETPLACE_CATALOG[ei];
-    if (ce.category === "Official" && !officialKeys[(ce.full_name || "").toLowerCase()]) {
-      ce.category = "Community";
-    }
-  }
-  for (var oi = 0; oi < OFFICIAL_PLUGINS.length; oi++) {
-    var official = OFFICIAL_PLUGINS[oi];
-    var officialKey = official.full_name.toLowerCase();
-    // Match by full_name ONLY. Matching by bare name wrongly marked third-party
-    // repos official when the GitHub search stripped their "opencode-"/"claude-"
-    // prefix into our name (e.g. vibheksoni/opencode-antigravity-auth -> "antigravity-auth").
-    var existing = S.MARKETPLACE_CATALOG.find(function(e) {
-      return (e.full_name || "").toLowerCase() === officialKey;
-    });
-    if (existing) {
-      // enrich without overwriting stars that may have been fetched already
-      existing.category  = "Official";
-      if (!existing.desc)     existing.desc     = official.desc;
-      if (!existing.url)      existing.url      = official.url;
-      if (!existing.author)   existing.author   = official.author;
-      if (!existing.repoName) existing.repoName = official.repoName;
-      if (!existing.full_name) existing.full_name = official.full_name;
-    } else {
-      // not yet in catalog, add a copy (stars left undefined until enrichment runs)
-      var copy = {};
-      for (var k in official) copy[k] = official[k];
-      S.MARKETPLACE_CATALOG.push(copy);
-    }
-  }
-}
-
 // Claude's community catalog gets a Curated section like opencode's (whose Curated
 // entries come from the awesome-opencode scrape): seed the VERIFIED FEATURED_PLUGINS
 // repos as category "Curated", one hand-checked source of truth, no new unverified
-// repos. full_name matching mirrors seedOfficialPlugins; stars ride in via the
-// existing enrichment passes.
+// repos. full_name matching mirrors the marketplace.json fetches; stars ride in via
+// the existing enrichment passes.
 function seedCuratedPlugins() {
   if (!IS_CLAUDE) return;   // opencode's Curated section is scraped, not seeded
   for (var ci = 0; ci < FEATURED_PLUGINS.length; ci++) {
@@ -265,12 +217,11 @@ export function fetchCatalogsAsync() {
   var curlCmd = process.platform === "win32" ? "curl.exe" : "curl";
   // even with a warm cache the curated MCP entries still need their stars derived
   // (the cache predates them); run that enrichment, then skip the cold registry search
-  if (loadCatalogCache()) { seedOfficialPlugins(); seedCuratedPlugins(); enrichCuratedMcpStars(); return; }
+  if (loadCatalogCache()) { seedCuratedPlugins(); enrichCuratedMcpStars(); return; }
 
   var enrichedOnce = false;
 
-  // seed official + curated entries immediately so they appear even before remote fetches finish
-  seedOfficialPlugins();
+  // seed curated entries immediately so they appear even before remote fetches finish
   seedCuratedPlugins();
 
   function saveCatalog() {
@@ -739,8 +690,8 @@ export function buildMarketplacePluginsList(marketName, marketKind, sourceId) {
     res.sort(function(a, b) {
       // Sections must be CONTIGUOUS: the renderer emits a heading on every group
       // change, so a pure star sort interleaves headings over and over. Curated
-      // first, then Official, then Community; stars order within each group.
-      var rank = function(e) { return e.category === "Curated" ? 0 : e.category === "Official" ? 1 : 2; };
+      // first, then everything else; stars order within each group.
+      var rank = function(e) { return e.category === "Curated" ? 0 : 1; };
       if (rank(a) !== rank(b)) return rank(a) - rank(b);
       var aSt = a.stars != null ? a.stars : -1;
       var bSt = b.stars != null ? b.stars : -1;
