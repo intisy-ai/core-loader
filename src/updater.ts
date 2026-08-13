@@ -1,13 +1,13 @@
 // @ts-nocheck
 // The plugin manager this home resolved, and the npm-plugin / repo helpers that wrap it.
 
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { readJson, readJsonc } from "./json.js";
+import { existsSync, readFileSync } from "fs";
+import { readJson } from "./json.js";
 import { join } from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
 import { pathToFileURL } from "url";
-import { PLUGINS_DIR, CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, IS_CLAUDE, tuiLog } from "./env.js";
+import { CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, IS_CLAUDE, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { spawnEnv } from "./activity-seam.js";
 import { homePaths } from "./home-paths.js";
@@ -67,8 +67,8 @@ export function getUpdater() {
   return S.UPDATER_MODULE || null;
 }
 
-// The resolved bundle path getUpdater() cached, used to run updatePluginPublic
-// in a child process (setupPlugin) so the update doesn't block the main thread.
+// The manager's package directory, cached by preloadUpdater(). setupPlugin passes it to a
+// child process (via S.UPDATER_ENTRY) so updatePluginPublic runs off the main thread.
 export function getUpdaterPath() {
   return S.UPDATER_PATH;
 }
