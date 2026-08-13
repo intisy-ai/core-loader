@@ -50,6 +50,8 @@ export interface LoadedHost {
   started: string[];
   /** One error per plugin that could not be loaded, each naming the plugin and the fix. */
   quarantined: PluginError[];
+  /** Every plugin whose manifest validated, as the scan found it on disk. */
+  deployed: DeployedPlugin[];
   /**
    * Deactivates every started plugin, newest first, each under its own deadline.
    *
@@ -296,6 +298,7 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
     host,
     started,
     quarantined,
+    deployed: scan.loaded,
     stop: async () => {
       shutdown ??= shutDown();
       await shutdown;
