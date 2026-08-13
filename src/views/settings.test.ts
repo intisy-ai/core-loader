@@ -6,7 +6,7 @@
 // statement, so the variable is pinned first and the modules under test then arrive through dynamic
 // imports. The fixture is written to the path env.ts itself resolved, which is what makes the
 // temp home provably the one being read.
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -101,7 +101,7 @@ async function hostWith(...declared: Array<{ id: string; capabilities: string[];
   return loaded;
 }
 
-const TEST_IDS = ["sync-demo", "mute-demo"];
+const TEST_IDS = ["sync-demo", "mute-demo", "strand-demo"];
 
 afterEach(() => {
   surface.resetPluginHostForTests(null);
@@ -165,6 +165,37 @@ describe("refreshSettings", () => {
     expect(loadingLabels()).toEqual([]);
     expect(sectionsOfKind("plugin")).toEqual([]);
     expect(sectionsOfKind("global")).toHaveLength(1);
+  });
+
+  it("still releases the read and still repaints when rebuilding the tab throws", async () => {
+    await hostWith({ id: "strand-demo", capabilities: ["settings"], module: settingsPlugin({ actions: [{ id: "go", label: "Go" }] }) });
+
+    view.refreshSettings();
+    expect(state.S.catalogPending).toBe(1);
+    expect(state.S.renderTimer).toBeNull();
+
+    const savedCapabilities = state.S.capabilities;
+    let redrawScheduled = null;
+    try {
+      // buildSectionsFromCache resolves the injected global-settings declaration, so a throwing one
+      // makes the rebuild inside the read's own callback throw for real.
+      state.S.capabilities = { globalSettings: { get defaults() { throw new Error("no defaults"); } } };
+      await vi.waitFor(() => expect(state.S.catalogPending).toBe(0));
+      redrawScheduled = state.S.renderTimer;
+    } finally {
+      if (state.S.renderTimer) { clearTimeout(state.S.renderTimer); state.S.renderTimer = null; }
+      state.S.capabilities = savedCapabilities;
+    }
+    // The frame on screen still shows a spinner for a read that has landed, so the repaint has to
+    // happen whether the rebuild worked or not.
+    expect(redrawScheduled).not.toBeNull();
+
+    // And the plugin stays readable: left in the in-flight set, it would never be read again.
+    plugins.invalidateDeclaration("strand-demo");
+    view.refreshSettings();
+    expect(state.S.catalogPending).toBe(1);
+    await vi.waitFor(() => expect(state.S.catalogPending).toBe(0));
+    expect(loadingLabels()).toEqual([]);
   });
 
   it("lists no plugin row at all with no host running", () => {

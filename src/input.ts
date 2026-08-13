@@ -6,7 +6,7 @@ import { existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
 import { RST, BOLD, WHITE, RED } from "./format.js";
-import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH, OFFICIAL_PLUGINS } from "./env.js";
+import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH, OFFICIAL_PLUGINS, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
@@ -45,6 +45,9 @@ function activateConfigAction(citem) {
     refreshConfigItems();
     flash(answer.message || (citem.label + ": done."));
     render();
+  }).catch(function (error) {
+    S.busy = false;
+    tuiLog("reporting " + citem.key + " failed: " + String(error), true);
   });
 }
 
@@ -1598,6 +1601,8 @@ function refreshConfigItems() {
     if (S.cfgcursor >= S.configItems.length) S.cfgcursor = Math.max(0, S.configItems.length - 1);
     if (S.page === "settings") { try { refreshSettings(); } catch (e) {} }
     render();
+  }).catch(function (error) {
+    tuiLog("re-reading " + pluginId + "'s declaration failed: " + String(error), true);
   });
 }
 

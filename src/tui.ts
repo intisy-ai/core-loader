@@ -194,6 +194,9 @@ S.mcpItems = buildMcpList("All");
 S.marketplaceItems = buildMarketplaceList();
 
 process.on("exit", function() { showCur(); });
+// Last line of defence for the asynchronous paths: without a handler Node terminates the process on
+// an unhandled rejection, skipping cleanup() and leaving a half-drawn TUI under a stack trace.
+process.on("unhandledRejection", function(reason) { tuiLog("unhandled rejection: " + String(reason), true); });
 process.on("SIGINT", function() { cleanup(); process.exit(1); });
 process.on("SIGTERM", function() { cleanup(); process.exit(1); });
 try { process.stderr.on("resize", function() { render(); }); } catch(e) {}

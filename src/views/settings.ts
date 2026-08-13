@@ -6,6 +6,7 @@
 
 import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
+import { tuiLog } from "../env.js";
 import { buildGlobalSection, buildSettingsEntries, firstSelectableIndex, splitBySections } from "../settings-model.js";
 import { declarationFor, readDeclaration, settingsPluginIds } from "../plugins.js";
 import { hints, messageLine, spinnerFrame, scheduleRender } from "./common.js";
@@ -53,10 +54,16 @@ function readSettingsDeclarations() {
     if (declarationFor(pluginId) !== undefined || READING.has(pluginId)) continue;
     READING.add(pluginId);
     S.catalogPending++;
+    // The bookkeeping and the redraw run in their own link, so a rejected read or a throw while
+    // rebuilding still releases this plugin and still repaints: stranded, its row would spin for the
+    // rest of the session and never be read again.
     readDeclaration(pluginId).then(function () {
+      buildSectionsFromCache();
+    }).catch(function (error) {
+      tuiLog("rebuilding the settings tab for " + pluginId + " failed: " + String(error), true);
+    }).then(function () {
       READING.delete(pluginId);
       S.catalogPending = Math.max(0, S.catalogPending - 1);
-      buildSectionsFromCache();
       scheduleRender();
     });
   }

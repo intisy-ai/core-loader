@@ -105,6 +105,9 @@ export const S = {
   screenRows: [],
   screenCursor: 0,
   screenScrollOff: 0,
+  // The sub-page id whose last read failed, so an empty screen renders as unreadable rather than
+  // as forever loading. Cleared by the next read that lands.
+  screenFailed: null,
 
   // Versioning tab (config-ledger git UI). versioningCursor drives the home/setup menus;
   // the history file→key pickers use vg* fields; git sub-screens reuse the sg*/cl* fields.

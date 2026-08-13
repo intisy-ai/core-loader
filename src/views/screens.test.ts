@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect } from "vitest";
 import { startPlugins } from "../plugin-host.js";
 import { resetPluginHostForTests } from "../plugin-surface.js";
 import { S } from "../state.js";
-import { collectScreens, refreshScreenSpecs, subPages, entryId, resolveScreenAction } from "./screens.js";
+import { buildContributedScreen, collectScreens, refreshScreenSpecs, refreshScreen, runScreenAction, subPages, entryId, resolveScreenAction } from "./screens.js";
 
 const spec = { id: "config", label: "Config", layout: { kind: "stack", children: [{ kind: "text", text: "hi" }] } };
 
@@ -64,6 +64,78 @@ function screensAndSettingsPlugin(specs, actions) {
 afterEach(() => {
   resetPluginHostForTests(null);
   S.screenSpecs = [];
+  S.screenRows = [];
+  S.screenFailed = null;
+  S.settingsSubPage = "settings";
+  if (S.renderTimer) { clearTimeout(S.renderTimer); S.renderTimer = null; }
+});
+
+function unreadableScreenPlugin() {
+  return {
+    default: {
+      activate: (ctx) => ctx.provide("screens", {
+        screens: () => [spec],
+        read: async () => { throw new Error("no data here"); },
+        invoke: async () => ({ ok: true }),
+      }),
+      deactivate: () => {},
+    },
+  };
+}
+
+function bodyOf(entry) {
+  const body = [];
+  buildContributedScreen((line) => body.push(String(line).replace(/\x1b\[[0-9;]*m/g, "")), () => {}, 120, 110, () => {}, entry);
+  return body;
+}
+
+describe("a screen whose data could not be read", () => {
+  it("renders as unreadable rather than as forever loading", async () => {
+    await hostWith({ manifest: manifest("broken-read", ["screens"]), module: unreadableScreenPlugin() });
+    const entry = { plugin: "broken-read", spec, actions: [] };
+    S.settingsSubPage = entryId(entry);
+
+    await refreshScreen(entry);
+
+    expect(S.screenFailed).toBe(entryId(entry));
+    expect(bodyOf(entry).some((line) => line.includes("Could not read this screen"))).toBe(true);
+  });
+
+  it("still renders as loading while the first read is outstanding", () => {
+    expect(bodyOf({ plugin: "p", spec, actions: [] }).some((line) => line.includes("Loading…"))).toBe(true);
+  });
+
+  it("does not reject when rendering the rows throws, and says so on the screen", async () => {
+    // A spec with no layout: the boundary drops one, so only a caller holding a hand-made entry can
+    // reach the flattener with it, and that throw must not terminate the loader.
+    const layoutless = { id: "layoutless", label: "Layoutless" };
+    await hostWith({ manifest: manifest("reader", ["screens"]), module: screensPlugin([layoutless]) });
+    const entry = { plugin: "reader", spec: layoutless, actions: [] };
+    S.settingsSubPage = entryId(entry);
+
+    await expect(refreshScreen(entry)).resolves.toBeUndefined();
+
+    expect(S.screenFailed).toBe(entryId(entry));
+  });
+});
+
+describe("runScreenAction", () => {
+  it("reports the result to its callback", async () => {
+    await hostWith({ manifest: manifest("doer", ["screens"]), module: screensPlugin([spec]) });
+    const seen = [];
+
+    await runScreenAction({ plugin: "doer", spec, actions: [] }, { actionId: "go" }, (answer) => seen.push(answer));
+
+    expect(seen).toEqual([{ ok: true }]);
+  });
+
+  it("does not reject when the callback itself throws", async () => {
+    await hostWith({ manifest: manifest("doer", ["screens"]), module: screensPlugin([spec]) });
+
+    await expect(runScreenAction({ plugin: "doer", spec, actions: [] }, { actionId: "go" }, () => {
+      throw new Error("the caller blew up");
+    })).resolves.toBeUndefined();
+  });
 });
 
 describe("contributed screens in the loader", () => {

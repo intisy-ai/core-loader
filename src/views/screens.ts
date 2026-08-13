@@ -8,6 +8,7 @@
 
 import { S } from "../state.js";
 import { screenRows } from "../screens.js";
+import { tuiLog } from "../env.js";
 import { invokeScreenAction, providerIds, readScreenData, readScreenSpecs, readSettingsSchema } from "../plugin-surface.js";
 import { RST, BOLD, DIM, GRAY, WHITE, BG_SEL, ACCENT, rule } from "../format.js";
 import { hints, messageLine, scheduleRender } from "./common.js";
@@ -56,16 +57,28 @@ export function subPages(entries) {
   return [{ id: "settings", label: "Settings" }].concat(sorted.map((entry) => ({ id: entryId(entry), label: entry.spec.label, entry })));
 }
 
+// A read that failed renders as itself rather than as a permanent "Loading…": a screen sub-page has
+// no refresh key, so the only retry a reader has is leaving the sub-page and coming back.
+function markScreenUnreadable(pageId) {
+  S.screenFailed = pageId;
+  S.screenRows = [];
+  scheduleRender();
+}
+
 export function refreshScreen(entry) {
   if (!entry || !entry.spec) return;
   const pageId = entryId(entry);
-  readScreenData(entry.plugin, entry.spec.id).then(function (sources) {
-    if (sources === null) return;
+  return readScreenData(entry.plugin, entry.spec.id).then(function (sources) {
     // The user may have tabbed to a different sub-page while the read was outstanding. Only the
     // still-active screen's rows may land, or they would render under the wrong header.
     if (S.settingsSubPage !== pageId) return;
+    if (sources === null) { markScreenUnreadable(pageId); return; }
+    S.screenFailed = null;
     S.screenRows = screenRows(entry.spec, sources);
     scheduleRender();
+  }).catch(function (error) {
+    tuiLog("screen " + pageId + " could not be rendered: " + String(error), true);
+    if (S.settingsSubPage === pageId) markScreenUnreadable(pageId);
   });
 }
 
@@ -75,9 +88,11 @@ export function runScreenAction(entry, row, done) {
   const finish = typeof done === "function" ? done : function () {};
   if (!entry || !entry.spec || !row || !row.actionId) { finish({ ok: false, message: "nothing to run" }); return; }
   const input = row.argId !== undefined ? { id: row.argId } : {};
-  invokeScreenAction(entry.plugin, entry.spec.id, row.actionId, input).then(function (answer) {
+  return invokeScreenAction(entry.plugin, entry.spec.id, row.actionId, input).then(function (answer) {
     if (answer && answer.refresh) refreshScreen(entry);
     finish(answer);
+  }).catch(function (error) {
+    tuiLog("screen action " + row.actionId + " could not be reported: " + String(error), true);
   });
 }
 
@@ -92,7 +107,8 @@ export function buildContributedScreen(pushBody, pushFoot, cols, barW, pushStick
   if (!entry) {
     pushBody("  " + GRAY + "Screen not found." + RST, false);
   } else if (!rows.length) {
-    pushBody("  " + GRAY + "Loading…" + RST, false);
+    var unreadable = S.screenFailed && S.screenFailed === entryId(entry);
+    pushBody("  " + GRAY + (unreadable ? "Could not read this screen. Leave this sub-page and come back to retry." : "Loading…") + RST, false);
   }
   for (var i = 0; i < rows.length; i++) {
     var row = rows[i];
