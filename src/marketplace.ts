@@ -3,16 +3,14 @@
 // on-disk catalog cache, list building, and one-shot plugin install via git.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
-import { readJson, readJsonc } from "./json.js";
-import { join } from "path";
+import { readJson } from "./json.js";
 import { exec } from "child_process";
-import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, FEATURED_PLUGINS, APP_NAME, CONFIG_DIR, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, tuiLog } from "./env.js";
+import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, FEATURED_PLUGINS, APP_NAME, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, tuiLog } from "./env.js";
 import { S } from "./state.js";
-import { loadPlugins, catalogCacheHours } from "./config.js";
+import { loadPlugins, catalogCacheHours, registerPlugin } from "./config.js";
 import { scheduleRender } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
-import { getUpdater } from "./updater.js";
-import { spawnEnv } from "./activity-seam.js";
+import { setupPlugin } from "./updater.js";
 
 export function invalidateCatalogCache() {
   try { unlinkSync(CATALOG_CACHE_PATH); } catch {}
@@ -559,7 +557,6 @@ function loaderOwnMarketplaces() {
   var officialCount = 0, communityCount = 0;
   for (var i = 0; i < S.MARKETPLACE_CATALOG.length; i++) {
     var e = S.MARKETPLACE_CATALOG[i];
-    if (e.isUpdater) continue;   // the engine itself is never a browsable catalog entry
     if (e.official) officialCount++; else communityCount++;
   }
   return [
@@ -651,7 +648,7 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
     var wantOfficial = kind === "official";
     var installed = loadPlugins();
     var installedNames = installed.map(function(p) { return p.name; });
-    var res = S.MARKETPLACE_CATALOG.filter(function(m) { return !m.isUpdater && !!m.official === wantOfficial; }).map(function(m) {
+    var res = S.MARKETPLACE_CATALOG.filter(function(m) { return !!m.official === wantOfficial; }).map(function(m) {
       var repoName = m.repoName || m.name;
       var isInstalled = installedNames.indexOf(m.name) !== -1 || installedNames.indexOf(repoName) !== -1;
       return Object.assign({}, m, { installed: isInstalled });
@@ -677,8 +674,7 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
   // repos, not a marketplace.json to fetch. Each row is a plain catalog-shaped
   // item (name/desc/url/category/repoName/full_name) so it falls through the
   // SAME default branch of getMarketplaceActions()/marketplaceInstall() that the
-  // official/community catalog uses: install-git via installMarketplacePlugin(url)
-  // when a git updater is present, else install-npm via installViaNpm(repoName).
+  // official/community catalog uses: installMarketplacePlugin(url) via the resolved manager.
   if (kind === "featured") {
     var installedFt = loadPlugins();
     var installedFtNames = installedFt.map(function(p) { return p.name; });
@@ -755,16 +751,8 @@ export function buildMarketplaceList() {
   return buildMarketplaceMarketsList();
 }
 
-// Pure rule: prefer git via the updater unless the catalog entry explicitly
-// hints npm, or no updater is loadable, then npm is the only option.
-export function selectInstallMethod(entry, hasUpdater) {
-  if (hasUpdater && entry.install !== "npm") return "git";
-  return "npm";
-}
-
-// The action-menu entries for a marketplace item. Built once and shared by the
-// renderer and the input handler so their cursor indices always line up. Offers
-// both install methods (default first) so the user can choose git-via-updater or npm.
+// The action-menu entries for a marketplace item. Built once and shared by the renderer and the input
+// handler so their cursor indices always line up.
 export function getMarketplaceActions(item, hasUpdater) {
   var acts = [];
   if (item.seed) {
@@ -792,63 +780,26 @@ export function getMarketplaceActions(item, hasUpdater) {
     acts.push({ key: "cancel", label: "Cancel" });
     return acts;
   }
-  if (item.installed) {
-    // already installed, no install action
-  } else if (IS_CLAUDE) {
-    // Claude has no npm-plugin mechanism, every plugin installs git-via-updater.
+  if (!item.installed && hasUpdater) {
     acts.push({ key: "install-git", label: "Install" });
-  } else if (hasUpdater) {
-    var def = selectInstallMethod(item, hasUpdater);
-    var git = { key: "install-git", label: "Install via updater (git)" + (def === "git" ? "  · default" : "") };
-    var npm = { key: "install-npm", label: "Install as npm plugin" + (def === "npm" ? "  · default" : "") };
-    if (def === "git") { acts.push(git); acts.push(npm); } else { acts.push(npm); acts.push(git); }
-  } else {
-    acts.push({ key: "install-npm", label: "Install as npm plugin" });
   }
   if (item.url) acts.push({ key: "browser", label: "Open in browser" });
   acts.push({ key: "cancel", label: "Cancel" });
   return acts;
 }
 
-// Git install runs entirely in a CHILD PROCESS via plugin-updater's `add`, which
-// registers the plugin in plugins.json AND clones/builds/deploys it, so the loader
-// never writes plugins.json itself and the git clone + npm install + build (all
-// execSync inside the updater) block that child, not our main event loop (the TUI
-// keeps rendering and animating). Every caller passes a `done(err)` callback: err
-// is null on success, or an error string.
+// A git install registers the plugin in plugins.json and then hands it to the resolved manager in a
+// CHILD PROCESS, so the clone + npm install + build (all execSync inside the manager) block that
+// child and the TUI keeps rendering. npx is deliberately not used: it would fetch the published
+// package instead of running the manager this home actually installed. `done(err)` gets null on
+// success or an error string.
 export function installMarketplacePlugin(entry, done) {
   var url = entry.url;
-  var app = APP_NAME === "Claude Code" ? "claude" : "opencode";
-  exec("npx -y plugin-updater@latest add " + url + " --app " + app, { timeout: 180000, env: spawnEnv() }, function(err) {
-    done(err ? ("Install failed: " + ((err && err.message) || err)) : null);
-  });
-}
-
-// Secondary/fallback install method: npm instead of git. Uses the updater's
-// installNpmPlugin when loaded (keeps opencode.json/config in sync); otherwise
-// falls back to a plain global npm install.
-export function installViaNpm(entry, done) {
-  var name = entry.repoName || entry.name;
-  var updater = getUpdater();
-  if (updater && typeof updater.installNpmPlugin === "function") {
-    try { var e = updater.installNpmPlugin(name, CONFIG_DIR) || ""; done(e || null); }
-    catch (err) { done("npm install failed: " + ((err && err.message) || err)); }
-    return;
-  }
-  exec("npm install -g " + name, { timeout: 120000 }, function(err) {
-    if (err) { done("npm install failed: " + ((err && err.message) || err)); return; }
-    // OpenCode won't load an npm plugin unless it's listed in opencode.json, mirror
-    // the OpenCode branch of the tui.ts updater_install handler (best-effort).
-    if (APP_NAME !== "Claude Code") {
-      try {
-        var ocPath = join(CONFIG_DIR, "opencode.json");
-        var ocData = readJsonc(ocPath, {});
-        if (!Array.isArray(ocData.plugin)) ocData.plugin = [];
-        if (ocData.plugin.indexOf(name) === -1) ocData.plugin.push(name);
-        writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");
-      } catch {}
-    }
-    done(null);
+  var name = entry.repoName || entry.name || String(url || "").replace(/\.git$/, "").split("/").pop();
+  if (!name || !url) { done("Install failed: the catalog entry carries no name or url"); return; }
+  registerPlugin(name, url);
+  setupPlugin({ name: name, url: url }, function (err) {
+    done(err ? ("Install failed: " + err) : null);
   });
 }
 

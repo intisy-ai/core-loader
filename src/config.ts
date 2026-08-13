@@ -136,7 +136,7 @@ export function migrateConfigs() {
 
 export function loadPlugins() {
   // Read the plugin list DIRECTLY from plugins.json, the single source of truth the
-  // plugin-updater itself reads and writes, and exactly how the non-interactive
+  // plugin manager itself reads and writes, and exactly how the non-interactive
   // `cc plugins` / `cc doctor` CLI reads it. Routing this through the loaded updater
   // module's getPlugins() indirection has returned empty in some setups even though
   // the file was present and readable, so the file itself is the reliable source.
@@ -152,7 +152,7 @@ export function loadPlugins() {
       if (fs.existsSync(candidates[i])) {
         var arr = JSON.parse(fs.readFileSync(candidates[i], "utf-8"));
         if (Array.isArray(arr)) {
-          // never show the OTHER app's loader (mirrors plugin-updater's own getPlugins filter)
+          // never show the OTHER app's loader (the manager's own plugin list filter matches)
           var foreign = IS_CLAUDE ? "opencode-loader" : "claude-code-loader";
           return arr.filter(function (e) { return e && e.name !== foreign; });
         }
@@ -167,6 +167,23 @@ export function savePlugins(plugins) {
   // config/ is always preferred; the top-level file only when config/ cannot exist
   var target = existsSync(CONFIG_FOLDER) ? PLUGINS_JSON : join(CONFIG_DIR, "plugins.json");
   writeFileSync(target, JSON.stringify(plugins, null, 2), "utf-8");
+}
+
+/**
+ * Registers a plugin in plugins.json unless it is already listed, answering whether it wrote.
+ *
+ * @remarks
+ * Reads the file directly rather than through `loadPlugins`, which hides the other app's loader:
+ * writing that filtered list back would delete an entry the user never touched.
+ */
+export function registerPlugin(name, url) {
+  var file = existsSync(PLUGINS_JSON) ? PLUGINS_JSON : join(CONFIG_DIR, "plugins.json");
+  var listed = readJson(file, []);
+  if (!Array.isArray(listed)) listed = [];
+  if (listed.some(function (entry) { return entry && entry.name === name; })) return false;
+  listed.push({ name: name, url: url, enabled: true, autoUpdate: true });
+  savePlugins(listed);
+  return true;
 }
 
 // Cached parsed MCP config so the MCP views (which read it every render) never hit

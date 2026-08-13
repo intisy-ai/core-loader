@@ -9,12 +9,12 @@ import { RST, BOLD, WHITE, RED, isBooleanRowOn } from "./format.js";
 import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { cleanup } from "./out.js";
-import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
-import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater } from "./updater.js";
+import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS, registerPlugin } from "./config.js";
+import { getUpdater, setupPlugin } from "./updater.js";
 import { openProject, openProjectSession, listSessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, buildConfigItems, setPluginConfig, declarationFor, hostPluginId, invalidateDeclaration, readDeclaration } from "./plugins.js";
 import { runSettingsAction } from "./plugin-surface.js";
-import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync } from "./marketplace.js";
+import { buildMarketplaceList, installMarketplacePlugin, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync } from "./marketplace.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
@@ -122,9 +122,9 @@ function cycleImpactFilter() {
   S.activityImpacts = IMPACT_CYCLE[(at + 1) % IMPACT_CYCLE.length].slice();
 }
 
-// Plugin lifecycle facts share one vocabulary with plugin-updater's, so a reader sees
-// the same actions whoever performed them. Only actions this menu performs ITSELF are
-// reported here: what it delegates to plugin-updater, plugin-updater already reports.
+// Plugin lifecycle facts share one vocabulary with the plugin manager's, so a reader
+// sees the same actions whoever performed them. Only actions this menu performs ITSELF
+// are reported here: what it delegates to the manager, the manager already reports.
 function reportPluginAction(action, name, details) {
   emitLoaderActivity({
     topic: "plugin.installed",
@@ -248,19 +248,9 @@ function jumpMarketplaceGroup(dir) {
   }
 }
 
-// Route a marketplace entry to the right installer: the engine itself (isUpdater)
-// goes through the app-aware installUpdater; everything else through the git/npm
-// path selectInstallMethod chooses. Calls done(errOrNull, methodLabel).
-function marketplaceInstall(item, done, forceMethod) {
-  if (item.isUpdater) {
-    var uerr = installUpdater(CONFIG_DIR, APP_NAME);
-    S.hasUpdater = false;   // re-detect on next render now the engine is set up
-    done(uerr || null, "updater");
-    return;
-  }
-  var method = forceMethod || selectInstallMethod(item, S.hasUpdater);
-  var install = method === "git" ? installMarketplacePlugin : installViaNpm;
-  install(item, function(err) { done(err, method); });
+// Install a marketplace entry through the resolved manager. Calls done(errOrNull, methodLabel).
+function marketplaceInstall(item, done) {
+  installMarketplacePlugin(item, function (err) { done(err, "git"); });
 }
 
 // Install a plugin browsed from a SEEDED default marketplace (not yet added to
@@ -443,8 +433,7 @@ export function handlePluginKey(key) {
         else if (key === "down" || key === "s") { S.mkAcursor = Math.min(mkActs.length - 1, S.mkAcursor + 1); }
         else if (key === "enter" || key === "space") {
           var action = mkActs[S.mkAcursor].key;
-          if (action === "install" || action === "install-git" || action === "install-npm") {
-            var forceMethod = action === "install-git" ? "git" : action === "install-npm" ? "npm" : undefined;
+          if (action === "install" || action === "install-git") {
             S.mkMode = "browse";
             S.busy = true;
             setBusyMessage("Installing " + (mitem.name || mitem.repoName) + "...");
@@ -456,7 +445,7 @@ export function handlePluginKey(key) {
               S.marketplaceItems = buildMarketplaceList();
               if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
               render();
-            }, forceMethod);
+            });
             return;
           } else if (action === "install-app") {
             S.mkMode = "browse";
@@ -544,15 +533,10 @@ export function handlePluginKey(key) {
       }
       else if (key === "i") {
         if (S.mkLevel !== "plugins") { flash("Open a marketplace first."); return; }
-        // Source from S.marketplaceItems (not the raw catalog) so the synthetic
-        // isUpdater entry buildMarketplaceList() injects is visible to the batch;
-        // it never appears in S.MARKETPLACE_CATALOG.
         var batch = selectedInstallables(S.marketplaceItems, loadPlugins().map(function(p) { return p.name; }), S.mkSelected);
         if (batch.length > 0) {
-          // Install the selection SEQUENTIALLY off-thread: each callback kicks the
-          // next, so only one clone runs at a time and the progress count is coherent.
-          // marketplaceInstall() routes isUpdater to installUpdater and everything
-          // else through selectInstallMethod, same as the single-item install path.
+          // Install the selection SEQUENTIALLY off-thread: each callback kicks the next, so only one
+          // clone runs at a time and the progress count is coherent.
           S.busy = true;
           var failed = [];
           var installNext = function(k) {
@@ -570,7 +554,7 @@ export function handlePluginKey(key) {
               return;
             }
             var batchItem = batch[k];
-            var batchMethod = batchItem.isUpdater ? "updater" : selectInstallMethod(batchItem, S.hasUpdater);
+            var batchMethod = "git";
             setBusyMessage("Installing " + (k + 1) + "/" + batch.length + " (" + batchMethod + ")...");
             render();
             marketplaceInstall(batchItem, function(berr) {
@@ -624,21 +608,6 @@ export function handlePluginKey(key) {
       else if (key === "r") {
         S.pluginItems = buildCombinedPluginList();
         flash("Refreshed.");
-      }
-      else if (key === "e") {
-        S.busy = true;
-        setBusyMessage("Updating the updater engine...");
-        render();
-        updateUpdater(function (ue) {
-          // self-update cleared the cached engine module; re-import the (new) one so
-          // the TUI doesn't drop to "Updater Plugin Missing" after updating.
-          preloadUpdater().catch(function () {}).then(function () {
-            S.busy = false;
-            S.pluginItems = buildCombinedPluginList();
-            flash(ue ? ue : "Updater engine updated.");
-            render();
-          });
-        });
       }
       else if (key === "f") {
         S.busy = true;
@@ -1420,11 +1389,7 @@ export function handlePluginInputData(buf) {
     S.mode = "list";
     if (!url) return;
     var name = url.split("/").pop() || url;
-    var plugins = loadPlugins();
-    if (!plugins.some(function(r) { return r.name === name; })) {
-      plugins.push({ name: name, url: url, enabled: true, autoUpdate: true });
-      savePlugins(plugins);
-    }
+    registerPlugin(name, url);
     flash("Setting up " + name + "...");
     render();
     setupPlugin({ name: name, url: url }, function(err) {
@@ -1439,10 +1404,10 @@ export function handlePluginInputData(buf) {
 }
 
 // Text entry for the two universal marketplace "add" actions (S.mode === "mkinput",
-// S.mkAddAction picks which). "add_plugin_url" installs via the SAME updater path
-// every other marketplace install uses (installMarketplacePlugin -> `plugin-updater add
-// <url>`), so it works identically to the CLI's `plugins install <url>`. "add_marketplace"
-// is generic, it just calls the app-registered S.capabilities.addMarketplace(input).
+// S.mkAddAction picks which). "add_plugin_url" installs via the SAME path every other
+// marketplace install uses (installMarketplacePlugin, through the resolved manager), so
+// it works identically to the CLI's `plugins install <url>`. "add_marketplace" is
+// generic, it just calls the app-registered S.capabilities.addMarketplace(input).
 export function handleMarketplaceAddInputData(buf) {
   if (buf[0] === 27) { S.inputBuf = ""; S.mkAddAction = null; S.mode = "list"; return; }
   if (buf[0] === 3) { cleanup(); process.exit(1); }

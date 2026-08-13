@@ -48,8 +48,9 @@ describe("spawn env merge", () => {
   // them through the shared helper the tests above actually cover.
   it("every site that starts a child goes through the one helper", () => {
     const sites = [
-      ["src/updater.ts", 3],
-      ["src/marketplace.ts", 1],
+      ["src/updater.ts", 1],
+      // src/marketplace.ts starts no child at all: its install delegates to updater.ts's
+      // setupPlugin, and its npm install path was deleted.
       ["src/plugins.ts", 1],
     ];
     for (const [file, expected] of sites) {
