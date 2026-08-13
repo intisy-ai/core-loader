@@ -18,7 +18,7 @@ flowchart TD
     TUI --> VIEWS["plugins / providers / projects / mcp / marketplace views"]
     VIEWS --> ST["state: the one shared mutable state object"]
     CL --> CFG["config + settings-model: edit any plugin's settings"]
-    CL --> UPD["updater: delegates git plugins to the plugin manager"]
+    CL --> UPD["updater: delegates git plugins to the resolved plugin manager"]
     CL --> PROXY["proxy-runner: starts the app's proxy"]
     CL --> ENV["env: config dir, app detection, official-plugins data"]
 ```
@@ -26,8 +26,8 @@ flowchart TD
 This library is **generic**: it contains no per-app job. Anything app-specific
 (config filenames, home directories, labels) belongs to the loader that consumes
 it, never here. Note that core-loader deliberately carries no `core` submodule,
-which is why a few small facts (such as the plugin manager's package name in
-`src/env.ts`) live here rather than being asked of core.
+which is why a few small facts (such as the storage subdirectory names in
+`src/home-paths.ts`) live here rather than being asked of core.
 
 ## Structure
 
@@ -41,8 +41,13 @@ which is why a few small facts (such as the plugin manager's package name in
   editing (`readJson` / `readJsonc` are the one JSON entry point)
 - `src/loader-runtime.ts`, `src/loader-commands.ts`, `src/wrapper.ts`,
   `src/ensure-app.ts` — activation, command deployment, and the app wrapper
+- `src/home-paths.ts`, `src/catalog-sources.ts`, `src/capability-catalog.ts`,
+  `src/plugin-manager.ts` — resolving the plugin that manages plugins by the
+  `plugin-management` capability it declares, never by name: a home's own
+  deployed manifest or clone, else its cached answer, else a query over the
+  declared marketplace sources
 - `src/updater.ts`, `src/activity-seam.ts`,
-  `src/notify.ts` — the seams to the plugin manager and to notifications
+  `src/notify.ts` — the seams to the resolved plugin manager and to notifications
 - `data/official-plugins.json` — the badged official marketplace section
 - `dist/` — compiled output (generated; not committed)
 
