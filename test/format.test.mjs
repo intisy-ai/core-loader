@@ -1,6 +1,6 @@
 import { describe, it } from "vitest";
 import assert from "node:assert";
-import { rule, stringWidth, pad, trunc, timeAgo } from "../dist/format.js";
+import { rule, stringWidth, pad, trunc, timeAgo, isBooleanRowOn } from "../dist/format.js";
 
 describe("format: stringWidth/pad/trunc", () => {
   it("stringWidth counts ASCII as 1, CJK as 2, and ignores ANSI escape codes", () => {
@@ -40,5 +40,16 @@ describe("format: rule/timeAgo", () => {
     assert.equal(timeAgo(now - 5 * 60000), "5m ago");
     assert.equal(timeAgo(now - 3 * 3600000), "3h ago");
     assert.equal(timeAgo(now - 2 * 86400000), "2d ago");
+  });
+});
+
+describe("format: isBooleanRowOn", () => {
+  it("is true for the real boolean and the string \"true\", false for a drifted value", () => {
+    assert.equal(isBooleanRowOn(true), true);
+    assert.equal(isBooleanRowOn("true"), true);
+    assert.equal(isBooleanRowOn(false), false);
+    assert.equal(isBooleanRowOn("false"), false);
+    assert.equal(isBooleanRowOn(""), false);
+    assert.equal(isBooleanRowOn(undefined), false);
   });
 });

@@ -76,6 +76,18 @@ export function secretMask(value: unknown): string {
   return (value === undefined || value === null || value === "") ? "(unset)" : "••••••••";
 }
 
+/**
+ * Whether a row declared `boolean` is on.
+ *
+ * @remarks
+ * Accepts the string `"true"` alongside the real boolean so a value that drifted from its
+ * declaration (a hand-edited config on disk) still reads as off rather than trusting the
+ * truthiness of any non-empty string.
+ */
+export function isBooleanRowOn(value: unknown): boolean {
+  return value === true || value === "true";
+}
+
 export function timeAgo(ts) {
   if (!ts) return "--";
   var d = Date.now() - ts;

@@ -3,7 +3,7 @@
 // screen. Plugin declarations are read in the BACKGROUND (async) with a spinner, so
 // entering the tab never blocks; plugin rows show "loading…" until their declaration lands.
 
-import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule, secretMask } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule, secretMask, isBooleanRowOn } from "../format.js";
 import { S } from "../state.js";
 import { tuiLog } from "../env.js";
 import { buildGlobalSection, buildSettingsEntries, firstSelectableIndex, splitBySections } from "../settings-model.js";
@@ -110,7 +110,7 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
         valStr = (S.configConfirm === it.key ? (ACCENT + (it.confirm || "Run this?") + " enter to confirm") : (GRAY + "↵ run")) + RST;
       } else {
         if (editing) valStr = BG_SEL + " " + S.inputBuf + BOLD + "|" + RST;
-        else if (it.type === "boolean") valStr = (it.value ? OK + "true" : GRAY + "false") + RST;
+        else if (it.type === "boolean") valStr = (isBooleanRowOn(it.value) ? OK + "true" : GRAY + "false") + RST;
         else if (it.type === "secret" && S.cfgReveal !== it.key) valStr = GRAY + secretMask(it.value) + RST;
         else valStr = WHITE + JSON.stringify(it.value) + RST;
         mark = it.isSet ? "" : (GRAY + " (default)" + RST);

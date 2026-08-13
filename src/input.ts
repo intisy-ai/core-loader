@@ -5,7 +5,7 @@
 import { existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
-import { RST, BOLD, WHITE, RED } from "./format.js";
+import { RST, BOLD, WHITE, RED, isBooleanRowOn } from "./format.js";
 import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { cleanup } from "./out.js";
@@ -67,7 +67,7 @@ function activateConfigItem(citem, textMode) {
   if (citem.kind === "action") { activateConfigAction(citem); return; }
   S.configConfirm = null;
   var next = null;
-  if (citem.type === "boolean") next = !citem.value;
+  if (citem.type === "boolean") next = !isBooleanRowOn(citem.value);
   else if (citem.type !== "secret" && Array.isArray(citem.options) && citem.options.length) {
     var values = citem.options.map(function (o) { return typeof o === "string" ? o : o.value; });
     var at = values.indexOf(String(citem.value));
