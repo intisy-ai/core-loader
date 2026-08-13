@@ -306,7 +306,7 @@ export function handleKey(key) {
     var pi = pages.indexOf(S.page);
     var switchTo = function (np) {
       S.page = np; S.mode = "list";
-      S.globalKeyHandler = null;   // leaving the updater gate: don't let it intercept keys on the new tab
+      S.globalKeyHandler = null;   // leaving the plugin-manager gate: don't let it intercept keys on the new tab
       if (np === "activity") {
         S.activityRecords = readActivityRecords();
         S.activityCursor = 0;

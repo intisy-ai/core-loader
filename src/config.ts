@@ -141,10 +141,9 @@ export function loadPlugins() {
   // module's getPlugins() indirection has returned empty in some setups even though
   // the file was present and readable, so the file itself is the reliable source.
   //
-  // This does NOT hide a missing updater: updater ENGINE detection is a separate concern
-  // handled by buildPlugins, which gates the whole tab on getUpdater() and shows the
-  // install-updater prompt when the engine is absent. So this only ever populates the
-  // list once the updater is already detected.
+  // This does NOT hide a missing plugin manager: detecting one is a separate concern handled by
+  // buildPlugins, which gates the whole tab on getUpdater() and shows the re-check gate when none
+  // is loadable. So this only ever populates the list once a manager is already detected.
   try {
     var fs = require("fs");
     var candidates = [PLUGINS_JSON, join(CONFIG_DIR, "plugins.json")];

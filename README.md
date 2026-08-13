@@ -42,12 +42,12 @@ which is why a few small facts (such as the storage subdirectory names in
 - `src/loader-runtime.ts`, `src/loader-commands.ts`, `src/wrapper.ts`,
   `src/ensure-app.ts` — activation, command deployment, and the app wrapper
 - `src/home-paths.ts`, `src/catalog-sources.ts`, `src/capability-catalog.ts`,
-  `src/plugin-manager.ts` — resolving the plugin that manages plugins by the
-  `plugin-management` capability it declares, never by name: a home's own
+  `src/plugin-manager.ts`: resolving the plugin that manages plugins by the
+  `plugin-management` capability it declares, never by name (a home's own
   deployed manifest or clone, else its cached answer, else a query over the
-  declared marketplace sources
+  declared marketplace sources)
 - `src/updater.ts`, `src/activity-seam.ts`,
-  `src/notify.ts` — the seams to the resolved plugin manager and to notifications
+  `src/notify.ts`: the seams to the resolved plugin manager and to notifications
 - `data/official-plugins.json` — the badged official marketplace section
 - `dist/` — compiled output (generated; not committed)
 
@@ -71,9 +71,32 @@ npm install @intisy-ai/core-loader
 
 ## Configuration
 
-core-loader has no config file of its own. It reads and edits the *consuming
-loader's* config and, through `settings-model`, any installed plugin's settings.
-The config dir it defaults to can be overridden with `HUB_CONFIG_DIR`.
+core-loader owns one config file, `config/marketplaces.json`, which declares the
+marketplaces a capability query reads:
+
+```json
+{
+  "sources": [
+    { "id": "example-org", "label": "Example", "type": "github-org", "enabled": true, "org": "example-org" },
+    { "id": "published", "label": "Published list", "type": "manifest", "url": "https://example.test/catalog.json" },
+    { "id": "here", "label": "On disk", "type": "local", "path": "/path/to/marketplace.json" }
+  ]
+}
+```
+
+A `github-org` source names an `org`, a `manifest` source a `url`, and a `local`
+source a `path` (a file, or a directory holding `marketplace.json`). Config order
+is precedence: the first source to claim a plugin id keeps it. Only an explicit
+`"enabled": false` disables a source, and an absent or empty file means the one
+built-in org source.
+
+It also owns two files under `cache/`: `plugin-manager.json` holds this home's
+derived answer about which plugin manages plugins, and
+`capability-catalog.json` caches what the declared marketplaces offer.
+
+Everything else it touches belongs to someone else. It reads and edits the
+*consuming loader's* config and, through `settings-model`, any installed plugin's
+settings. The config dir it defaults to can be overridden with `HUB_CONFIG_DIR`.
 
 ## Logging
 

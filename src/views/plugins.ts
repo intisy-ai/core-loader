@@ -125,7 +125,8 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       pushBody("  " + GRAY + "Install it yourself, then press " + WHITE + "Enter" + GRAY + " to re-check:" + RST, false);
       pushBody("    " + WHITE + bootstrap + RST, false);
     } else {
-      pushBody("  " + GRAY + "No declared marketplace offers one. Add a source to config/marketplaces.json." + RST, false);
+      pushBody("  " + GRAY + "No repository in the declared marketplaces declares that capability." + RST, false);
+      pushBody("  " + GRAY + "Add a source that offers one to config/marketplaces.json." + RST, false);
     }
     pushBody("", false);
     pushFoot("  " + rule(barW));
