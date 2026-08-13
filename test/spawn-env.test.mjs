@@ -43,14 +43,15 @@ describe("spawn env merge", () => {
     assert.ok(merged.PATH, "PATH must survive");
   });
 
-  // These sites spawn npx, npm, and deployed bundles that no test run can
-  // provide, so this is the only check that fails if someone stops routing one of
-  // them through the shared helper the tests above actually cover.
+  // These sites start node against a deployed bundle that no test run can provide, so this is the
+  // only check that fails if someone stops routing one of them through the shared helper the tests
+  // above actually cover.
   it("every site that starts a child goes through the one helper", () => {
     const sites = [
       ["src/updater.ts", 1],
-      // src/marketplace.ts starts no child at all: its install delegates to updater.ts's
-      // setupPlugin, and its npm install path was deleted.
+      // src/marketplace.ts is deliberately not pinned here. It does start children (eight curl
+      // catalog fetches), but they are read-only reads that carry no activity env, while the sites
+      // listed here are the ones that MUTATE a home and so must be traceable across processes.
       ["src/plugins.ts", 1],
     ];
     for (const [file, expected] of sites) {

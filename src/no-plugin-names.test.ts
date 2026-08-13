@@ -12,11 +12,14 @@ const FORBIDDEN = ["plugin-updater", "config-ledger", "sync-bridge", "custom-aut
 // as installable plugins. Part 5 widens this list.
 const ROOTS = ["src"];
 
-// Every root markdown file, not just README.md: a fixed name list repeats the exact failure shape
-// (a stale root file the guard never scanned) that is the reason this guard scans the root at all.
-function rootMarkdownFiles(repoRoot: string): string[] {
+// Every root markdown and json file, not just README.md: a fixed name list repeats the exact failure
+// shape (a stale root file the guard never scanned) that is the reason this guard scans the root at
+// all. Root only, since anything deeper is either a scanned source root or a dependency.
+const ROOT_FILES = /\.(md|json)$/;
+
+function rootFiles(repoRoot: string): string[] {
   return readdirSync(repoRoot)
-    .filter((name) => statSync(join(repoRoot, name)).isFile() && name.endsWith(".md"))
+    .filter((name) => ROOT_FILES.test(name) && statSync(join(repoRoot, name)).isFile())
     .map((name) => join(repoRoot, name));
 }
 
@@ -41,7 +44,7 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 describe("the loader names no plugin", () => {
   const files = [
     ...ROOTS.flatMap((root) => sourceFiles(join(repoRoot, root))),
-    ...rootMarkdownFiles(repoRoot),
+    ...rootFiles(repoRoot),
   ];
 
   it("found the files to guard", () => {
@@ -62,14 +65,39 @@ describe("the loader names no plugin", () => {
 // are commands the user's own MCP client runs.
 const CHILD_STARTERS = /\b(exec|execSync|execFile|execFileSync|spawn|spawnSync)\s*\(/;
 
+// The line-scoped check above cannot see the shape this rule was written for: a command built into a
+// variable on one line and spawned on another. So an npx command STRING is banned too, everywhere
+// except three files that legitimately hold one.
+//   src/plugin-manager.ts  builds the bootstrap command as text for an OPERATOR to run.
+//   src/env.ts             the MCP server catalog, whose `command: "npx"` entries are commands the
+//   src/marketplace.ts     user's own MCP client runs, never this library.
+const NPX_STRING_ALLOWED = ["src/plugin-manager.ts", "src/env.ts", "src/marketplace.ts"];
+const NPX_STRING = /["'`]npx/;
+
+function relativeTo(repoRoot: string, file: string): string {
+  return file.slice(repoRoot.length + 1).replace(/\\/g, "/");
+}
+
 describe("the loader never runs npx", () => {
   it("no line both starts a child process and names npx", () => {
     const offenders: string[] = [];
     for (const file of sourceFiles(join(repoRoot, "src"))) {
       readFileSync(file, "utf8").split("\n").forEach((line, index) => {
         if (CHILD_STARTERS.test(line) && line.includes("npx")) {
-          offenders.push(`${file.slice(repoRoot.length).replace(/\\/g, "/")}:${index + 1}`);
+          offenders.push(`${relativeTo(repoRoot, file)}:${index + 1}`);
         }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("no file outside the allowlist holds an npx command string", () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(join(repoRoot, "src"))) {
+      const relative = relativeTo(repoRoot, file);
+      if (NPX_STRING_ALLOWED.includes(relative)) continue;
+      readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+        if (NPX_STRING.test(line)) offenders.push(`${relative}:${index + 1}`);
       });
     }
     expect(offenders).toEqual([]);
