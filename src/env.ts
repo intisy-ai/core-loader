@@ -220,6 +220,7 @@ export const HELP_BINDINGS = {
     ["F", "Check for updates"], ["R", "Refresh list / catalog"], ["U", "Update selected"],
     ["A", "Update all"], ["E", "Update updater engine"], ["D", "Disable selected"], ["I", "Quick install (marketplace)"],
     ["/", "Search (marketplace)"], ["[ / ]", "Jump group (marketplace)"], ["Esc", "Back out of a marketplace"],
+    ["R", "Reveal a secret value (Configure editor only)"],
     ["<- ->", "Switch page"], ["Q", "Quit"],
   ],
   mcp: [
@@ -230,6 +231,7 @@ export const HELP_BINDINGS = {
   settings: [
     ["^v / WS", "Move"], ["Enter", "Open a group / edit a setting"],
     ["Tab", "Switch sub-tab (Settings / contributed screens)"],
+    ["R", "Reveal a secret value (Configure editor only)"],
     ["<- ->", "Switch page"], ["Q / Esc", "Quit"],
   ],
 };
