@@ -1283,8 +1283,9 @@ function handleScreenKey(key, sub) {
   }
 }
 
-// The busy gate has one owner: it is armed here and released here, in a finally, so no ordering
-// inside this body and no throw out of it can leave every later keystroke dropped by handleKey.
+// S.busy is armed before the call, but released only inside the callback's finally: a throw
+// from within the callback body still releases it, a synchronous throw out of runScreenAction
+// itself does not, and leaves the gate armed.
 function runContributedScreenAction(entry, row) {
   S.busy = true;
   runScreenAction(entry, row, function (answer) {
