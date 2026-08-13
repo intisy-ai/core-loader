@@ -144,3 +144,37 @@ describe("readDeployedProviders: no providers declared", () => {
     assert.deepEqual(readDeployedProviders(join(tmpdir(), "core-loader-providers-does-not-exist")), []);
   });
 });
+
+describe("loadUpdater", () => {
+  it("imports the deployed bundle of whichever plugin declares plugin-management", async () => {
+    const { loadUpdater } = await import("../dist/loader-runtime.js");
+    const home = mkdtempSync(join(tmpdir(), "core-loader-home-"));
+    const pluginDir = join(home, "plugin");
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(join(pluginDir, "package.json"), JSON.stringify({ type: "module" }));
+    writeFileSync(join(pluginDir, "demo-manager.json"), JSON.stringify({ id: "demo-manager", api: 1, entry: "dist/index.js", capabilities: ["plugin-management"] }));
+    writeFileSync(join(pluginDir, "demo-manager.js"), "export function earlyLaunch() {}\nexport function getPlugins() { return []; }\n");
+
+    const manager = await loadUpdater(home);
+    assert.equal(typeof manager.earlyLaunch, "function");
+  });
+
+  it("throws a reason that names the capability, not a plugin, when nothing answers", async () => {
+    const { loadUpdater } = await import("../dist/loader-runtime.js");
+    const home = mkdtempSync(join(tmpdir(), "core-loader-home-empty-"));
+    await assert.rejects(() => loadUpdater(home), (error) => {
+      assert.match(String(error.message), /plugin-management/);
+      return true;
+    });
+  });
+});
+
+describe("runEarlyLaunchHooks", () => {
+  it("logs and returns rather than throwing when no plugin manages plugins", async () => {
+    const { runEarlyLaunchHooks } = await import("../dist/loader-runtime.js");
+    const home = mkdtempSync(join(tmpdir(), "core-loader-home-none-"));
+    const lines = [];
+    await runEarlyLaunchHooks(home, (message) => lines.push(message));
+    assert.ok(lines.some((line) => line.includes("plugin-management")), lines.join(" | "));
+  });
+});

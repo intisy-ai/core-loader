@@ -9,43 +9,46 @@ import { execSync } from "child_process";
 import { join } from "path";
 import { homedir } from "os";
 import { pathToFileURL } from "url";
+import { homePaths } from "./home-paths.js";
+import { managerEntries, resolveFromHome, PLUGIN_MANAGEMENT_CAPABILITY } from "./plugin-manager.js";
 
 export function getBinDir() {
   return join(homedir(), ".local", "bin");
 }
 
-// Resolve plugin-updater: bare specifier first, then known install locations.
-export async function loadUpdater(): Promise<any> {
-  try {
-    return await import("plugin-updater");
-  } catch {
-    // opencode installs npm plugins into its package cache, off the deployed
-    // plugin's resolution path; this candidate is simply absent under Claude.
-    const candidates = [
-      join(homedir(), ".cache", "opencode", "packages", "plugin-updater@latest", "node_modules", "plugin-updater", "dist", "index.js"),
-    ];
-    for (const candidate of candidates) {
-      if (existsSync(candidate)) return await import(pathToFileURL(candidate).href);
+// Resolve the plugin that manages plugins in THIS home, then import it. Disk only: this runs inside
+// an app's plugin activation under a hook timeout, where reading a marketplace over the network is
+// the wrong thing to do.
+export async function loadUpdater(configDir: string): Promise<any> {
+  const paths = homePaths(configDir);
+  const ref = resolveFromHome(paths);
+  if (!ref) throw new Error("no plugin in this home declares the " + PLUGIN_MANAGEMENT_CAPABILITY + " capability");
+  const failures: string[] = [];
+  for (const candidate of managerEntries(paths, ref)) {
+    try {
+      return await import(pathToFileURL(candidate.entry).href);
+    } catch (e) {
+      failures.push(candidate.entry + ": " + e);
     }
-    throw new Error("plugin-updater not resolvable");
   }
+  throw new Error(ref.id + " declares " + PLUGIN_MANAGEMENT_CAPABILITY + " but no module of it could be imported" + (failures.length ? " (" + failures.join("; ") + ")" : ""));
 }
 
-// Run plugin-updater's earlyLaunch on activation. `log(message)` is the caller's
-// per-plugin logger; skipped when we're already inside a plugin-updater run.
+// Run the plugin manager's earlyLaunch on activation. `log(message)` is the caller's
+// per-plugin logger; skipped when we're already inside a plugin manager run.
 export async function runEarlyLaunchHooks(configDir: string, log: (message: string) => void) {
   if (process.env.PLUGIN_UPDATER_ACTIVATION === "1") {
-    log("Updates driven by plugin-updater (activation context), skipping earlyLaunch");
+    log("Updates driven by the plugin manager (activation context), skipping earlyLaunch");
     return;
   }
   try {
-    const updater: any = await loadUpdater();
+    const updater: any = await loadUpdater(configDir);
     const gitPlugins = updater.getPlugins(configDir);
-    log("Running plugin-updater earlyLaunch for " + gitPlugins.length + " plugins");
+    log("Running earlyLaunch for " + gitPlugins.length + " plugins");
     await updater.earlyLaunch(configDir, gitPlugins);
-    log("plugin-updater earlyLaunch complete");
+    log("earlyLaunch complete");
   } catch (e) {
-    log("plugin-updater not available, skipping updates: " + e);
+    log("no plugin manager available, skipping updates: " + e);
   }
 }
 
@@ -89,7 +92,7 @@ export function readDeployedProviders(reposDir: string): Array<{
 }
 
 // Config-driven providers a plugin advertises by writing <repo>/.dynamic-providers.json
-// (e.g. custom-auth, one provider per user-configured endpoint). Best-effort and
+// (one provider per user-configured endpoint). Best-effort and
 // synchronous like the rest of this scan: a missing or malformed manifest yields no
 // entries, so plugins that never write one see no change in behavior.
 function readDynamicProviders(reposDir, repo) {
