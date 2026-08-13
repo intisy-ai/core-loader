@@ -11,7 +11,14 @@ const FORBIDDEN = ["plugin-updater", "config-ledger", "sync-bridge", "custom-aut
 // data/ is excluded until part 5 deletes data/official-plugins.json, which still lists two of these
 // as installable plugins. Part 5 widens this list.
 const ROOTS = ["src"];
-const ROOT_FILES = ["README.md"];
+
+// Every root markdown file, not just README.md: a fixed name list repeats the exact failure shape
+// (a stale root file the guard never scanned) that is the reason this guard scans the root at all.
+function rootMarkdownFiles(repoRoot: string): string[] {
+  return readdirSync(repoRoot)
+    .filter((name) => statSync(join(repoRoot, name)).isFile() && name.endsWith(".md"))
+    .map((name) => join(repoRoot, name));
+}
 
 function sourceFiles(dir: string): string[] {
   const found: string[] = [];
@@ -34,7 +41,7 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 describe("the loader names no plugin", () => {
   const files = [
     ...ROOTS.flatMap((root) => sourceFiles(join(repoRoot, root))),
-    ...ROOT_FILES.map((name) => join(repoRoot, name)),
+    ...rootMarkdownFiles(repoRoot),
   ];
 
   it("found the files to guard", () => {

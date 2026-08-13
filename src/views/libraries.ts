@@ -4,7 +4,7 @@
 // library is missing or at the wrong version, and that is invisible everywhere else.
 //
 // The reading comes from the plugin manager, which is the thing that fills the store; the loader
-// keeps no second copy of the rules. Without the updater there is no store to read.
+// keeps no second copy of the rules. Without the manager there is no store to read.
 
 import { CONFIG_DIR } from "../env.js";
 import { getUpdater } from "../updater.js";
