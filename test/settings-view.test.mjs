@@ -182,3 +182,62 @@ describe("settings tab", () => {
     assert.ok(!body.some((line) => line.includes("logging")), "the unclaimed setting belongs to the plugin's own group");
   });
 });
+
+// The Settings tab's config editor renders the same masked-value branch as the Plugins tab's
+// (views/plugins.ts), by hand-copied code rather than a shared helper. Only the Plugins tab's
+// render was ever exercised, so a typo here (a dropped "!", the wrong field compared against
+// S.cfgReveal) could ship green.
+describe("the settings tab's config editor", () => {
+  function secretRow(overrides = {}) {
+    return { key: "token", value: "s3cr3t", def: "", isSet: true, type: "secret", ...overrides };
+  }
+
+  function boolRow() {
+    return { key: "flag", value: true, def: true, isSet: true, type: "boolean" };
+  }
+
+  function openSettingsEditor(rows) {
+    S.page = "settings";
+    S.settingsSubPage = "settings";
+    S.mode = "pconfig";
+    S.configTarget = { name: "demo", plugin: "demo", bundle: "/does-not-exist.js", file: "demo.json", items: rows };
+    S.configItems = rows;
+    S.cfgcursor = 0;
+    S.cfgReveal = "";
+    S.configConfirm = null;
+  }
+
+  afterEach(() => {
+    S.configTarget = null;
+    S.configItems = [];
+    S.cfgcursor = 0;
+    S.cfgReveal = "";
+    S.configConfirm = null;
+  });
+
+  it("renders the mask, not the value, for a secret row when nothing is revealed", () => {
+    openSettingsEditor([secretRow()]);
+    const { body } = render();
+    const row = body.find((line) => line.includes("token"));
+    assert.ok(row, "expected a token row, got:\n" + body.join("\n"));
+    assert.ok(row.includes("••••••••"), "expected the mask, got: " + row);
+    assert.ok(!row.includes("s3cr3t"), "must not leak the value, got: " + row);
+  });
+
+  it("renders the value for a secret row once S.cfgReveal names its key", () => {
+    openSettingsEditor([secretRow()]);
+    S.cfgReveal = "token";
+    const { body } = render();
+    const row = body.find((line) => line.includes("token"));
+    assert.ok(row.includes("s3cr3t"), "expected the revealed value, got: " + row);
+    assert.ok(!row.includes("••••••••"), "must not still show the mask, got: " + row);
+  });
+
+  it("leaves a non-secret row unaffected by S.cfgReveal", () => {
+    openSettingsEditor([boolRow()]);
+    S.cfgReveal = "flag";
+    const { body } = render();
+    const row = body.find((line) => line.includes("flag"));
+    assert.ok(row.includes("true"), "a boolean row must render its value regardless of cfgReveal, got: " + row);
+  });
+});

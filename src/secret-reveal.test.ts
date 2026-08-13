@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -189,6 +189,83 @@ describe("the reveal's lifetime", () => {
   });
 });
 
+describe("the reveal hint in the footer", () => {
+  it("appears only when the editor holds a secret row", () => {
+    openPluginEditor([boolRow()]);
+    const footNoSecret: string[] = [];
+    buildPlugins((line: unknown) => void line, (line: unknown) => footNoSecret.push(String(line).replace(STRIP, "")), 120, 110, () => {});
+    expect(footNoSecret.join("\n")).not.toContain("reveal");
+
+    openPluginEditor([secretRow()]);
+    const footWithSecret: string[] = [];
+    buildPlugins((line: unknown) => void line, (line: unknown) => footWithSecret.push(String(line).replace(STRIP, "")), 120, 110, () => {});
+    expect(footWithSecret.join("\n")).toContain("reveal");
+  });
+});
+
+describe("the reveal at a clamped cursor", () => {
+  it("does not clear on an up-key at row 0, or a down-key at the last row, in the Plugins tab's editor", () => {
+    openPluginEditor([secretRow(), boolRow()]);
+    S.cfgReveal = "token";
+
+    handlePluginKey("up");
+    expect(S.cfgcursor).toBe(0);
+    expect(S.cfgReveal).toBe("token");
+
+    S.cfgcursor = 1;
+    handlePluginKey("down");
+    expect(S.cfgcursor).toBe(1);
+    expect(S.cfgReveal).toBe("token");
+  });
+
+  it("does not clear on an up-key at row 0, or a down-key at the last row, in the Settings tab's editor", () => {
+    S.mode = "pconfig";
+    S.settingsSubPage = "settings";
+    S.configItems = [secretRow(), boolRow()];
+    S.cfgcursor = 0;
+    S.cfgReveal = "token";
+
+    handleSettingsKey("up");
+    expect(S.cfgcursor).toBe(0);
+    expect(S.cfgReveal).toBe("token");
+
+    S.cfgcursor = 1;
+    handleSettingsKey("down");
+    expect(S.cfgcursor).toBe(1);
+    expect(S.cfgReveal).toBe("token");
+  });
+
+  it("still clears S.configConfirm on a clamped keypress", () => {
+    openPluginEditor([secretRow()]);
+    S.configConfirm = "token";
+
+    handlePluginKey("up");
+
+    expect(S.configConfirm).toBeNull();
+  });
+});
+
+describe("a declared boolean whose stored value drifted from its declaration", () => {
+  it('renders as false when the stored value is the string "false", and toggling writes true', () => {
+    const dir = mkdtempSync(join(tmpdir(), "core-loader-bool-drift-"));
+    const bundle = join(dir, "demo.js");
+    writeFileSync(bundle, "");
+    try {
+      openPluginEditor([{ key: "flag", value: "false", def: true, isSet: true, type: "boolean" }], bundle);
+
+      const before = renderPluginBody().find((line) => line.includes("flag"));
+      expect(before).toContain("false");
+      expect(before).not.toContain("true");
+
+      handlePluginKey("enter");
+
+      expect(S.configItems[0].value).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("a masked value in the rendered rows", () => {
   it("renders the mask when not revealed, and the real value once revealed", () => {
     openPluginEditor([secretRow()]);
@@ -312,6 +389,11 @@ describe("a revealed secret does not survive switching to a different plugin's e
     expect(S.configItems[0].type).toBe("secret");
     expect(S.cfgReveal).toBe("");
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Guards against a reveal that clears synchronously but comes back once the async
+    // declaration re-read this arm never triggers would (if it ever did) eventually land.
+    await vi.waitFor(() => {
+      expect(S.cfgReveal).toBe("");
+      expect(S.configTarget?.plugin).toBe("beta");
+    });
   });
 });
