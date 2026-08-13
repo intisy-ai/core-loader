@@ -41,7 +41,7 @@ which is why a few small facts (such as the plugin manager's package name in
   editing (`readJson` / `readJsonc` are the one JSON entry point)
 - `src/loader-runtime.ts`, `src/loader-commands.ts`, `src/wrapper.ts`,
   `src/ensure-app.ts` — activation, command deployment, and the app wrapper
-- `src/updater.ts`, `src/config-ledger.ts`, `src/activity-seam.ts`,
+- `src/updater.ts`, `src/activity-seam.ts`,
   `src/notify.ts` — the seams to the plugin manager and to notifications
 - `data/official-plugins.json` — the badged official marketplace section
 - `dist/` — compiled output (generated; not committed)
