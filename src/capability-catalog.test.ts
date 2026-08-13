@@ -127,16 +127,19 @@ describe("readCatalog", () => {
   });
 
   it("one unreadable source costs the others nothing", async () => {
+    const listing = { entries: [{ name: "manager", url: "https://github.com/demo-org/manager.git", description: "listed" }] };
     const failing = async (url: string): Promise<unknown> => {
       if (url.includes("api.github.com")) throw new Error("offline");
+      if (url === "https://example.test/catalog.json") return listing;
       return Object.prototype.hasOwnProperty.call(RESPONSES, url) ? RESPONSES[url] : null;
     };
     const logged: string[] = [];
     const entries = await readCatalog(
-      [ORG, { id: "published", label: "p", type: "manifest", enabled: true, url: "https://example.test/nope.json" }],
+      [ORG, { id: "published", label: "p", type: "manifest", enabled: true, url: "https://example.test/catalog.json" }],
       { fetchJson: failing, log: (message) => logged.push(message) },
     );
-    expect(entries).toEqual([]);
+    expect(entries.map((entry) => entry.id)).toEqual(["manager"]);
+    expect(entries[0].sourceId).toBe("published");
     expect(logged.some((line) => line.includes("demo-org"))).toBe(true);
   });
 

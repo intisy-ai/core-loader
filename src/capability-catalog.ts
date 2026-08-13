@@ -41,11 +41,15 @@ const FETCH_TIMEOUT_MS = 15000;
 const ORG_PAGE_LIMIT = 5;
 const REFS = ["HEAD", "main", "master"];
 
-// The category topics repo-meta assigns, exactly one per repository. A repo that declares topics but
-// none of these is not a plugin repository, so its manifest is never fetched; a repo that declares no
-// topics at all is always asked, because nothing has ruled it out. Topics only narrow WHO is asked:
-// the answer always comes from the manifest, since one repo can provide several capabilities and a
-// single category topic cannot say so.
+/**
+ * The category topics repo-meta assigns, exactly one per repository.
+ *
+ * @remarks
+ * A repo that declares topics but none of these is not a plugin repository, so its manifest is never
+ * fetched; a repo that declares no topics at all is always asked, because nothing has ruled it out.
+ * Topics only narrow WHO is asked: the answer always comes from the manifest, since one repo can
+ * provide several capabilities and a single category topic cannot say so.
+ */
 const CATEGORY_TOPICS = [
   "core-library",
   "app-proxy",
@@ -58,18 +62,32 @@ const CATEGORY_TOPICS = [
   "runtime",
 ];
 
-async function fetchJsonDefault(url: string): Promise<unknown> {
+async function fetchJsonDefault(url: string, log: (message: string) => void): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const response = await fetch(url, { headers: { "User-Agent": "core-loader" }, signal: controller.signal });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      log(`fetch ${url} answered ${response.status}`);
+      return null;
+    }
     return await response.json();
-  } catch {
+  } catch (error) {
+    log(`fetch ${url} failed: ${String(error)}`);
     return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * The fetch a caller's own `deps.fetchJson` bypasses entirely, so an injected fetch is exactly the
+ * function a test supplied and never gains logging or network access it did not ask for.
+ */
+function resolveFetchJson(deps: CatalogDeps): (url: string) => Promise<unknown> {
+  if (deps.fetchJson) return deps.fetchJson;
+  const log = deps.log ?? (() => {});
+  return (url: string) => fetchJsonDefault(url, log);
 }
 
 /** One repository a source offers, before its own manifest has been read. */
@@ -95,7 +113,7 @@ function ownerRepoOf(url: unknown): { owner: string; repo: string } | null {
 }
 
 async function orgCandidates(source: MarketplaceSource, deps: CatalogDeps): Promise<Candidate[]> {
-  const fetchJson = deps.fetchJson ?? fetchJsonDefault;
+  const fetchJson = resolveFetchJson(deps);
   const org = String(source.org);
   const found: Candidate[] = [];
   for (let page = 1; page <= ORG_PAGE_LIMIT; page++) {
@@ -141,17 +159,13 @@ function listedCandidates(raw: unknown): Candidate[] {
 async function candidatesOf(source: MarketplaceSource, deps: CatalogDeps): Promise<Candidate[]> {
   if (source.type === "github-org") return orgCandidates(source, deps);
   if (source.type === "manifest") {
-    const fetchJson = deps.fetchJson ?? fetchJsonDefault;
+    const fetchJson = resolveFetchJson(deps);
     return listedCandidates(await fetchJson(String(source.url)));
   }
   const read = deps.readFileFn ?? ((file: string) => readFileSync(file, "utf8"));
   const base = String(source.path);
   const file = base.endsWith(".json") ? base : join(base, "marketplace.json");
-  try {
-    return listedCandidates(JSON.parse(read(file)));
-  } catch {
-    return [];
-  }
+  return listedCandidates(JSON.parse(read(file)));
 }
 
 /**
@@ -184,8 +198,13 @@ export function entryFrom(
   return entry;
 }
 
-// Whichever ref answers first, matching the seed-marketplace fetch: a repository may have renamed its
-// default branch, and a raw read costs nothing against an API budget.
+/**
+ * Whichever ref answers first, matching the seed-marketplace fetch.
+ *
+ * @remarks
+ * A repository may have renamed its default branch, and a raw read costs nothing against an API
+ * budget.
+ */
 async function firstRef(
   fetchJson: (url: string) => Promise<unknown>,
   owner: string,
@@ -194,13 +213,13 @@ async function firstRef(
 ): Promise<unknown> {
   for (const ref of REFS) {
     const parsed = await fetchJson(`https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${file}`);
-    if (parsed) return parsed;
+    if (parsed !== null && parsed !== undefined) return parsed;
   }
   return null;
 }
 
 async function readCandidate(candidate: Candidate, sourceId: string, deps: CatalogDeps): Promise<CatalogEntry | null> {
-  const fetchJson = deps.fetchJson ?? fetchJsonDefault;
+  const fetchJson = resolveFetchJson(deps);
   const manifest = await firstRef(fetchJson, candidate.owner, candidate.repo, "plugin.json");
   if (!manifest) return null;
   const pkg = await firstRef(fetchJson, candidate.owner, candidate.repo, "package.json");
