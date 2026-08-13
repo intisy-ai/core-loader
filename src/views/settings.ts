@@ -1,8 +1,7 @@
 // @ts-nocheck
-// Settings tab: two sub-tabs (Tab switches): "Settings" (global + plugin settings, here)
-// and "Versioning" (config-ledger git UI, delegated to views/versioning.ts).
-// Plugin declarations are read in the BACKGROUND (async) with a spinner, so entering the
-// tab never blocks; plugin rows show "loading…" until their declaration lands.
+// Settings tab: the global + plugin settings list, plus one sub-page per contributed
+// screen. Plugin declarations are read in the BACKGROUND (async) with a spinner, so
+// entering the tab never blocks; plugin rows show "loading…" until their declaration lands.
 
 import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
@@ -10,7 +9,6 @@ import { tuiLog } from "../env.js";
 import { buildGlobalSection, buildSettingsEntries, firstSelectableIndex, splitBySections } from "../settings-model.js";
 import { declarationFor, readDeclaration, settingsPluginIds } from "../plugins.js";
 import { hints, messageLine, spinnerFrame, scheduleRender } from "./common.js";
-import { buildVersioning } from "./versioning.js";
 import { collectScreens, subPages, buildContributedScreen } from "./screens.js";
 
 // An action row carries a human label; a setting row is addressed by its key.
@@ -18,14 +16,10 @@ function rowLabel(row) {
   return row.kind === "action" ? row.label : row.key;
 }
 
-// Every sub-page of the Settings tab, in tab-bar/Tab-cycle order: Settings, then the one
-// hardcoded "Versioning" sub-page, then one per contributed screen. "Versioning" is
-// spliced in here (not inside views/screens.ts) because it is the pre-existing hardcoded
-// wiring a later task removes; the contributed-screens module stays unaware of it.
+// Every sub-page of the Settings tab, in tab-bar/Tab-cycle order: Settings, then one per
+// contributed screen.
 export function settingsSubPages() {
-  var pages = subPages(collectScreens());
-  pages.splice(1, 0, { id: "versioning", label: "Versioning" });
-  return pages;
+  return subPages(collectScreens());
 }
 
 // Rebuild the section model + entry list from ALREADY-READ declarations only. A plugin whose
@@ -78,7 +72,7 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   var sub = S.settingsSubPage || "settings";
   var pages = settingsSubPages();
 
-  // Sub-tab bar (Settings | Versioning | one per contributed screen) + a blank line,
+  // Sub-tab bar (Settings | one per contributed screen) + a blank line,
   // shown only at the list level.
   if (S.mode === "list") {
     var tabsStr = pages.map(function (p) {
@@ -87,8 +81,6 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     pushSticky("  " + tabsStr + "    " + DIM + "tab switch" + RST);
     pushSticky("");
   }
-
-  if (sub === "versioning") { buildVersioning(pushBody, pushFoot, cols, barW, pushSticky); return; }
 
   if (sub !== "settings") {
     var page = pages.find(function (p) { return p.id === sub; });

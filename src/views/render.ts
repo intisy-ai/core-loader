@@ -82,9 +82,9 @@ export function render() {
   // header/tabs and the sticky region (which are always shown in full).
   var maxBody = Math.max(2, totalRows - headLines.length - stickyLines.length - footLines.length);
   
-  // A contributed screen sub-page scrolls on its own offset; every other Settings
-  // sub-page (including the hardcoded Versioning one) keeps sharing settingsScrollOff.
-  var onScreenSubPage = S.page === "settings" && S.settingsSubPage && S.settingsSubPage !== "settings" && S.settingsSubPage !== "versioning";
+  // A contributed screen sub-page scrolls on its own offset; the Settings sub-page keeps
+  // settingsScrollOff.
+  var onScreenSubPage = S.page === "settings" && S.settingsSubPage && S.settingsSubPage !== "settings";
 
   var activeScroll = 0;
   if (S.page === "projects") activeScroll = S.scrollOff;

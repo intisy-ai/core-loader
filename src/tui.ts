@@ -11,7 +11,6 @@ import { librariesTab } from "./views/libraries.js";
 import { APP_NAME, CLI_CMD, NPM_PKG, CONFIG_DIR, CACHE_DIR, UPDATE_CHECK_PATH, REPOS_DIR, PLUGINS_DIR, tuiLog } from "./env.js";
 import { hideCur, showCur, cleanup } from "./out.js";
 import { getFolderName, installUpdater, clearUpdaterCache, preloadUpdater } from "./updater.js";
-import { preloadConfigLedger } from "./config-ledger.js";
 import { startPluginHost } from "./plugin-surface.js";
 import { refreshScreenSpecs } from "./views/screens.js";
 import { loadConfig, saveConfig, migrateConfigs, loadPlugins, autoUpdateCheck, updateCheckDelayMs, updateCheckIntervalHours, defaultTab } from "./config.js";
@@ -21,7 +20,7 @@ import { buildMarketplaceList } from "./marketplace.js";
 import { buildCombinedPluginList, primeDeclarations } from "./plugins.js";
 import { buildList, outputDir } from "./projects.js";
 import { render } from "./views/render.js";
-import { parseKey, handleKey, handleInputData, handlePluginInputData, handleMarketplaceAddInputData, handleMcpAddInputData, handleSearchData, handleTabInputData, handleConfigInputData, handleSettingsGitInputData, switchPluginSubPage } from "./input.js";
+import { parseKey, handleKey, handleInputData, handlePluginInputData, handleMarketplaceAddInputData, handleMcpAddInputData, handleSearchData, handleTabInputData, handleConfigInputData, switchPluginSubPage } from "./input.js";
 import { setActivitySeam, withLoaderCause } from "./activity-seam.js";
 import { inputCause } from "./input-cause.js";
 
@@ -297,7 +296,6 @@ async function boot() {
   process.stderr.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l");
   await Promise.all([
     preloadUpdater().catch(function () {}),
-    preloadConfigLedger().catch(function () {}),
     startPluginHost().then(function () {
       return Promise.all([refreshScreenSpecs(), primeDeclarations()]);
     }).catch(function () {}),
@@ -347,7 +345,6 @@ function dispatchInput(buf, key) {
   if (S.mode === "mkinput") { handleMarketplaceAddInputData(buf); render(); return; }
   if (S.mode === "mcpaddinput") { handleMcpAddInputData(buf); render(); return; }
   if (S.mode === "pcfginput") { handleConfigInputData(buf); render(); return; }
-  if (S.mode === "sgprofinput" || S.mode === "sgurlinput") { handleSettingsGitInputData(buf); render(); return; }
   if (S.mode === "search") { handleSearchData(buf); render(); return; }
   if (S.mode === "tabinput") { handleTabInputData(buf); render(); return; }
   if (key) {
