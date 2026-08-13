@@ -7,8 +7,11 @@ import { join } from "path";
 import { homedir } from "os";
 import { subdirName } from "./home-paths.js";
 
-// The manager runs its full update sequence on import and logs to the
-// console; library mode limits it to the API so nothing prints over the TUI
+// A host that imports a plugin module for its API, rather than to activate it, says so here: a
+// plugin manager runs its whole update sequence on import and logs to the console, which would
+// print over this TUI. The generic key is the contract; the vendor-named one is set for a manager
+// deployed before that key existed.
+process.env.INTISY_PLUGIN_LIBRARY_MODE = "1";
 process.env.PLUGIN_UPDATER_LIBRARY_MODE = "1";
 
 export const HOME = homedir();

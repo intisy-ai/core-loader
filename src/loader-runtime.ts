@@ -37,7 +37,7 @@ export async function loadUpdater(configDir: string): Promise<any> {
 // Run the plugin manager's earlyLaunch on activation. `log(message)` is the caller's
 // per-plugin logger; skipped when we're already inside a plugin manager run.
 export async function runEarlyLaunchHooks(configDir: string, log: (message: string) => void) {
-  if (process.env.PLUGIN_UPDATER_ACTIVATION === "1") {
+  if (process.env.INTISY_PLUGIN_ACTIVATION === "1" || process.env.PLUGIN_UPDATER_ACTIVATION === "1") {
     log("Updates driven by the plugin manager (activation context), skipping earlyLaunch");
     return;
   }
