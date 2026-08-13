@@ -358,7 +358,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
     var lastGroup = null;
     for (var pi2 = 0; pi2 < S.marketplaceItems.length; pi2++) {
       var mitem = S.marketplaceItems[pi2];
-      var group = mitem.category || ((mitem.capability || mitem.seed) ? "From " + (mitem.source || S.mkMarket) : (mitem.official ? "Official" : "Community"));
+      var group = mitem.category || ((mitem.capability || mitem.seed) ? "From " + (mitem.source || S.mkMarket) : "Community");
       if (group !== lastGroup) {
         pushBody("", false);
         pushBody("  " + BOLD + WHITE + group + RST, false);

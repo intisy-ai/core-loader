@@ -230,7 +230,7 @@ export function switchPluginSubPage() {
 function jumpMarketplaceGroup(dir) {
   var items = S.marketplaceItems;
   if (items.length === 0) return;
-  var groupOf = function(it) { return it.category || (it.official ? "Official" : it.capability ? "capability" : "Community"); };
+  var groupOf = function(it) { return it.category || (it.capability ? "capability" : "Community"); };
   var boundaries = [];
   for (var i = 0; i < items.length; i++) {
     if (i === 0 || groupOf(items[i]) !== groupOf(items[i - 1])) boundaries.push(i);

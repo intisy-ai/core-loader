@@ -70,3 +70,42 @@ describe("Level 1", () => {
     assert.equal(typeof sourceRow.sourceId, "string");
   });
 });
+
+const { buildMarketplacePluginsList } = require("../dist/marketplace.js");
+
+describe("Level 2 for a declared source", () => {
+  it("lists only that source's entries, grouped by the category each entry's capabilities imply", () => {
+    S.sourceCatalog = [
+      entry("a-provider", "org-a", ["provider"]),
+      entry("z-library", "org-a", []),
+      entry("m-screens", "org-a", ["screens", "settings"]),
+      entry("elsewhere", "published", ["provider"]),
+    ];
+    S.inputBuf = "";
+    S.catalogFetched = true;
+    const rows = buildMarketplacePluginsList("Org A", "source", "org-a");
+    // category first, then name: Library(z-library), Provider(a-provider), Screens(m-screens)
+    assert.deepEqual(rows.map((row) => row.name), ["z-library", "a-provider", "m-screens"]);
+    assert.deepEqual(rows.map((row) => row.category), ["Library", "Provider", "Screens"]);
+    assert.ok(!rows.some((row) => row.name === "elsewhere"), "another source's entry must not appear");
+    // sections must be contiguous: the renderer emits a heading on every category change, so the
+    // number of distinct categories must equal the number of times the category changes
+    const categories = rows.map((row) => row.category);
+    const changes = categories.filter((value, index) => index === 0 || categories[index - 1] !== value).length;
+    assert.equal(new Set(categories).size, changes);
+  });
+
+  it("carries a url and a repo name so the install path works unchanged", () => {
+    S.sourceCatalog = [entry("a-provider", "org-a", ["provider"])];
+    S.inputBuf = "";
+    const rows = buildMarketplacePluginsList("Org A", "source", "org-a");
+    assert.equal(rows[0].url, "https://github.com/o/a-provider.git");
+    assert.equal(rows[0].repoName, "a-provider");
+  });
+
+  it("answers an empty list, never throws, before the read resolves", () => {
+    S.sourceCatalog = null;
+    S.inputBuf = "";
+    assert.deepEqual(buildMarketplacePluginsList("Org A", "source", "org-a"), []);
+  });
+});

@@ -13,7 +13,7 @@ import { buildMcpList } from "./mcp.js";
 import { setupPlugin } from "./updater.js";
 import { homePaths } from "./home-paths.js";
 import { readMarketplaceSources } from "./catalog-sources.js";
-import { catalogFor } from "./capability-catalog.js";
+import { catalogFor, categoryOf } from "./capability-catalog.js";
 
 export function invalidateCatalogCache() {
   try { unlinkSync(CATALOG_CACHE_PATH); } catch {}
@@ -193,14 +193,14 @@ export function sourceRowsFrom(sources, entries) {
 
 // Ensure every official plugin is present in the catalog exactly once.
 // If a remote search already returned the repo (case-insensitive full_name or
-// name match), enrich that entry in place (mark official, fix category/desc/url)
+// name match), enrich that entry in place (mark category Official, fix desc/url)
 // WITHOUT overwriting an existing star count. If no match exists, push a shallow
 // copy. This is safe to call multiple times because the deduplication check is
 // always performed first.
 function seedOfficialPlugins() {
   // Official status is AUTHORITATIVE from OFFICIAL_PLUGINS (by full_name): an entry
-  // is official iff its full_name is one of ours. First clear any stale official
-  // flag, e.g. a fork whose name-match got wrongly promoted and baked into the
+  // is official iff its full_name is one of ours. First clear any stale Official
+  // category, e.g. a fork whose name-match got wrongly promoted and baked into the
   // on-disk catalog cache (vibheksoni/opencode-antigravity-auth, whose stripped
   // name collided with our "antigravity-auth"). This self-heals bad caches.
   var officialKeys = {};
@@ -209,9 +209,8 @@ function seedOfficialPlugins() {
   }
   for (var ei = 0; ei < S.MARKETPLACE_CATALOG.length; ei++) {
     var ce = S.MARKETPLACE_CATALOG[ei];
-    if (ce.official && !officialKeys[(ce.full_name || "").toLowerCase()]) {
-      ce.official = false;
-      if (ce.category === "Official") ce.category = "Community";
+    if (ce.category === "Official" && !officialKeys[(ce.full_name || "").toLowerCase()]) {
+      ce.category = "Community";
     }
   }
   for (var oi = 0; oi < OFFICIAL_PLUGINS.length; oi++) {
@@ -225,7 +224,6 @@ function seedOfficialPlugins() {
     });
     if (existing) {
       // enrich without overwriting stars that may have been fetched already
-      existing.official  = true;
       existing.category  = "Official";
       if (!existing.desc)     existing.desc     = official.desc;
       if (!existing.url)      existing.url      = official.url;
@@ -253,7 +251,7 @@ function seedCuratedPlugins() {
     var curKey = (cur.full_name || "").toLowerCase();
     var existingCur = S.MARKETPLACE_CATALOG.find(function(e) { return (e.full_name || "").toLowerCase() === curKey; });
     if (existingCur) {
-      if (!existingCur.official && existingCur.category !== "Official") existingCur.category = "Curated";
+      if (existingCur.category !== "Official") existingCur.category = "Curated";
       if (!existingCur.desc) existingCur.desc = cur.desc;
     } else {
       S.MARKETPLACE_CATALOG.push({ name: cur.name, desc: cur.desc, category: "Curated", author: cur.author, repoName: cur.repoName, full_name: cur.full_name, url: cur.url });
@@ -682,13 +680,15 @@ export function buildMarketplaceMarketsList() {
   return rows;
 }
 
-// Level 2: a single marketplace's plugins. "community" is served from the loader's own fetched
-// catalog (S.MARKETPLACE_CATALOG); "Featured" is served from the static FEATURED_PLUGINS list
-// (env.ts); every other name is assumed to be an app-registered marketplace and is served through
-// capabilities.marketplacePlugins(name), which returns [] if the capability is
-// absent or the marketplace is unknown, so this degrades to an empty list rather
-// than throwing.
-export function buildMarketplacePluginsList(marketName, marketKind) {
+// Level 2: a single marketplace's plugins, routed by kind. A declared source's entries come from its
+// own manifests (S.sourceCatalog), grouped by the category each entry's capabilities imply. The
+// built-in community catalog is served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG,
+// which already carries an "Official"/"Curated" category on some entries). The curated Featured list
+// is served from the static FEATURED_PLUGINS list (env.ts). A seed is served from S.seedMarketplaces.
+// Anything else is assumed to be an app-registered capability marketplace, served through
+// capabilities.marketplacePlugins(name), which returns [] if the capability is absent or the
+// marketplace is unknown, so this degrades to an empty list rather than throwing.
+export function buildMarketplacePluginsList(marketName, marketKind, sourceId) {
   fetchCatalogsAsync();
   // Route by the KIND captured off the Level-1 row (builtin "community"/"featured" tag, "source",
   // or "capability"), not by string-comparing marketName against the loader's own display names: a
@@ -696,11 +696,38 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
   // misrouted/dedup-swallowed into the built-in catalog. marketKind is undefined for any caller
   // that predates this param (defensive fallback to the old name comparison).
   var kind = marketKind || (marketName === "community" ? "community" : null);
-  if (kind === "official" || kind === "community") {
-    var wantOfficial = kind === "official";
+  // A declared source's own entries, from its manifests rather than from a search. Each row carries
+  // the same name/desc/url/repoName shape the built-in catalog rows do, so the install path and the
+  // action menu treat it identically.
+  if (kind === "source") {
+    var declaredEntries = S.sourceCatalog || [];
+    var installedHere = loadPlugins().map(function (p) { return p.name; });
+    var resSrc = declaredEntries
+      .filter(function (e) { return e.sourceId === sourceId; })
+      .map(function (e) {
+        return {
+          name: e.id,
+          desc: e.description,
+          url: e.url,
+          repoName: e.id,
+          full_name: (e.url || "").replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, ""),
+          category: categoryOf(e),
+          sourceId: e.sourceId,
+          installed: installedHere.indexOf(e.id) !== -1,
+        };
+      });
+    if (S.inputBuf) {
+      var qSrc = S.inputBuf.toLowerCase();
+      resSrc = resSrc.filter(function (m) { return (m.name || "").toLowerCase().indexOf(qSrc) !== -1 || (m.desc || "").toLowerCase().indexOf(qSrc) !== -1; });
+    }
+    // Sections must be CONTIGUOUS, because the renderer emits a heading on every category change.
+    resSrc.sort(function (a, b) { return (a.category || "").localeCompare(b.category || "") || (a.name || "").localeCompare(b.name || ""); });
+    return resSrc;
+  }
+  if (kind === "community") {
     var installed = loadPlugins();
     var installedNames = installed.map(function(p) { return p.name; });
-    var res = S.MARKETPLACE_CATALOG.filter(function(m) { return !!m.official === wantOfficial; }).map(function(m) {
+    var res = S.MARKETPLACE_CATALOG.map(function(m) {
       var repoName = m.repoName || m.name;
       var isInstalled = installedNames.indexOf(m.name) !== -1 || installedNames.indexOf(repoName) !== -1;
       return Object.assign({}, m, { installed: isInstalled });
@@ -711,9 +738,9 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
     }
     res.sort(function(a, b) {
       // Sections must be CONTIGUOUS: the renderer emits a heading on every group
-      // change, so a pure star sort interleaves Curated/Community headings over
-      // and over. Curated first, then Community; stars order within each group.
-      var rank = function(e) { return e.category === "Curated" ? 0 : 1; };
+      // change, so a pure star sort interleaves headings over and over. Curated
+      // first, then Official, then Community; stars order within each group.
+      var rank = function(e) { return e.category === "Curated" ? 0 : e.category === "Official" ? 1 : 2; };
       if (rank(a) !== rank(b)) return rank(a) - rank(b);
       var aSt = a.stars != null ? a.stars : -1;
       var bSt = b.stars != null ? b.stars : -1;
@@ -726,7 +753,7 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
   // repos, not a marketplace.json to fetch. Each row is a plain catalog-shaped
   // item (name/desc/url/category/repoName/full_name) so it falls through the
   // SAME default branch of getMarketplaceActions()/marketplaceInstall() that the
-  // official/community catalog uses: installMarketplacePlugin(url) via the resolved manager.
+  // community catalog uses: installMarketplacePlugin(url) via the resolved manager.
   if (kind === "featured") {
     var installedFt = loadPlugins();
     var installedFtNames = installedFt.map(function(p) { return p.name; });
@@ -799,7 +826,7 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
 // on S.mkLevel so re-running it after e.g. a catalog fetch always rebuilds
 // whichever level the user is currently looking at.
 export function buildMarketplaceList() {
-  if (S.mkLevel === "plugins" && S.mkMarket) return buildMarketplacePluginsList(S.mkMarket, S.mkMarketKind);
+  if (S.mkLevel === "plugins" && S.mkMarket) return buildMarketplacePluginsList(S.mkMarket, S.mkMarketKind, S.mkMarketSourceId);
   return buildMarketplaceMarketsList();
 }
 

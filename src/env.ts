@@ -129,7 +129,7 @@ MCP_CATALOG.forEach(function (e) { e.curated = true; if (CURATED_MCP_REPOS[e.nam
 // Always shown at the top of the marketplace in a dedicated "Official · intisy-ai" section,
 // present regardless of whether the remote catalog fetch has completed.
 export const OFFICIAL_PLUGINS = officialPluginsData;
-// mark every entry so downstream code can test e.official without string comparisons
+// each entry carries this flag as a stable identity marker, verified by its own test
 OFFICIAL_PLUGINS.forEach(function(e) { e.official = true; });
 
 // Popular marketplaces seeded into Level 1 for every user, even before they've
