@@ -29,6 +29,12 @@ export const S = {
   seedMarketplaces: {},
   seedFetched: false,
 
+  // The entries this home's DECLARED marketplace sources offer (see catalog-sources.ts and
+  // capability-catalog.ts), filled in by marketplace.ts's fetchSourceCatalogAsync. `null` means not
+  // read yet, so Level 1 shows a count of "…" rather than a wrong zero.
+  sourceCatalog: null,
+  sourceFetched: false,
+
   // Projects page
   items: [],
   cursor: 0,
@@ -129,6 +135,9 @@ export const S = {
   // display name to "intisy-ai (official)"/"community": a capability
   // marketplace could otherwise share one of those names and be misrouted.
   mkMarketKind: null,
+  // The declared source a Level-2 list is showing, captured off its Level-1 row, because a source is
+  // identified by its id while the row is labelled by the source's own label.
+  mkMarketSourceId: null,
   // Which leading action row is being confirmed while S.mode === "mkinput":
   // "add_plugin_url" | "add_marketplace" (see input.ts handleMarketplaceAddInputData).
   mkAddAction: null,

@@ -5,12 +5,15 @@
 import { existsSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { readJson } from "./json.js";
 import { exec } from "child_process";
-import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, FEATURED_PLUGINS, APP_NAME, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, tuiLog } from "./env.js";
+import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, FEATURED_PLUGINS, APP_NAME, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { loadPlugins, catalogCacheHours, registerPlugin } from "./config.js";
 import { scheduleRender } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
 import { setupPlugin } from "./updater.js";
+import { homePaths } from "./home-paths.js";
+import { readMarketplaceSources } from "./catalog-sources.js";
+import { catalogFor } from "./capability-catalog.js";
 
 export function invalidateCatalogCache() {
   try { unlinkSync(CATALOG_CACHE_PATH); } catch {}
@@ -133,6 +136,59 @@ export function fetchSeedMarketplacesAsync() {
   }
 
   for (var si = 0; si < DEFAULT_MARKETPLACES.length; si++) tryBranch(DEFAULT_MARKETPLACES[si], 0);
+}
+
+/**
+ * Reads what this home's declared marketplace sources offer, once per cache window.
+ *
+ * @remarks
+ * Non-blocking and guarded by `S.sourceFetched`, the same shape the seed fetch uses: Level 1 renders
+ * immediately with an unknown count and fills in when this resolves. It reads through the on-disk
+ * catalog cache, so a warm home costs no network at all.
+ */
+export function fetchSourceCatalogAsync() {
+  if (S.sourceFetched) return;
+  S.sourceFetched = true;
+  var paths = homePaths(CONFIG_DIR);
+  catalogFor(readMarketplaceSources(paths), paths, catalogCacheHours() * 3600000, { log: tuiLog })
+    .then(function (entries) {
+      S.sourceCatalog = entries;
+      if (S.pluginSubPage === "marketplace") {
+        S.marketplaceItems = buildMarketplaceList();
+        scheduleRender();
+      }
+    })
+    .catch(function (error) {
+      S.sourceCatalog = [];
+      tuiLog("declared marketplace sources could not be read: " + error);
+    });
+}
+
+// Where a source reads from, which is what tells two rows apart when their labels are similar.
+function describeSource(source) {
+  if (source.type === "github-org") return "github: " + source.org;
+  if (source.type === "manifest") return source.url;
+  return source.path;
+}
+
+/**
+ * One Level-1 row per enabled declared source, counted from the entries it offered.
+ *
+ * @remarks
+ * `entries` is null until the read resolves, which is a different thing from a source that offered
+ * nothing: the first renders as an unknown count, the second as zero.
+ */
+export function sourceRowsFrom(sources, entries) {
+  var rows = [];
+  for (var i = 0; i < sources.length; i++) {
+    var source = sources[i];
+    if (source.enabled === false) continue;
+    var count = entries === null || entries === undefined
+      ? undefined
+      : entries.filter(function (entry) { return entry.sourceId === source.id; }).length;
+    rows.push({ name: source.label, source: describeSource(source), count: count, builtin: "source", sourceId: source.id });
+  }
+  return rows;
 }
 
 // Ensure every official plugin is present in the catalog exactly once.
