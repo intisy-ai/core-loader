@@ -18,7 +18,7 @@ import { loadConfig, saveConfig, migrateConfigs, loadPlugins, autoUpdateCheck, u
 import { flash } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
 import { buildMarketplaceList } from "./marketplace.js";
-import { buildCombinedPluginList } from "./plugins.js";
+import { buildCombinedPluginList, primeDeclarations } from "./plugins.js";
 import { buildList, outputDir } from "./projects.js";
 import { render } from "./views/render.js";
 import { parseKey, handleKey, handleInputData, handlePluginInputData, handleMarketplaceAddInputData, handleMcpAddInputData, handleSearchData, handleTabInputData, handleConfigInputData, handleSettingsGitInputData, switchPluginSubPage } from "./input.js";
@@ -295,7 +295,9 @@ async function boot() {
   await Promise.all([
     preloadUpdater().catch(function () {}),
     preloadConfigLedger().catch(function () {}),
-    startPluginHost().then(function () { return refreshScreenSpecs(); }).catch(function () {}),
+    startPluginHost().then(function () {
+      return Promise.all([refreshScreenSpecs(), primeDeclarations()]);
+    }).catch(function () {}),
   ]);
   hideCur();
   render();

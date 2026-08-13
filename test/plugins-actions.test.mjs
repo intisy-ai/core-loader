@@ -74,12 +74,9 @@ describe("plugins: getPluginActions", () => {
     assert.equal(acts[0].label, "Disable plugin");
   });
 
-  it("an npm plugin offers update/uninstall, plus configure only once a config schema was probed", () => {
-    const noSchema = getPluginActions({ type: "npm" });
-    assert.deepEqual(noSchema.map((a) => a.key), ["update-npm", "uninstall-npm", "cancel"]);
-
-    const withSchema = getPluginActions({ type: "npm", _cfg: { items: [{ key: "a" }] } });
-    assert.deepEqual(withSchema.map((a) => a.key), ["configure", "update-npm", "uninstall-npm", "cancel"]);
+  it("an npm plugin offers update/uninstall, and no configure without a settings declaration", () => {
+    const noDeclaration = getPluginActions({ type: "npm" });
+    assert.deepEqual(noDeclaration.map((a) => a.key), ["update-npm", "uninstall-npm", "cancel"]);
   });
 
   it("a disabled plugin only offers enable + cancel, no update/settings actions", () => {

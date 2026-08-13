@@ -43,14 +43,14 @@ describe("spawn env merge", () => {
     assert.ok(merged.PATH, "PATH must survive");
   });
 
-  // These five sites spawn npx, npm, and deployed bundles that no test run can
+  // These sites spawn npx, npm, and deployed bundles that no test run can
   // provide, so this is the only check that fails if someone stops routing one of
   // them through the shared helper the tests above actually cover.
   it("every site that starts a child goes through the one helper", () => {
     const sites = [
       ["src/updater.ts", 3],
       ["src/marketplace.ts", 1],
-      ["src/plugins.ts", 2],
+      ["src/plugins.ts", 1],
     ];
     for (const [file, expected] of sites) {
       const text = readFileSync(new URL("../" + file, import.meta.url), "utf8");

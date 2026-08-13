@@ -11,6 +11,7 @@ import { loadPlugins } from "./config.js";
 import { getFolderName, loadNpmPlugins, getUpdaterVersion, getUpdater } from "./updater.js";
 import { S } from "./state.js";
 import { spawnEnv } from "./activity-seam.js";
+import { bundleFor, providerIds, readSettingsSchema } from "./plugin-surface.js";
 
 export function gitText(args, cwd) {
   try {
@@ -235,9 +236,10 @@ export function getPluginActions(pitem) {
   }
   if (pitem.type === "npm") {
     // managed via opencode.json, no disable state, only update/uninstall (+ Configure
-    // when the deployed bundle answers `config schema`, same probe as git plugins)
-    if (pitem._cfg && pitem._cfg.items && pitem._cfg.items.length) {
-      a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + pitem._cfg.items.length + ")" });
+    // when its settings declaration has something editable, same gate as git plugins)
+    var npmDeclaration = declarationFor(pitem.name);
+    if (npmDeclaration && npmDeclaration.items.length) {
+      a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + npmDeclaration.items.length + ")" });
     }
     a.push({ cat: "Update", key: "update-npm", label: "Update npm plugin" });
     a.push({ cat: "Manage", key: "uninstall-npm", label: "Uninstall npm plugin (removes from opencode.json)" });
@@ -249,10 +251,10 @@ export function getPluginActions(pitem) {
     a.push({ key: "cancel", label: "Cancel" });
     return a;
   }
-  // Configure: shown only for plugins that use our core (their bundle answers
-  // `config schema`). Probed + cached on the item when the action menu opens.
-  if (pitem._cfg && pitem._cfg.items && pitem._cfg.items.length) {
-    a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + pitem._cfg.items.length + ")" });
+  // Configure: shown only for a plugin whose settings capability declared something editable.
+  var declaration = declarationFor(pitem.name);
+  if (declaration && declaration.items.length) {
+    a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + declaration.items.length + ")" });
   }
   if (pitem.updateAvail || !pitem.deployed) {
     a.push({ cat: "Update", key: "update", label: "Update now" });
@@ -281,57 +283,72 @@ export function getPluginActions(pitem) {
   return a;
 }
 
-// Probe a deployed plugin bundle for its config schema. A plugin built on our core
-// answers `node <bundle> config schema` with {name, defaults, current}; anything else
-// (non-core plugins, undeployed items, parse error) yields null -> no Configure action.
-// Runs for git AND npm plugins alike, an npm plugin built on our core is just as
-// probeable via its deployed bundle file.
-export function probeConfigSchema(pitem) {
-  if (!pitem || !pitem.deployed || pitem.foreign) return null;
-  var bundle = join(PLUGINS_DIR, (pitem.pluginFile || pitem.name + ".js"));
-  if (!existsSync(bundle)) return null;
-  try {
-    var out = execSync('node "' + bundle + '" config schema', { encoding: "utf-8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] });
-    var data = JSON.parse(String(out).trim());
-    if (!data || typeof data !== "object") return null;
-    return declarationOf(data, pitem.name, bundle);
-  } catch { return null; }
-}
-
-// Async twin of probeConfigSchema (uses exec, not execSync) so the Settings tab can probe
-// plugin schemas in the background without blocking the render; never resolves rejected.
-export function probeConfigSchemaAsync(pitem) {
+// Values only: a plugin's declared defaults and what is actually on disk. The declaration itself
+// (fields, actions, sections) comes from the settings capability; this channel exists because a
+// resolved config cannot say which keys are set and which are merely defaulted, and the editor's
+// "(default)" marker is exactly that distinction.
+export function probeConfigValuesAsync(bundle) {
   return new Promise(function (resolve) {
-    if (!pitem || !pitem.deployed || pitem.foreign) { resolve(null); return; }
-    var bundle = join(PLUGINS_DIR, (pitem.pluginFile || pitem.name + ".js"));
-    if (!existsSync(bundle)) { resolve(null); return; }
+    if (!bundle || !existsSync(bundle)) { resolve(null); return; }
     exec('node "' + bundle + '" config schema', { timeout: 8000 }, function (err, stdout) {
       if (err) { resolve(null); return; }
       try {
         var data = JSON.parse(String(stdout).trim());
         if (!data || typeof data !== "object") { resolve(null); return; }
-        resolve(declarationOf(data, pitem.name, bundle));
+        resolve({ defaults: data.defaults || {}, current: data.current || {} });
       } catch (e) { resolve(null); }
     });
   });
 }
 
-// A plugin's whole declaration as the Settings tab consumes it: editable rows plus the
-// actions and contributed sections it declared. A plugin offering neither settings nor
-// actions has nothing to configure, which is what yields null (no Configure entry).
-export function declarationOf(data, fallbackName, bundle) {
-  var items = buildConfigItems(data);
-  var actions = Array.isArray(data.actions) ? data.actions : [];
-  var screens = Array.isArray(data.screens) ? data.screens : [];
-  if (!items.length && !actions.length && !screens.length) return null;
-  return {
-    name: data.name || fallbackName,
-    bundle: bundle,
-    items: items,
-    actions: actions,
-    sections: Array.isArray(data.sections) ? data.sections : [],
-    screens: screens,
-  };
+// A plugin's whole settings declaration as the Settings tab and the config editor consume it. A
+// plugin offering neither settings nor actions has nothing to configure, which is what yields null.
+export function declarationOf(pluginId, bundle, schema, values) {
+  var items = buildConfigItems({
+    defaults: (values && values.defaults) || {},
+    current: (values && values.current) || {},
+    fields: (schema && schema.fields) || [],
+  });
+  var actions = (schema && Array.isArray(schema.actions)) ? schema.actions : [];
+  var sections = (schema && Array.isArray(schema.sections)) ? schema.sections : [];
+  if (!items.length && !actions.length) return null;
+  return { name: pluginId, bundle: bundle, items: items, actions: actions, sections: sections };
+}
+
+// Declarations are cached per plugin: reading one costs a capability call plus a child process, and
+// every settings render walks the whole list. An absent key means "not read yet" and a null value
+// means "read, and this plugin has nothing to configure".
+var DECLARATIONS = new Map();
+
+export function declarationFor(pluginId) {
+  return DECLARATIONS.has(pluginId) ? DECLARATIONS.get(pluginId) : undefined;
+}
+
+export async function readDeclaration(pluginId) {
+  var schema = await readSettingsSchema(pluginId);
+  var bundle = bundleFor(pluginId);
+  var values = await probeConfigValuesAsync(bundle);
+  var declaration = declarationOf(pluginId, bundle, schema, values);
+  DECLARATIONS.set(pluginId, declaration);
+  return declaration;
+}
+
+export function invalidateDeclaration(pluginId) {
+  DECLARATIONS.delete(pluginId);
+}
+
+// Every plugin that provides the settings capability in this home.
+export function settingsPluginIds() {
+  return providerIds("settings");
+}
+
+// Read every settings declaration once at startup, so a menu opened later is not waiting on a
+// child process to decide whether it has a Configure entry.
+export async function primeDeclarations() {
+  for (const pluginId of settingsPluginIds()) {
+    if (declarationFor(pluginId) !== undefined) continue;
+    await readDeclaration(pluginId);
+  }
 }
 
 function digPath(obj, dotKey) {
@@ -387,19 +404,6 @@ export function buildConfigItems(schema) {
     rows.push(configRow(field.key, value, def, cur !== undefined, field));
   }
   return rows;
-}
-
-// Run a plugin's declared action by shelling into its own bundle, the same route the
-// dashboard and the slash-command take. Returns "" on success, else the error text.
-export function runPluginAction(bundle, actionId) {
-  try {
-    execSync('node "' + bundle + '" ' + JSON.stringify(actionId), { timeout: 600000, stdio: ["ignore", "ignore", "pipe"], env: spawnEnv() });
-    return "";
-  } catch (e) {
-    // The bundle's own stderr says what went wrong; execSync's message only repeats the command.
-    var stderr = e && e.stderr ? String(e.stderr).trim() : "";
-    return stderr || (e && e.message) || "action failed";
-  }
 }
 
 // Persist one setting by shelling back into the plugin's own config CLI: `config set`
