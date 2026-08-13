@@ -4,7 +4,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { readJson } from "./json.js";
-import { join, dirname } from "path";
+import { join, dirname, basename } from "path";
 import { execSync, exec } from "child_process";
 import { REPOS_DIR, PLUGINS_DIR, PLUGIN_MANAGER_PACKAGE } from "./env.js";
 import { loadPlugins } from "./config.js";
@@ -237,7 +237,7 @@ export function getPluginActions(pitem) {
   if (pitem.type === "npm") {
     // managed via opencode.json, no disable state, only update/uninstall (+ Configure
     // when its settings declaration has something editable, same gate as git plugins)
-    var npmDeclaration = declarationFor(pitem.name);
+    var npmDeclaration = declarationFor(hostPluginId(pitem));
     if (npmDeclaration && npmDeclaration.items.length) {
       a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + npmDeclaration.items.length + ")" });
     }
@@ -252,7 +252,7 @@ export function getPluginActions(pitem) {
     return a;
   }
   // Configure: shown only for a plugin whose settings capability declared something editable.
-  var declaration = declarationFor(pitem.name);
+  var declaration = declarationFor(hostPluginId(pitem));
   if (declaration && declaration.items.length) {
     a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + declaration.items.length + ")" });
   }
@@ -283,6 +283,14 @@ export function getPluginActions(pitem) {
   return a;
 }
 
+// The id the plugin host knows a list item by. The host derives a plugin's id from its DEPLOYED
+// sidecar/bundle basename, which is not always the plugins.json name: an entry may name its own
+// pluginFile, and every bundle path in this repo is built from the same expression.
+export function hostPluginId(pitem) {
+  if (!pitem) return "";
+  return basename(pitem.pluginFile || (pitem.name + ".js"), ".js");
+}
+
 // Values only: a plugin's declared defaults and what is actually on disk. The declaration itself
 // (fields, actions, sections) comes from the settings capability; this channel exists because a
 // resolved config cannot say which keys are set and which are merely defaulted, and the editor's
@@ -295,7 +303,7 @@ export function probeConfigValuesAsync(bundle) {
       try {
         var data = JSON.parse(String(stdout).trim());
         if (!data || typeof data !== "object") { resolve(null); return; }
-        resolve({ defaults: data.defaults || {}, current: data.current || {} });
+        resolve({ name: typeof data.name === "string" ? data.name : null, defaults: data.defaults || {}, current: data.current || {} });
       } catch (e) { resolve(null); }
     });
   });
@@ -303,6 +311,8 @@ export function probeConfigValuesAsync(bundle) {
 
 // A plugin's whole settings declaration as the Settings tab and the config editor consume it. A
 // plugin offering neither settings nor actions has nothing to configure, which is what yields null.
+// `name` is the id every surface routes by; `configName` is what the plugin itself calls its config
+// file, which is the only thing that may be used as a path.
 export function declarationOf(pluginId, bundle, schema, values) {
   var items = buildConfigItems({
     defaults: (values && values.defaults) || {},
@@ -312,7 +322,14 @@ export function declarationOf(pluginId, bundle, schema, values) {
   var actions = (schema && Array.isArray(schema.actions)) ? schema.actions : [];
   var sections = (schema && Array.isArray(schema.sections)) ? schema.sections : [];
   if (!items.length && !actions.length) return null;
-  return { name: pluginId, bundle: bundle, items: items, actions: actions, sections: sections };
+  return {
+    name: pluginId,
+    configName: (values && values.name) || null,
+    bundle: bundle,
+    items: items,
+    actions: actions,
+    sections: sections,
+  };
 }
 
 // Declarations are cached per plugin: reading one costs a capability call plus a child process, and
@@ -343,12 +360,11 @@ export function settingsPluginIds() {
 }
 
 // Read every settings declaration once at startup, so a menu opened later is not waiting on a
-// child process to decide whether it has a Configure entry.
+// child process to decide whether it has a Configure entry. Concurrently, because each read costs a
+// spawn bounded at 8s: serially, one unresponsive bundle would hold up the first frame by itself.
 export async function primeDeclarations() {
-  for (const pluginId of settingsPluginIds()) {
-    if (declarationFor(pluginId) !== undefined) continue;
-    await readDeclaration(pluginId);
-  }
+  const pending = settingsPluginIds().filter(function (pluginId) { return declarationFor(pluginId) === undefined; });
+  await Promise.all(pending.map(function (pluginId) { return readDeclaration(pluginId); }));
 }
 
 function digPath(obj, dotKey) {

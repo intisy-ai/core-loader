@@ -14,20 +14,21 @@ import { hints, messageLine, scheduleRender } from "./common.js";
 
 // Read once into S.screenSpecs: screens() may be async and the sub-page list is walked on every
 // render frame. A row's action metadata comes from the same plugin's settings declaration, which is
-// where api keeps ActionSpec.
+// where api keeps ActionSpec. Plugins are read concurrently (each one's two reads stay ordered,
+// since the second is skipped when the first declared no screen) because this runs at boot, where a
+// plugin that answers slowly must not delay the ones that answer at once. Promise.all preserves
+// order, so the sub-page order is still the order the host activated the plugins in.
 export async function refreshScreenSpecs() {
-  const collected = [];
-  for (const pluginId of providerIds("screens")) {
+  const perPlugin = await Promise.all(providerIds("screens").map(async function (pluginId) {
     const specs = await readScreenSpecs(pluginId);
-    if (!specs.length) continue;
+    if (!specs.length) return [];
     const schema = await readSettingsSchema(pluginId);
     const actions = (schema && Array.isArray(schema.actions)) ? schema.actions : [];
-    for (const spec of specs) {
-      if (!spec || typeof spec.id !== "string" || typeof spec.label !== "string") continue;
-      collected.push({ plugin: pluginId, spec, actions });
-    }
-  }
-  S.screenSpecs = collected;
+    return specs
+      .filter((spec) => spec && typeof spec.id === "string" && typeof spec.label === "string")
+      .map((spec) => ({ plugin: pluginId, spec, actions }));
+  }));
+  S.screenSpecs = perPlugin.flat();
 }
 
 export function collectScreens(specs) {

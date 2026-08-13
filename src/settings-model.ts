@@ -1,6 +1,6 @@
 // Pure builder for the Settings tab: assembles the global settings section plus one
-// section per plugin that has a config schema, then the flat entry list the renderer and
-// key handler both walk: a "Global" header + its group, then a "Plugins" header + one
+// section per plugin declaring something configurable, then the flat entry list the renderer
+// and key handler both walk: a "Global" header + its group, then a "Plugins" header + one
 // group row per plugin. Headers are not selectable (nav skips them). Git-free: the
 // Versioning tab owns its own UI.
 import { buildConfigItems, declarationFor, settingsPluginIds } from "./plugins.js";
@@ -38,6 +38,13 @@ export function buildGlobalSection(): SettingsSection {
   return { label: "Global", kind: "global", file: "settings.json", bundle: null, items };
 }
 
+// The config file a declaration edits. This is read back as a real path (the editor header, and the
+// Versioning tab's key history looks the file up by it), so it follows the config name the plugin
+// reports for ITSELF, never the id surfaces route by. One helper, so a second caller cannot drift.
+export function configFileFor(cfg: any): string {
+  return ((cfg && cfg.configName) || (cfg && cfg.name)) + ".json";
+}
+
 function actionRow(action: any): SettingsAction {
   const row: SettingsAction = { kind: "action", key: action.id, label: action.label };
   if (typeof action.description === "string") row.description = action.description;
@@ -52,7 +59,7 @@ function actionRow(action: any): SettingsAction {
 // listed empty.
 export function splitBySections(cfg: any): SettingsSection[] {
   const name = cfg.name;
-  const file = name + ".json";
+  const file = configFileFor(cfg);
   const itemByKey = new Map<string, SettingsRow>((cfg.items || []).map((i: SettingsItem) => [i.key, i]));
   const actionById = new Map<string, any>((cfg.actions || []).map((a: any) => [a.id, a]));
   const claimed = new Set<string>();
@@ -99,10 +106,10 @@ export function buildPluginSections(): SettingsSection[] {
 export type SettingsEntry =
   | { type: "header"; label: string }
   | { type: "group"; section: SettingsSection }
-  | { type: "loading"; label: string };   // a plugin whose config schema is still being probed
+  | { type: "loading"; label: string };   // a plugin whose declaration has not landed yet
 
-// `sections` holds only fully-probed groups (Global + plugins with settings); `loading`
-// holds the names of plugins still being probed in the background (rendered with a spinner).
+// `sections` holds only resolved groups (Global + plugins with settings); `loading` holds the
+// ids of plugins whose declaration is still being read in the background (rendered with a spinner).
 export function buildSettingsEntries(sections: SettingsSection[], loading: string[] = []): SettingsEntry[] {
   const entries: SettingsEntry[] = [];
   const globals = sections.filter((s) => s.kind === "global");

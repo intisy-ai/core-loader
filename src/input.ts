@@ -12,7 +12,7 @@ import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
 import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater, clearUpdaterCache } from "./updater.js";
 import { openProject, openProjectSession, listSessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
-import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, buildConfigItems, setPluginConfig, declarationFor, invalidateDeclaration, readDeclaration } from "./plugins.js";
+import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, buildConfigItems, setPluginConfig, declarationFor, hostPluginId, invalidateDeclaration, readDeclaration } from "./plugins.js";
 import { runSettingsAction } from "./plugin-surface.js";
 import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync } from "./marketplace.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
@@ -22,7 +22,7 @@ import { refreshSettings, settingsSubPages } from "./views/settings.js";
 import { refreshScreen, runScreenAction, resolveScreenAction } from "./views/screens.js";
 import { getConfigLedger, configLedgerReady, configLedgerInstalled, preloadConfigLedger } from "./config-ledger.js";
 import { refreshVersioning, reconcileConfigLedger, VG_INIT_OPTS, VG_MENU_ITEMS } from "./views/versioning.js";
-import { buildGlobalSection, buildPluginSections, splitBySections } from "./settings-model.js";
+import { buildGlobalSection, buildPluginSections, configFileFor, splitBySections } from "./settings-model.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
 import { emitLoaderActivity } from "./activity-seam.js";
@@ -30,13 +30,15 @@ import { emitLoaderActivity } from "./activity-seam.js";
 // A declared action runs through the plugin's own settings capability. One declaring `confirm` arms
 // on the first enter and runs on the second, which keeps a destructive action two keystrokes away
 // without a modal the config screen has no room for. The run is bounded and asynchronous, so the
-// editor stays on screen and busy while it happens.
+// editor stays on screen and busy while it happens; the trailing "..." is what animates the spinner.
 function activateConfigAction(citem) {
   var pluginId = S.configTarget && S.configTarget.plugin;
   if (!pluginId) return;
   if (citem.confirm && S.configConfirm !== citem.key) { S.configConfirm = citem.key; return; }
   S.configConfirm = null;
   S.busy = true;
+  setBusyMessage(citem.label + "...");
+  render();
   runSettingsAction(pluginId, citem.key).then(function (answer) {
     S.busy = false;
     if (!answer || answer.ok !== true) { flash(citem.label + ": " + ((answer && answer.message) || "action failed")); render(); return; }
@@ -44,6 +46,16 @@ function activateConfigAction(citem) {
     flash(answer.message || (citem.label + ": done."));
     render();
   });
+}
+
+// Repaint the written row from the value that was just saved, before the authoritative re-read
+// lands. The re-read is asynchronous, so without this the frame drawn right after the keystroke
+// still shows the old value under a message saying it changed, and a second Enter would compute its
+// next value from the stale one and write the same thing again instead of toggling back.
+function markRowSaved(row, saved) {
+  if (!row) return;
+  row.value = (row.type === "number" && saved !== "" && !isNaN(Number(saved))) ? Number(saved) : saved;
+  row.isSet = true;
 }
 
 // Enter on a config row: a boolean flips, a field with a declared choice list steps to
@@ -70,6 +82,7 @@ function activateConfigItem(citem, textMode) {
     ? setGlobalSetting(citem.key, String(next))
     : setPluginConfig(S.configTarget.bundle, citem.key, String(next));
   if (err) { flash(citem.key + ": " + err); return; }
+  markRowSaved(citem, next);
   refreshConfigItems();
   flash(citem.key + " = " + next + " (restart to apply)");
 }
@@ -788,9 +801,9 @@ export function handlePluginKey(key) {
         });
       }
       else if (action === "configure") {
-        var cfg = declarationFor(pitem.name);
+        var cfg = declarationFor(hostPluginId(pitem));
         if (cfg && cfg.items && cfg.items.length) {
-          S.configTarget = { ...cfg, plugin: cfg.name };
+          S.configTarget = { ...cfg, plugin: cfg.name, file: configFileFor(cfg) };
           S.configItems = cfg.items;
           S.configConfirm = null;
           S.cfgcursor = 0; S.cfgScrollOff = 0;
@@ -1592,7 +1605,11 @@ export function handleConfigInputData(buf) {
     if (S.configTarget && key) {
       var serr = S.configTarget.global ? setGlobalSetting(key, val) : setPluginConfig(S.configTarget.bundle, key, val);
       if (serr) flash(key + ": " + serr);
-      else { refreshConfigItems(); flash(key + " saved (restart to apply)."); }
+      else {
+        markRowSaved((S.configItems || []).find(function (row) { return row.key === key; }), val);
+        refreshConfigItems();
+        flash(key + " saved (restart to apply).");
+      }
     }
     return;
   }
