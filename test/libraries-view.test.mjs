@@ -1,6 +1,6 @@
-// The Libraries tab reports what is resolvable from this home. The reading comes from
-// plugin-updater (the thing that fills the store), so core-loader keeps no second copy of
-// the rules and has nothing to show when the updater is absent.
+// The Libraries tab reports what is resolvable from this home. The reading comes from the
+// plugin manager (the thing that fills the store), so core-loader keeps no second copy of
+// the rules and has nothing to show when no manager is loadable.
 import { describe, it, beforeEach, afterEach } from "vitest";
 import assert from "node:assert";
 import { createRequire } from "node:module";
@@ -96,13 +96,13 @@ describe("librariesTab", () => {
     assert.match(t.body.join("\n"), /unused/);
   });
 
-  it("points at the updater when it is not installed rather than rendering an empty tab", () => {
+  it("points at the plugin manager when it is not installed rather than rendering an empty tab", () => {
     S.UPDATER_MODULE = null;
     const t = collect();
 
     librariesTab.render(t.ctx, t.api);
 
-    assert.match(t.body.join("\n"), /plugin-updater/);
+    assert.match(t.body.join("\n"), /plugin manager/);
   });
 
   it("says so when the home holds nothing yet", () => {

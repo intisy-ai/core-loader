@@ -6,9 +6,9 @@ import { existsSync } from "fs";
 import { readJson } from "./json.js";
 import { join, dirname, basename } from "path";
 import { execSync, exec } from "child_process";
-import { REPOS_DIR, PLUGINS_DIR, PLUGIN_MANAGER_PACKAGE } from "./env.js";
+import { REPOS_DIR, PLUGINS_DIR } from "./env.js";
 import { loadPlugins } from "./config.js";
-import { getFolderName, loadNpmPlugins, getUpdaterVersion, getUpdater } from "./updater.js";
+import { getFolderName, loadNpmPlugins, getUpdaterVersion, getUpdater, resolvedManager } from "./updater.js";
 import { S } from "./state.js";
 import { spawnEnv } from "./activity-seam.js";
 import { bundleFor, ledgerRowFor, providerIds, readSettingsSchema } from "./plugin-surface.js";
@@ -20,9 +20,9 @@ export function gitText(args, cwd) {
   } catch { return ""; }
 }
 
-// Reads the update-status cache plugin-updater WRITES (`<configDir>/cache/
+// Reads the update-status cache the plugin manager WRITES (`<configDir>/cache/
 // plugin-updates.json`, configDir = dirname(REPOS_DIR)), the single source of
-// truth for real remote-vs-local update state. plugin-updater computes this
+// truth for real remote-vs-local update state. The plugin manager computes this
 // during earlyLaunch (git fetch + npm registry checks); the TUI just reads it so
 // the Installed list reflects reality on load, not only after a manual "F".
 // Best-effort like every other cache read in this codebase: any failure (no
@@ -122,10 +122,9 @@ export function fetchPluginRemotes(pluginItems, done) {
       var refs = ["origin/HEAD", "origin/main", "origin/master"];
       var ri = 0;
       var finish = function() {
-        // The same test plugin-updater's cache.ts makes, deliberately repeated rather than
-        // shared: this library carries no core submodule (see PLUGIN_MANAGER_PACKAGE in env.ts),
-        // so sharing one boolean would mean adding one. Only reached when the cache has no
-        // answer for this plugin; a cached verdict wins above.
+        // The same test the manager's own update cache makes, deliberately repeated rather than
+        // shared: this library carries no core submodule, so sharing one boolean would mean adding
+        // one. Only reached when the cache has no answer for this plugin; a cached verdict wins above.
         p.updateAvail = !!(p.localHead && p.remoteHead && p.localHead !== p.remoteHead);
         remaining--;
         if (remaining === 0 && done) done();
@@ -146,12 +145,13 @@ export function buildCombinedPluginList() {
   var git = buildPluginList();
   var savedPlugins = loadPlugins();
   var cache = readUpdateCache();
-  // Under OpenCode plugin-updater IS an npm plugin (opencode.jsonc); list it as the
+  // Under OpenCode the manager IS an npm plugin (opencode.jsonc); list it as the
   // active engine. It's transient (opencode fetches it at runtime) so it has no
   // resolvable version; mark it active rather than "not installed". Under Claude
   // loadNpmPlugins is empty (no opencode.jsonc), so no npm rows appear at all.
   var npm = loadNpmPlugins().map(function(np) {
-    var isEngine = np.name === PLUGIN_MANAGER_PACKAGE;
+    var manager = resolvedManager();
+    var isEngine = !!manager && (np.name === manager.npmName || np.name === manager.id);
     var ncEntry = cache && cache.plugins && cache.plugins[np.name];
     var npmUpdateAvail = !!(ncEntry && ncEntry.kind === "npm" && ncEntry.updateAvailable);
     return {

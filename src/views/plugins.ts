@@ -6,11 +6,11 @@ import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL,
 import { selectionKey } from "../selection.js";
 import { S } from "../state.js";
 import { loadPlugins } from "../config.js";
-import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath } from "../updater.js";
+import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath, managerBootstrapCommand, resolvedManager } from "../updater.js";
 import { getPluginActions, hostPluginId, readUpdateCache } from "../plugins.js";
-import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
+import { getMarketplaceActions } from "../marketplace.js";
 import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR, APP_NAME } from "../env.js";
-import { hints, messageLine, spinnerFrame, marketplaceRow, updaterInstallProgress } from "./common.js";
+import { hints, messageLine, spinnerFrame, marketplaceRow } from "./common.js";
 import { diagnosticLines } from "../plugin-diagnostics.js";
 import { ledgerRowFor } from "../plugin-surface.js";
 
@@ -100,43 +100,40 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
 export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
   var nameW = Math.min(32, Math.max(20, cols - 44));
 
-  // "hasUpdater" must mean the updater is actually INSTALLED AND LOADABLE, not
-  // merely listed in plugins.json. Basing it on the listing (name.includes("updater"))
-  // made the git-plugins tab look usable when the updater was listed-but-not-installed:
-  // every action then hit getUpdater()===null and silently no-op'd ("looked like it was
-  // updating"). getUpdater() resolves + loads the deployed bundle, so it's the true
-  // functional test. Cache it: recompute only while not yet loaded (the "updater
-  // missing" prompt has no list to navigate); once loaded it can't vanish mid-session.
+  // "hasUpdater" must mean the manager is actually INSTALLED AND LOADABLE, not merely listed:
+  // basing it on the listing made the tab look usable when the manager was listed-but-absent, and
+  // every action then silently no-op'd. getUpdater() answers with the imported module, so it is the
+  // true functional test. Cache it: recompute only while not yet loaded, since it cannot vanish
+  // mid-session.
   if (S.hasUpdater !== true) {
     var upd = getUpdater();
     S.hasUpdater = !!(upd && typeof upd.updatePluginPublic === "function");
   }
   var hasUpdater = S.hasUpdater;
 
-  // The updater is the foundation: every plugin (git AND npm) is installed through it.
-  // Without it there is nothing to manage or install, so BOTH the Installed and
-  // Marketplace surfaces are gated to a single install-updater action. (Providers/auth
-  // is unrelated and stays reachable via Tab.)
-  // While installUpdater runs, show a step checklist in the BODY (its onStep callback
-  // re-renders between the synchronous steps) instead of a raw write under the footer.
-  if (S.updaterInstalling) {
-    updaterInstallProgress(pushBody, pushFoot, barW);
-    return;
-  }
-
+  // Every plugin is installed and updated by whichever plugin declares plugin-management. With none
+  // loadable there is nothing to manage, so both the Installed and Marketplace surfaces gate to one
+  // instruction. The command is shown for the operator to run: npx always fetches the published
+  // package, so this library never runs it.
   if (!hasUpdater && (S.pluginSubPage === "installed" || S.pluginSubPage === "marketplace")) {
-    pushBody("  " + BOLD + BAD + "Updater Plugin Missing" + RST, false);
-    pushBody("  The hub installs and manages every plugin through the updater engine.", false);
+    var bootstrap = managerBootstrapCommand();
+    pushBody("  " + BOLD + BAD + "No plugin manager installed" + RST, false);
+    pushBody("  Plugins are installed and updated by the plugin that declares plugin-management.", false);
+    pushBody("  None is loadable in this home.", false);
     pushBody("", false);
-    pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install it. Nothing else is available until it is.", false);
+    if (bootstrap) {
+      pushBody("  " + GRAY + "Install it yourself, then press " + WHITE + "Enter" + GRAY + " to re-check:" + RST, false);
+      pushBody("    " + WHITE + bootstrap + RST, false);
+    } else {
+      pushBody("  " + GRAY + "No declared marketplace offers one. Add a source to config/marketplaces.json." + RST, false);
+    }
     pushBody("", false);
     pushFoot("  " + rule(barW));
-    pushFoot(hints([["enter", "install"], ["q", "quit"]]));
-    S.globalKeyHandler = "updater_install";
+    pushFoot(hints([["enter", "re-check"], ["q", "quit"]]));
+    S.globalKeyHandler = "manager_recheck";
     return;
-  } else {
-    if (S.globalKeyHandler === "updater_install") S.globalKeyHandler = null;
   }
+  if (S.globalKeyHandler === "manager_recheck") S.globalKeyHandler = null;
 
   if (S.mode === "pcommits") {
     pushBody("  " + BOLD + WHITE + "Select commit for " + S.pluginItems[S.pcursor].name + RST, false);
@@ -374,7 +371,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       // catalog entries; capability/seed-sourced rows and Claude (git-only) show none.
       var methodBadge = (IS_CLAUDE || mitem.capability || mitem.seed) ? ""
         : mitem.installed ? "    "
-        : (selectInstallMethod(mitem, S.hasUpdater) === "git" ? (OK + "git " + RST) : (INFO + "npm " + RST));
+        : (OK + "git " + RST);
       // status circle: installed = dim ●, selected = accent ◉, selectable = ○
       var circle = mitem.installed ? (DIM + "●" + RST)
         : (S.mkSelected[selectionKey(mitem)] ? (ACCENT + "◉" + RST) : (GRAY + "○" + RST));
@@ -447,7 +444,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       (npmCount > 0 ? ", " + GRAY + npmCount + " npm" + GRAY : "") +
       ")" + RST);
 
-  // Makes background auto-updates (applied by plugin-updater's earlyLaunch, before
+  // Makes background auto-updates (applied at app start, before
   // the TUI ever ran) visible; otherwise a silent pull looks indistinguishable from
   // "nothing happened". Reads the same cache buildPluginList/buildCombinedPluginList
   // already consulted; absent cache (never checked yet) shows nothing.
@@ -468,9 +465,9 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
   // (no npm section), under OpenCode the engine is its own npm row so it's omitted here.
   var abbr = function(pth) { return (pth && HOME && String(pth).indexOf(HOME) === 0) ? "~" + String(pth).slice(HOME.length) : pth; };
   if (IS_CLAUDE) {
+    var mref = resolvedManager();
     var uv = getUpdaterVersion();
-    var upath = getUpdaterPath();
-    pushSticky("  " + DIM + "updater " + (uv ? "v" + uv : "(resolving)") + GRAY + " · press " + WHITE + "E" + GRAY + " to update" + (upath ? " · " + abbr(upath) : "") + RST);
+    pushSticky("  " + DIM + "manager " + (mref ? mref.id : "(unresolved)") + (uv ? " v" + uv : "") + GRAY + (getUpdaterPath() ? " · " + abbr(getUpdaterPath()) : "") + RST);
     pushSticky("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + RST);
   } else {
     pushSticky("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + " · npm " + abbr(HOME + "/.cache/opencode/packages") + RST);

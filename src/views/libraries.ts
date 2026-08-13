@@ -3,7 +3,7 @@
 // libraries plugins stopped inlining, so a plugin that will not load is usually one whose
 // library is missing or at the wrong version, and that is invisible everywhere else.
 //
-// The reading comes from plugin-updater, which is the thing that fills the store; the loader
+// The reading comes from the plugin manager, which is the thing that fills the store; the loader
 // keeps no second copy of the rules. Without the updater there is no store to read.
 
 import { CONFIG_DIR } from "../env.js";
@@ -30,7 +30,7 @@ export var librariesTab = {
   render: function(ctx, api) {
     var reading = readLibraries();
     if (!reading) {
-      api.pushBody("  " + api.GRAY + "Install plugin-updater to see what is installed here." + api.RST, false);
+      api.pushBody("  " + api.GRAY + "Install a plugin manager to see what is installed here." + api.RST, false);
       api.pushFoot("  " + api.DIM + "tab switch · q quit" + api.RST);
       return;
     }

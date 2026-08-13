@@ -10,7 +10,7 @@ import { S } from "./state.js";
 import { librariesTab } from "./views/libraries.js";
 import { APP_NAME, CLI_CMD, NPM_PKG, CONFIG_DIR, CACHE_DIR, UPDATE_CHECK_PATH, REPOS_DIR, PLUGINS_DIR, tuiLog } from "./env.js";
 import { hideCur, showCur, cleanup } from "./out.js";
-import { getFolderName, installUpdater, clearUpdaterCache, preloadUpdater } from "./updater.js";
+import { getFolderName, clearUpdaterCache, preloadUpdater } from "./updater.js";
 import { startPluginHost } from "./plugin-surface.js";
 import { refreshScreenSpecs } from "./views/screens.js";
 import { loadConfig, saveConfig, migrateConfigs, loadPlugins, autoUpdateCheck, updateCheckDelayMs, updateCheckIntervalHours, defaultTab } from "./config.js";
@@ -317,27 +317,19 @@ function onData(buf) {
 }
 
 function dispatchInput(buf, key) {
-  if (S.globalKeyHandler === "updater_install") {
-    // The updater gate offers install-or-quit, but must NOT trap the arrow keys: ← →
-    // still switch tabs (the other tabs don't need the updater). Everything else is
-    // swallowed here so stray keys don't act on the hidden list behind the gate.
+  if (S.globalKeyHandler === "manager_recheck") {
+    // The gate offers re-check-or-quit but must NOT trap the arrow keys: the other tabs need no
+    // plugin manager. Everything else is swallowed so a stray key cannot act on the hidden list.
     if (key === "enter" || key === "space") {
-      // Show progress IN the TUI body (a step checklist), not a raw write below the
-      // footer. installUpdater is synchronous, so onStep re-renders between steps.
-      S.updaterInstalling = true; S.updaterSteps = []; S.globalKeyHandler = null;
-      render();
-      var installErr = installUpdater(CONFIG_DIR, APP_NAME, function (label) { S.updaterSteps.push(label); render(); });
-      S.updaterInstalling = false;
-      if (installErr) { tuiLog(installErr); flash(installErr); }
-      clearUpdaterCache();   // installUpdater ran the engine; re-import it now so the gate lifts
+      clearUpdaterCache();
       preloadUpdater().catch(function () {}).then(function () {
-        S.pluginItems = buildCombinedPluginList();   // re-detects the engine; if still unresolved, gate re-shows
+        S.pluginItems = buildCombinedPluginList();
         render();
       });
       return;
     }
     if (key === "escape" || key === "q" || buf[0] === 3) process.exit(0);
-    if (key !== "left" && key !== "right") return;   // ← → fall through to tab switching
+    if (key !== "left" && key !== "right") return;
   }
   
   if (S.mode === "input") { handleInputData(buf); render(); return; }

@@ -8,7 +8,7 @@ import { homedir } from "os";
 import { subdirName } from "./home-paths.js";
 import officialPluginsData from "../data/official-plugins.json";
 
-// plugin-updater runs its full update sequence on import and logs to the
+// The manager runs its full update sequence on import and logs to the
 // console; library mode limits it to the API so nothing prints over the TUI
 process.env.PLUGIN_UPDATER_LIBRARY_MODE = "1";
 
@@ -19,10 +19,6 @@ export const CLI_CMD = process.env.HUB_CLI_CMD || "opencode";
 // so the loader hides the npm section + npm install option under Claude.
 export const IS_CLAUDE = String(CLI_CMD).indexOf("claude") !== -1 || String(APP_NAME).indexOf("Claude") !== -1;
 export const NPM_PKG = process.env.HUB_NPM_PKG || "opencode-ai";
-// The plugin manager's package name. This library cannot ask core which plugin holds the
-// plugin-management capability (a loader carries core, this does not), and a module cannot be
-// resolved without its name anyway, so the name lives here once instead of in every call site.
-export const PLUGIN_MANAGER_PACKAGE = "plugin-updater";
 export const CONFIG_DIR = process.env.HUB_CONFIG_DIR || join(HOME, ".config", "opencode");
 
 export const REPOS_SUBDIR = subdirName("HUB_REPOS_SUBDIR", "repos");
@@ -208,7 +204,7 @@ export const HELP_BINDINGS = {
   plugins: [
     ["^v / WS", "Move"], ["Enter", "Plugin actions / open marketplace"], ["Tab", "Installed / Marketplace / Providers"],
     ["F", "Check for updates"], ["R", "Refresh list / catalog"], ["U", "Update selected"],
-    ["A", "Update all"], ["E", "Update updater engine"], ["D", "Disable selected"], ["I", "Quick install (marketplace)"],
+    ["A", "Update all"], ["D", "Disable selected"], ["I", "Quick install (marketplace)"],
     ["/", "Search (marketplace)"], ["[ / ]", "Jump group (marketplace)"], ["Esc", "Back out of a marketplace"],
     ["R", "Reveal a secret value (Configure editor only)"],
     ["<- ->", "Switch page"], ["Q", "Quit"],
