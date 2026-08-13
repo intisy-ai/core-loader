@@ -67,6 +67,9 @@ export const S = {
   configEditKey: "",
   // the action row armed by a first enter, waiting for the confirming second one
   configConfirm: null,
+  // The one config row whose secret value is currently shown, by key. Cleared by moving the cursor
+  // or leaving the editor, so a revealed secret never survives a navigation.
+  cfgReveal: "",
 
   // Activity page: read-only feed from the injected `capabilities.activity` reader.
   // activityRecords caches the last read() result; refreshed on tab entry and 'r'.

@@ -71,6 +71,11 @@ export function trunc(s, len) {
   return res + "...";
 }
 
+/** Renders a secret as a fixed-width mask, so its length is not leaked by the display. */
+export function secretMask(value: unknown): string {
+  return (value === undefined || value === null || value === "") ? "(unset)" : "••••••••";
+}
+
 export function timeAgo(ts) {
   if (!ts) return "--";
   var d = Date.now() - ts;

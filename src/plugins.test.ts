@@ -23,14 +23,14 @@ describe("declarationOf", () => {
     expect(declarationOf("p", "/bundle.js", {}, { defaults: {}, current: {} })).toBeNull();
   });
 
-  // A row's `type` is inferred from the value, so the declared `secret` does not reach the editor
-  // and the terminal prints the token as it stands. That is a known gap this pins as it is, not as
-  // it should be: masking is a rendering decision, and the row-building this asserts is unaffected.
-  it("builds editable rows from the probed values, typed by the value rather than by the declaration", () => {
+  it("types a row by the plugin's declaration when it made one, so a secret can be masked", () => {
     const declaration = declarationOf("p", "/bundle.js", { fields: [{ key: "token", type: "secret" }] }, values);
-    expect(declaration.name).toBe("p");
-    expect(declaration.bundle).toBe("/bundle.js");
-    expect(declaration.items).toEqual([{ key: "token", value: "abc", def: "", isSet: true, type: "string" }]);
+    expect(declaration.items).toEqual([{ key: "token", value: "abc", def: "", isSet: true, type: "secret" }]);
+  });
+
+  it("falls back to the value's own type for a key the plugin declared no field for", () => {
+    const declaration = declarationOf("p", "/bundle.js", {}, { defaults: { retries: 3 }, current: {} });
+    expect(declaration.items).toEqual([{ key: "retries", value: 3, def: 3, isSet: false, type: "number" }]);
   });
 
   it("carries the declared actions and sections through", () => {

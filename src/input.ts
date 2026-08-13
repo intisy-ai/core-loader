@@ -68,14 +68,14 @@ function activateConfigItem(citem, textMode) {
   S.configConfirm = null;
   var next = null;
   if (citem.type === "boolean") next = !citem.value;
-  else if (Array.isArray(citem.options) && citem.options.length) {
+  else if (citem.type !== "secret" && Array.isArray(citem.options) && citem.options.length) {
     var values = citem.options.map(function (o) { return typeof o === "string" ? o : o.value; });
     var at = values.indexOf(String(citem.value));
     next = values[(at + 1) % values.length];
   }
   if (next === null) {
     S.configEditKey = citem.key;
-    S.inputBuf = (citem.value === undefined || citem.value === null) ? "" : String(citem.value);
+    S.inputBuf = (citem.value === undefined || citem.value === null || citem.type === "secret") ? "" : String(citem.value);
     S.mode = textMode;
     return;
   }
@@ -862,9 +862,10 @@ export function handlePluginKey(key) {
     else if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; }
   } else if (S.mode === "pconfig") {
     var citem = S.configItems[S.cfgcursor];
-    if (key === "up" || key === "w") { S.configConfirm = null; S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
-    else if (key === "down" || key === "s") { S.configConfirm = null; S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
-    else if (key === "escape" || key === "q" || key === "left") { S.configConfirm = null; S.mode = "pactions"; }
+    if (key === "up" || key === "w") { S.configConfirm = null; S.cfgReveal = ""; S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
+    else if (key === "down" || key === "s") { S.configConfirm = null; S.cfgReveal = ""; S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
+    else if (key === "escape" || key === "q" || key === "left") { S.configConfirm = null; S.cfgReveal = ""; S.mode = "pactions"; }
+    else if (key === "r" && citem && citem.type === "secret") { S.cfgReveal = S.cfgReveal === citem.key ? "" : citem.key; }
     else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
   } else if (S.mode === "confirm") {
     if (key === "y") {
@@ -1104,9 +1105,10 @@ export function handleSettingsKey(key) {
     // Shared config editor: cursor nav + boolean toggle / open text input.
     // pcfginput text is captured by handleConfigInputData in the onData router.
     var citem = S.configItems[S.cfgcursor];
-    if (key === "up" || key === "w") { S.configConfirm = null; S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
-    else if (key === "down" || key === "s") { S.configConfirm = null; S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
-    else if (key === "escape" || key === "q" || key === "left") { S.configConfirm = null; S.mode = "list"; }
+    if (key === "up" || key === "w") { S.configConfirm = null; S.cfgReveal = ""; S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
+    else if (key === "down" || key === "s") { S.configConfirm = null; S.cfgReveal = ""; S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
+    else if (key === "escape" || key === "q" || key === "left") { S.configConfirm = null; S.cfgReveal = ""; S.mode = "list"; }
+    else if (key === "r" && citem && citem.type === "secret") { S.cfgReveal = S.cfgReveal === citem.key ? "" : citem.key; }
     else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
     return;
   }

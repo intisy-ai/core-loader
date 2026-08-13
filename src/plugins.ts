@@ -389,8 +389,10 @@ function digPath(obj, dotKey) {
   return node;
 }
 
+// A declared type outranks the value's own: a secret holding a string is still a secret, and only
+// the declaration can say so.
 function configRow(key, value, def, isSet, field) {
-  var item = { key: key, value: value, def: def, isSet: isSet, type: typeof value };
+  var item = { key: key, value: value, def: def, isSet: isSet, type: (field && typeof field.type === "string") ? field.type : typeof value };
   // A declared choice list turns a free-text row into one that steps through its options.
   if (field && Array.isArray(field.options) && field.options.length) item.options = field.options;
   return item;

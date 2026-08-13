@@ -2,7 +2,7 @@
 // Plugins page rendering: plugin rows (git + npm + engine), the installed /
 // marketplace / custom sub-pages, and the action/commit menus.
 
-import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL, stringWidth, pad, trunc, timeAgo, ACCENT, OK, BAD, INFO, rule } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL, stringWidth, pad, trunc, timeAgo, ACCENT, OK, BAD, INFO, rule, secretMask } from "../format.js";
 import { selectionKey } from "../selection.js";
 import { S } from "../state.js";
 import { loadPlugins } from "../config.js";
@@ -174,6 +174,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       var valStr;
       if (editing) valStr = BG_SEL + " " + S.inputBuf + BOLD + "|" + RST;
       else if (it.type === "boolean") valStr = (it.value ? OK + "true" : GRAY + "false") + RST;
+      else if (it.type === "secret" && S.cfgReveal !== it.key) valStr = GRAY + secretMask(it.value) + RST;
       else valStr = WHITE + JSON.stringify(it.value) + RST;
       var mark = it.isSet ? "" : (GRAY + " (default)" + RST);
       var carrow = csel ? (ACCENT + " ❯ " + RST) : "   ";
@@ -184,8 +185,9 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
     pushBody("", false);
     if (S.message) pushFoot(messageLine(cols));
     pushFoot("  " + rule(barW));
+    var hasSecret = S.configItems.some(function (row) { return row.type === "secret"; });
     if (S.mode === "pcfginput") pushFoot(hints([["enter", "save"], ["esc", "cancel"]]));
-    else pushFoot(hints([["↑↓", "move"], ["enter", "edit/toggle"], ["esc", "back"]]));
+    else pushFoot(hints(hasSecret ? [["↑↓", "move"], ["enter", "edit/toggle"], ["r", "reveal"], ["esc", "back"]] : [["↑↓", "move"], ["enter", "edit/toggle"], ["esc", "back"]]));
     return;
   }
 

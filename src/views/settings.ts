@@ -3,7 +3,7 @@
 // screen. Plugin declarations are read in the BACKGROUND (async) with a spinner, so
 // entering the tab never blocks; plugin rows show "loading…" until their declaration lands.
 
-import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule, secretMask } from "../format.js";
 import { S } from "../state.js";
 import { tuiLog } from "../env.js";
 import { buildGlobalSection, buildSettingsEntries, firstSelectableIndex, splitBySections } from "../settings-model.js";
@@ -111,6 +111,7 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
       } else {
         if (editing) valStr = BG_SEL + " " + S.inputBuf + BOLD + "|" + RST;
         else if (it.type === "boolean") valStr = (it.value ? OK + "true" : GRAY + "false") + RST;
+        else if (it.type === "secret" && S.cfgReveal !== it.key) valStr = GRAY + secretMask(it.value) + RST;
         else valStr = WHITE + JSON.stringify(it.value) + RST;
         mark = it.isSet ? "" : (GRAY + " (default)" + RST);
       }
@@ -122,8 +123,9 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     pushBody("", false);
     if (S.message) pushFoot(messageLine(cols));
     pushFoot("  " + rule(barW));
+    var hasSecret = S.configItems.some(function (row) { return row.type === "secret"; });
     if (S.mode === "pcfginput") pushFoot(hints([["enter", "save"], ["esc", "cancel"]]));
-    else pushFoot(hints([["↑↓", "move"], ["enter", "edit/toggle/run"], ["esc", "back"]]));
+    else pushFoot(hints(hasSecret ? [["↑↓", "move"], ["enter", "edit/toggle/run"], ["r", "reveal"], ["esc", "back"]] : [["↑↓", "move"], ["enter", "edit/toggle/run"], ["esc", "back"]]));
     return;
   }
 
