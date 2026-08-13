@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { homePaths } from "./home-paths.js";
@@ -143,6 +143,24 @@ describe("readCatalog", () => {
     expect(logged.some((line) => line.includes("demo-org"))).toBe(true);
   });
 
+  it("bounds how many candidates one source is read at a time", async () => {
+    const listed = Array.from({ length: 30 }, (_, index) => ({
+      name: `repo-${index}`, html_url: `https://github.com/demo-org/repo-${index}`, description: "", topics: [], archived: false,
+    }));
+    let inFlight = 0;
+    let peak = 0;
+    const watching = async (url: string): Promise<unknown> => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight--;
+      return url.includes("api.github.com") ? listed : null;
+    };
+    await readCatalog([ORG], { fetchJson: watching });
+    expect(peak).toBeLessThanOrEqual(8);
+    expect(peak).toBeGreaterThan(1);
+  });
+
   it("the first source to claim an id keeps it", async () => {
     const first = { entries: [{ name: "manager", url: "https://github.com/demo-org/manager.git", description: "first" }] };
     const fetchJson = async (url: string): Promise<unknown> => {
@@ -180,7 +198,7 @@ describe("queryCapability", () => {
     const paths = homePaths(home);
     const empty = async (): Promise<unknown> => null;
     let calls = 0;
-    const counting = async (url: string): Promise<unknown> => { calls++; return empty(); };
+    const counting = async (): Promise<unknown> => { calls++; return empty(); };
     expect(await queryCapability("plugin-management", [ORG], paths, 3600000, { fetchJson: counting, now: () => 1000 })).toEqual([]);
     const after = calls;
     expect(await queryCapability("plugin-management", [ORG], paths, 3600000, { fetchJson: counting, now: () => 1000 })).toEqual([]);

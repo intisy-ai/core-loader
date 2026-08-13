@@ -218,6 +218,25 @@ async function firstRef(
   return null;
 }
 
+/** How many candidates one source is read at a time. */
+const CANDIDATE_BATCH = 8;
+
+/**
+ * Maps over items a batch at a time, keeping input order.
+ *
+ * @remarks
+ * Each candidate costs up to three sequential raw reads, so an unbounded fan-out over a large
+ * organisation issues hundreds of near-simultaneous requests and is throttled into failing, which
+ * reads as an empty catalog rather than as a rate limit.
+ */
+async function inBatches<T, R>(items: T[], size: number, map: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  for (let start = 0; start < items.length; start += size) {
+    results.push(...(await Promise.all(items.slice(start, start + size).map(map))));
+  }
+  return results;
+}
+
 async function readCandidate(candidate: Candidate, sourceId: string, deps: CatalogDeps): Promise<CatalogEntry | null> {
   const fetchJson = resolveFetchJson(deps);
   const manifest = await firstRef(fetchJson, candidate.owner, candidate.repo, "plugin.json");
@@ -227,7 +246,7 @@ async function readCandidate(candidate: Candidate, sourceId: string, deps: Catal
 }
 
 /**
- * Every entry the declared sources offer, read concurrently.
+ * Every entry the declared sources offer, sources concurrently and their candidates in batches.
  *
  * @remarks
  * A source that throws contributes its reason to the log and nothing to the answer: one unreachable
@@ -242,7 +261,7 @@ export async function readCatalog(sources: MarketplaceSource[], deps: CatalogDep
       .map(async (source) => {
         try {
           const candidates = (await candidatesOf(source, deps)).filter(isPluginCandidate);
-          const read = await Promise.all(candidates.map((candidate) => readCandidate(candidate, source.id, deps)));
+          const read = await inBatches(candidates, CANDIDATE_BATCH, (candidate) => readCandidate(candidate, source.id, deps));
           return read.filter((entry): entry is CatalogEntry => entry !== null);
         } catch (error) {
           log(`marketplace source ${source.id} could not be read: ${String(error)}`);
