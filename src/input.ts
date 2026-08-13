@@ -76,6 +76,7 @@ function activateConfigItem(citem, textMode) {
   if (next === null) {
     S.configEditKey = citem.key;
     S.inputBuf = (citem.value === undefined || citem.value === null || citem.type === "secret") ? "" : String(citem.value);
+    S.cfgReveal = "";
     S.mode = textMode;
     return;
   }
@@ -813,6 +814,7 @@ export function handlePluginKey(key) {
           S.configTarget = { ...cfg, plugin: cfg.name, file: configFileFor(cfg) };
           S.configItems = cfg.items;
           S.configConfirm = null;
+          S.cfgReveal = "";
           S.cfgcursor = 0; S.cfgScrollOff = 0;
           S.mode = "pconfig";
         } else {
@@ -1139,6 +1141,7 @@ export function handleSettingsKey(key) {
       : { name: sec.label, plugin: sec.plugin, bundle: sec.bundle, file: sec.file, items: sec.items, addedBy: sec.addedBy, sectionId: sec.sectionId };
     S.configItems = sec.items;
     S.configConfirm = null;
+    S.cfgReveal = "";
     S.cfgcursor = 0;
     S.cfgScrollOff = 0;
     S.mode = "pconfig";
@@ -1378,11 +1381,12 @@ function refreshConfigItems() {
 
 // Free-text entry for a non-boolean config value; Enter saves via `config set`.
 export function handleConfigInputData(buf) {
-  if (buf[0] === 27) { S.inputBuf = ""; S.mode = "pconfig"; return; }   // esc cancels
+  if (buf[0] === 27) { S.inputBuf = ""; S.cfgReveal = ""; S.mode = "pconfig"; return; }   // esc cancels
   if (buf[0] === 13 || buf[0] === 10) {
     var val = S.inputBuf;
     var key = S.configEditKey;
     S.inputBuf = "";
+    S.cfgReveal = "";
     S.mode = "pconfig";
     if (S.configTarget && key) {
       var serr = S.configTarget.global ? setGlobalSetting(key, val) : setPluginConfig(S.configTarget.bundle, key, val);
