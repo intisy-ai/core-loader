@@ -302,13 +302,29 @@ function writeCache(paths: HomePaths, entries: CatalogEntry[], now: () => number
 }
 
 /**
- * Every entry providing a capability, from the cache while it is fresh.
+ * Every entry the declared sources offer, from the cache while it is fresh.
  *
  * @remarks
  * The whole catalog is cached rather than one question's answer, and an EMPTY catalog is cached too:
  * a home where nothing provides a capability must not re-read every marketplace on every launch,
  * which is the difference between a cold start that costs nothing and one that costs a round trip.
+ * Every reader goes through here, so freshness is decided in exactly one place.
  */
+export async function catalogFor(
+  sources: MarketplaceSource[],
+  paths: HomePaths,
+  windowMs: number,
+  deps: CatalogDeps = {},
+): Promise<CatalogEntry[]> {
+  const now = deps.now ?? Date.now;
+  const cached = cachedEntries(paths, windowMs, now);
+  if (cached) return cached;
+  const entries = await readCatalog(sources, deps);
+  writeCache(paths, entries, now);
+  return entries;
+}
+
+/** Every entry providing a capability. */
 export async function queryCapability(
   capabilityId: string,
   sources: MarketplaceSource[],
@@ -316,11 +332,21 @@ export async function queryCapability(
   windowMs: number,
   deps: CatalogDeps = {},
 ): Promise<CatalogEntry[]> {
-  const now = deps.now ?? Date.now;
-  let entries = cachedEntries(paths, windowMs, now);
-  if (!entries) {
-    entries = await readCatalog(sources, deps);
-    writeCache(paths, entries, now);
-  }
+  const entries = await catalogFor(sources, paths, windowMs, deps);
   return entries.filter((entry) => Array.isArray(entry.capabilities) && entry.capabilities.includes(capabilityId));
+}
+
+/**
+ * The display category of an entry, derived from what it declares.
+ *
+ * @remarks
+ * Its first capability, title cased, because a marketplace groups by what a thing IS and the first
+ * declared capability is the plugin author's own answer to that. A repository that declares none is a
+ * library. Nothing here enumerates the capability vocabulary, so a capability minted after this host
+ * shipped still groups under its own name rather than falling into an "other" bucket.
+ */
+export function categoryOf(entry: CatalogEntry): string {
+  const first = Array.isArray(entry.capabilities) ? entry.capabilities.find((id) => typeof id === "string" && id) : undefined;
+  if (!first) return "Library";
+  return first.charAt(0).toUpperCase() + first.slice(1);
 }

@@ -6,6 +6,8 @@ import { homePaths } from "./home-paths.js";
 import type { MarketplaceSource } from "./catalog-sources.js";
 import {
   CATALOG_CACHE_FILE,
+  catalogFor,
+  categoryOf,
   entryFrom,
   invalidateCapabilityCatalog,
   isPluginCandidate,
@@ -223,5 +225,47 @@ describe("queryCapability", () => {
     const home = tempHome();
     const { fetchJson } = recordingFetch();
     expect(await queryCapability("time-travel", [ORG], homePaths(home), 3600000, { fetchJson })).toEqual([]);
+  });
+});
+
+describe("catalogFor", () => {
+  it("answers every entry, not just one capability's, and shares the cache with queryCapability", async () => {
+    const home = tempHome();
+    const paths = homePaths(home);
+    const { seen, fetchJson } = recordingFetch();
+    const all = await catalogFor([ORG], paths, 3600000, { fetchJson, now: () => 1000 });
+    expect(all.map((entry) => entry.id).sort()).toEqual(["manager", "untagged"]);
+
+    const before = seen.length;
+    const queried = await queryCapability("plugin-management", [ORG], paths, 3600000, { fetchJson, now: () => 2000 });
+    expect(queried.map((entry) => entry.id)).toEqual(["manager"]);
+    expect(seen.length).toBe(before);
+  });
+
+  it("refetches once the window has passed", async () => {
+    const home = tempHome();
+    const paths = homePaths(home);
+    const { seen, fetchJson } = recordingFetch();
+    await catalogFor([ORG], paths, 1000, { fetchJson, now: () => 1000 });
+    const first = seen.length;
+    await catalogFor([ORG], paths, 1000, { fetchJson, now: () => 5000 });
+    expect(seen.length).toBeGreaterThan(first);
+  });
+});
+
+describe("categoryOf", () => {
+  it("titles the first declared capability, and calls a library a library", () => {
+    const entry = (capabilities: string[]) => ({
+      id: "x", npmName: "x", url: "u", capabilities, description: "", sourceId: "s",
+    });
+    expect(categoryOf(entry(["provider", "screens"]))).toBe("Provider");
+    expect(categoryOf(entry(["front-door"]))).toBe("Front-door");
+    expect(categoryOf(entry(["plugin-management"]))).toBe("Plugin-management");
+    expect(categoryOf(entry([]))).toBe("Library");
+  });
+
+  it("groups a capability this host has never heard of by its own name", () => {
+    const entry = { id: "x", npmName: "x", url: "u", capabilities: ["time-travel"], description: "", sourceId: "s" };
+    expect(categoryOf(entry)).toBe("Time-travel");
   });
 });
