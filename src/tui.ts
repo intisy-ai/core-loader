@@ -10,7 +10,7 @@ import { S } from "./state.js";
 import { librariesTab } from "./views/libraries.js";
 import { APP_NAME, CLI_CMD, NPM_PKG, CONFIG_DIR, CACHE_DIR, UPDATE_CHECK_PATH, REPOS_DIR, PLUGINS_DIR, tuiLog } from "./env.js";
 import { hideCur, showCur, cleanup } from "./out.js";
-import { getFolderName, clearUpdaterCache, preloadUpdater } from "./updater.js";
+import { getFolderName, clearUpdaterCache, marketplaceQuery, preloadUpdater } from "./updater.js";
 import { startPluginHost } from "./plugin-surface.js";
 import { refreshScreenSpecs } from "./views/screens.js";
 import { loadConfig, saveConfig, migrateConfigs, loadPlugins, autoUpdateCheck, updateCheckDelayMs, updateCheckIntervalHours, defaultTab } from "./config.js";
@@ -300,6 +300,9 @@ async function boot() {
       return Promise.all([refreshScreenSpecs(), primeDeclarations()]);
     }).catch(function () {}),
   ]);
+  // Rebuilt once resolution has settled: the manager's own npm row is marked and versioned from
+  // resolvedManager(), which answers nothing until preloadUpdater has run.
+  S.pluginItems = buildCombinedPluginList();
   hideCur();
   render();
   // Guarded like every other raw-mode call here: boot() runs on import, and stdin
@@ -322,7 +325,8 @@ function dispatchInput(buf, key) {
     // plugin manager. Everything else is swallowed so a stray key cannot act on the hidden list.
     if (key === "enter" || key === "space") {
       clearUpdaterCache();
-      preloadUpdater().catch(function () {}).then(function () {
+      // The one surface that queries the marketplaces: the operator is asking what to install.
+      preloadUpdater({ queryCapability: marketplaceQuery() }).catch(function () {}).then(function () {
         S.pluginItems = buildCombinedPluginList();
         render();
       });

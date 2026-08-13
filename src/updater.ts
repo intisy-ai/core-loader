@@ -13,20 +13,38 @@ import { spawnEnv } from "./activity-seam.js";
 import { homePaths } from "./home-paths.js";
 import { readMarketplaceSources } from "./catalog-sources.js";
 import { queryCapability } from "./capability-catalog.js";
+import type { CatalogEntry } from "./capability-catalog.js";
 import { bootstrapCommand, managerEntries, resolvePluginManager, PLUGIN_MANAGEMENT_CAPABILITY } from "./plugin-manager.js";
 import { catalogCacheHours } from "./config.js";
+
+/** What resolution may reach the network through. */
+export interface PreloadDeps {
+  /** Queries the declared marketplace sources. Absent means resolution stays on disk. */
+  queryCapability?: (capabilityId: string) => Promise<CatalogEntry[]>;
+}
+
+/**
+ * The marketplace query, for the one surface whose answer is actionable.
+ *
+ * @remarks
+ * Resolution is otherwise disk only. A query answers "what should the operator install", which is
+ * only useful at the install gate, and a network read on the way to the first frame would leave the
+ * terminal blank for as long as the fetch takes.
+ */
+export function marketplaceQuery(): (capabilityId: string) => Promise<CatalogEntry[]> {
+  const paths = homePaths(CONFIG_DIR);
+  const sources = readMarketplaceSources(paths);
+  const windowMs = catalogCacheHours() * 3600000;
+  return (capabilityId) => queryCapability(capabilityId, sources, paths, windowMs, { log: tuiLog });
+}
 
 // The manager is an ESM bundle with top-level await, so require() throws ERR_REQUIRE_ASYNC_MODULE
 // under Node and it MUST be import()'d. Resolved and imported once at TUI startup; getUpdater()
 // then answers the sync callers from the cache.
-export async function preloadUpdater() {
+export async function preloadUpdater(deps: PreloadDeps = {}) {
   if (S.UPDATER_MODULE !== undefined) return S.UPDATER_MODULE;
   const paths = homePaths(CONFIG_DIR);
-  const ref = await resolvePluginManager(paths, {
-    queryCapability: (capabilityId) =>
-      queryCapability(capabilityId, readMarketplaceSources(paths), paths, catalogCacheHours() * 3600000, { log: tuiLog }),
-    log: tuiLog,
-  });
+  const ref = await resolvePluginManager(paths, { queryCapability: deps.queryCapability, log: tuiLog });
   S.pluginManager = ref;
   if (!ref) {
     S.UPDATER_MODULE = null;
@@ -85,11 +103,13 @@ export function getUpdaterVersion() {
 // child, not our main event loop, so the TUI keeps rendering and animating.
 export function setupPlugin(repo, done) {
   var updater = getUpdater();
-  if (!updater || typeof updater.updatePluginPublic !== "function" || !getUpdaterPath()) {
+  // The ENTRY is what the child imports, so it is what readiness means: a home with a deployed
+  // bundle and no clone directory has no package dir to report and still updates perfectly well.
+  if (!updater || typeof updater.updatePluginPublic !== "function" || !S.UPDATER_ENTRY) {
     done("updater not available");
     return;
   }
-  var updaterPath = S.UPDATER_ENTRY || getUpdaterPath();   // the entry .js the child import()s
+  var updaterPath = S.UPDATER_ENTRY;   // the entry .js the child import()s
   // Params go through ENV, not argv: the loader runs under Bun, and `bun -e "code" a b`
   // does NOT expose the trailing args at process.argv[1..] like `node -e` does, so
   // positional args would arrive undefined and updatePluginPublic would build nothing.

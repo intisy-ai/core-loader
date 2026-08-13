@@ -103,4 +103,51 @@ describe("updater: the resolved plugin manager", () => {
     assert.equal(managerBootstrapCommand(), "");
     assert.ok(existsSync(emptyHome));
   });
+
+  it("stays on disk with no argument, and queries only the injected seam", async () => {
+    const { preloadUpdater, clearUpdaterCache, resolvedManager } = require("../dist/updater.js");
+    const { CACHE_DIR } = require("../dist/env.js");
+    rmSync(join(CACHE_DIR, "plugin-manager.json"), { force: true });
+
+    let queried = 0;
+    clearUpdaterCache();
+    assert.equal(await preloadUpdater(), null);
+    assert.equal(queried, 0, "boot must reach no marketplace");
+
+    clearUpdaterCache();
+    await preloadUpdater({
+      queryCapability: async (capabilityId) => {
+        queried++;
+        assert.equal(capabilityId, "plugin-management");
+        return [{ id: "offered", npmName: "@demo/offered", url: "u", capabilities: [capabilityId], description: "", sourceId: "s" }];
+      },
+    });
+    assert.equal(queried, 1);
+    assert.equal(resolvedManager().id, "offered");
+    rmSync(join(CACHE_DIR, "plugin-manager.json"), { force: true });
+  });
+});
+
+describe("updater: setupPlugin", () => {
+  it("runs the resolved entry even when no package directory is known", async () => {
+    const { setupPlugin } = require("../dist/updater.js");
+    const dir = mkdtempSync(join(tmpdir(), "core-loader-entry-"));
+    const entry = join(dir, "manager.mjs");
+    writeFileSync(entry, "export function updatePluginPublic() { return Promise.resolve(); }\n");
+
+    S.UPDATER_MODULE = { updatePluginPublic() {} };
+    S.UPDATER_ENTRY = entry;
+    S.UPDATER_PATH = "";
+    const failure = await new Promise((resolve) => setupPlugin({ name: "demo", url: "" }, resolve));
+    assert.equal(failure, "", "a known entry with no package dir must still install");
+  });
+
+  it("reports the manager unavailable when no entry was resolved", async () => {
+    const { setupPlugin } = require("../dist/updater.js");
+    S.UPDATER_MODULE = { updatePluginPublic() {} };
+    S.UPDATER_ENTRY = undefined;
+    S.UPDATER_PATH = "/some/package/dir";
+    const failure = await new Promise((resolve) => setupPlugin({ name: "demo", url: "" }, resolve));
+    assert.equal(failure, "updater not available");
+  });
 });
