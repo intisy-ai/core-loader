@@ -23,4 +23,17 @@ describe("splitBySections", () => {
     expect(section.addedBy).toBeUndefined();
     expect(section.items).toHaveLength(2);
   });
+
+  // `file` is read back as a real path (the Versioning tab's key history looks the config file up
+  // by it), so it must follow the plugin's own config name and not the id sections route by.
+  it("names the config file from the plugin's own reported config name", () => {
+    const [section] = splitBySections({ ...declaration, configName: "demo-config" });
+    expect(section.file).toBe("demo-config.json");
+    expect(section.plugin).toBe("demo");
+  });
+
+  it("falls back to the routing id when the values probe reported no config name", () => {
+    expect(splitBySections(declaration)[0].file).toBe("demo.json");
+    expect(splitBySections({ ...declaration, configName: null })[0].file).toBe("demo.json");
+  });
 });
