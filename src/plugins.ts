@@ -11,7 +11,7 @@ import { loadPlugins } from "./config.js";
 import { getFolderName, loadNpmPlugins, getUpdaterVersion, getUpdater } from "./updater.js";
 import { S } from "./state.js";
 import { spawnEnv } from "./activity-seam.js";
-import { bundleFor, providerIds, readSettingsSchema } from "./plugin-surface.js";
+import { bundleFor, ledgerRowFor, providerIds, readSettingsSchema } from "./plugin-surface.js";
 
 export function gitText(args, cwd) {
   try {
@@ -255,6 +255,9 @@ export function getPluginActions(pitem) {
   var declaration = declarationFor(hostPluginId(pitem));
   if (declaration && declaration.items.length) {
     a.push({ cat: "Configure", key: "configure", label: "Configure settings (" + declaration.items.length + ")" });
+  }
+  if (ledgerRowFor(hostPluginId(pitem))) {
+    a.push({ cat: "Configure", key: "diagnostics", label: "Show plugin diagnostics" });
   }
   if (pitem.updateAvail || !pitem.deployed) {
     a.push({ cat: "Update", key: "update", label: "Update now" });

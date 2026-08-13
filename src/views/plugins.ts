@@ -7,10 +7,12 @@ import { selectionKey } from "../selection.js";
 import { S } from "../state.js";
 import { loadPlugins } from "../config.js";
 import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath } from "../updater.js";
-import { getPluginActions, readUpdateCache } from "../plugins.js";
+import { getPluginActions, hostPluginId, readUpdateCache } from "../plugins.js";
 import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
 import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR, APP_NAME } from "../env.js";
 import { hints, messageLine, spinnerFrame, marketplaceRow, updaterInstallProgress } from "./common.js";
+import { diagnosticLines } from "../plugin-diagnostics.js";
+import { ledgerRowFor } from "../plugin-surface.js";
 
 // Normalizes any rendered version/tag to a single "vX.Y.Z" form: strips a
 // leading v/V (if present) then re-adds exactly one "v", so a git tag, an npm
@@ -184,6 +186,24 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
     pushFoot("  " + rule(barW));
     if (S.mode === "pcfginput") pushFoot(hints([["enter", "save"], ["esc", "cancel"]]));
     else pushFoot(hints([["↑↓", "move"], ["enter", "edit/toggle"], ["esc", "back"]]));
+    return;
+  }
+
+  if (S.mode === "pdiag" && S.pluginItems.length > 0 && S.pluginItems[S.pcursor]) {
+    var dpitem = S.pluginItems[S.pcursor];
+    pushBody("  " + BOLD + WHITE + trunc(dpitem.name, cols - 6) + RST, false);
+    pushBody("  " + GRAY + "what the plugin host recorded for this plugin" + RST, false);
+    pushBody("", false);
+    var dlines = diagnosticLines(ledgerRowFor(hostPluginId(dpitem)));
+    for (var dj = 0; dj < dlines.length; dj++) {
+      var style = dj === 0 || dlines[dj].indexOf("Reason: ") === 0 ? WHITE : DIM;
+      if (dlines[dj].indexOf("Reason: ") === 0 || dlines[dj].indexOf("Unresolved: ") === 0) style = RED;
+      pushBody("    " + style + trunc(dlines[dj], Math.max(20, cols - 8)) + RST, false);
+    }
+    pushBody("", false);
+    if (S.message) pushFoot(messageLine(cols));
+    pushFoot("  " + rule(barW));
+    pushFoot(hints([["esc", "back"]]));
     return;
   }
 

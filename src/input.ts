@@ -382,6 +382,10 @@ export function handleProjectKey(key) {
 }
 
 export function handlePluginKey(key) {
+  if (S.mode === "pdiag") {
+    if (key === "escape" || key === "q" || key === "left" || key === "enter" || key === "space") S.mode = "list";
+    return;
+  }
   if (S.mode === "list") {
     // Esc backs out of the marketplace action menu (it keeps S.mode === "list"
     // and tracks its own S.mkMode) instead of quitting the loader; only the
@@ -799,6 +803,9 @@ export function handlePluginKey(key) {
           flash(setupErr ? pitem.name + ": " + setupErr : pitem.name + " enabled and deployed. Restart " + APP_NAME + " to load.");
           render();
         });
+      }
+      else if (action === "diagnostics") {
+        S.mode = "pdiag";
       }
       else if (action === "configure") {
         var cfg = declarationFor(hostPluginId(pitem));
