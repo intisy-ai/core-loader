@@ -7,6 +7,15 @@ import type { DeployedPlugin, ManifestScan } from "./plugin-manifests.js";
 /** How long one plugin's `activate` may take before it is quarantined. */
 export const DEFAULT_ACTIVATE_TIMEOUT_MS = 10000;
 
+/**
+ * How long one plugin's `deactivate` may take before the host stops waiting for it.
+ *
+ * @remarks
+ * Its own budget rather than the activate one: a `deactivate` runs on shutdown, where the whole
+ * home is waiting on the slowest plugin, while an `activate` runs on load with nothing yet to lose.
+ */
+export const DEFAULT_DEACTIVATE_TIMEOUT_MS = 5000;
+
 /** What the host needs from whoever starts it. */
 export interface LoaderHostOptions {
   /** The app id plugins see on the host descriptor. */
@@ -17,6 +26,8 @@ export interface LoaderHostOptions {
   surfaces?: string[];
   /** How long one `activate` may take. Defaults to {@link DEFAULT_ACTIVATE_TIMEOUT_MS}. */
   activateTimeoutMs?: number;
+  /** How long one `deactivate` may take. Defaults to {@link DEFAULT_DEACTIVATE_TIMEOUT_MS}. */
+  deactivateTimeoutMs?: number;
   /**
    * Builds the per-plugin runtime.
    *
@@ -125,7 +136,7 @@ async function callDeactivate(pluginId: string, timeoutMs: number, plugin: Plugi
     pluginId,
     timeoutMs,
     `deactivate did not finish within ${timeoutMs}ms`,
-    "return from deactivate promptly and do slow work in the background, or raise the host's activate timeout",
+    "return from deactivate promptly and do slow work in the background, or raise the host's deactivate timeout",
     async () => { await Promise.resolve(plugin.deactivate()); },
   );
 }
@@ -137,6 +148,13 @@ async function callDeactivate(pluginId: string, timeoutMs: number, plugin: Plugi
  * `activate` ran, so the plugin's timers, watchers and child processes are live, and quarantine
  * drops it from the started list where `stop` would otherwise have reached it. A `deactivate` that
  * throws or hangs is swallowed: the quarantine that follows is already the answer to it.
+ *
+ * On the timeout path this is a trade rather than a clean stop. `activate` was abandoned, not
+ * cancelled, so `deactivate` can run before the resources it means to release exist, throw into
+ * the swallow, and then the abandoned `activate` finishes and starts the very thing that was meant
+ * to be stopped. It is still worth calling: the plugin's context is fenced by then, so whatever
+ * starts cannot register itself back into the host, and the common case (an `activate` that threw
+ * after taking resources) is stopped properly.
  */
 async function stopBeforeQuarantine(pluginId: string, timeoutMs: number, plugin: Plugin): Promise<void> {
   try {
@@ -160,6 +178,7 @@ async function stopBeforeQuarantine(pluginId: string, timeoutMs: number, plugin:
  */
 export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHost> {
   const timeoutMs = options.activateTimeoutMs ?? DEFAULT_ACTIVATE_TIMEOUT_MS;
+  const stopMs = options.deactivateTimeoutMs ?? DEFAULT_DEACTIVATE_TIMEOUT_MS;
   const importEntry = options.importEntry ?? (async (entryPath: string) => import(pathToFileURL(entryPath).href));
   const scan = options.scan ?? readDeployedManifests(options.pluginDir);
 
@@ -240,7 +259,7 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
       await withTimeout(pluginId, timeoutMs, () => plugin.activate(context));
     } catch (error) {
       const failure = errorFor(pluginId, error, "fix the error activate threw, or disable the plugin");
-      await stopBeforeQuarantine(pluginId, timeoutMs, plugin);
+      await stopBeforeQuarantine(pluginId, stopMs, plugin);
       host.markBroken(pluginId, failure);
       quarantined.push(failure);
       continue;
@@ -248,7 +267,7 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
 
     const mismatch = host.verifyActivation(manifest);
     if (mismatch) {
-      await stopBeforeQuarantine(pluginId, timeoutMs, plugin);
+      await stopBeforeQuarantine(pluginId, stopMs, plugin);
       host.markBroken(pluginId, mismatch);
       quarantined.push(mismatch);
       continue;
@@ -263,7 +282,7 @@ export async function startPlugins(options: LoaderHostOptions): Promise<LoadedHo
       const plugin = plugins.get(pluginId);
       if (!plugin) continue;
       try {
-        await callDeactivate(pluginId, timeoutMs, plugin);
+        await callDeactivate(pluginId, stopMs, plugin);
       } catch (error) {
         host.markBroken(pluginId, errorFor(pluginId, error, "fix the error deactivate threw; the plugin was stopped anyway"));
         continue;

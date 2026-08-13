@@ -274,7 +274,7 @@ describe("startPlugins", () => {
       },
       { manifest: manifest("calm"), module: settingsPlugin([], "calm") },
     );
-    const loaded = await startPlugins(options(scan, { activateTimeoutMs: 20 }));
+    const loaded = await startPlugins(options(scan, { activateTimeoutMs: 20, deactivateTimeoutMs: 20 }));
 
     expect(loaded.quarantined.map((error) => error.pluginId)).toEqual(["stuck"]);
     expect(loaded.host.ledger.entry("stuck")?.status).toBe("broken");
@@ -328,7 +328,7 @@ describe("startPlugins", () => {
         },
       },
     );
-    const loaded = await startPlugins(options(scan, { activateTimeoutMs: 20 }));
+    const loaded = await startPlugins(options(scan, { activateTimeoutMs: 20, deactivateTimeoutMs: 20 }));
     await loaded.stop();
 
     expect(stopped).toEqual(["first"]);
