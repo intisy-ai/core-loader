@@ -1,13 +1,13 @@
 // @ts-nocheck
 // Settings tab: two sub-tabs (Tab switches): "Settings" (global + plugin settings, here)
 // and "Versioning" (config-ledger git UI, delegated to views/versioning.ts).
-// Plugin config schemas are probed in the BACKGROUND (async) with a spinner, so entering
-// the tab never blocks; plugin rows show "loading…" until their schema resolves.
+// Plugin declarations are read in the BACKGROUND (async) with a spinner, so entering the
+// tab never blocks; plugin rows show "loading…" until their declaration lands.
 
 import { RST, BOLD, DIM, GRAY, WHITE, OK, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
 import { buildGlobalSection, buildSettingsEntries, firstSelectableIndex, splitBySections } from "../settings-model.js";
-import { probeConfigSchemaAsync } from "../plugins.js";
+import { declarationFor, readDeclaration, settingsPluginIds } from "../plugins.js";
 import { hints, messageLine, spinnerFrame, scheduleRender } from "./common.js";
 import { buildVersioning } from "./versioning.js";
 import { collectScreens, subPages, buildContributedScreen } from "./screens.js";
@@ -27,19 +27,15 @@ export function settingsSubPages() {
   return pages;
 }
 
-// Rebuild the section model + entry list from ALREADY-PROBED schemas only (no spawning).
-// Un-probed plugins become "loading" placeholders; buildSectionsFromCache never blocks.
+// Rebuild the section model + entry list from ALREADY-READ declarations only. A plugin whose
+// declaration is still outstanding becomes a "loading" placeholder; this never starts a read.
 function buildSectionsFromCache() {
   const sections = [buildGlobalSection()];
   const loading = [];
-  const plugins = (S.pluginItems && S.pluginItems.length) ? S.pluginItems : [];
-  for (const p of plugins) {
-    if (p._cfgProbed === true) {
-      const cfg = p._cfg;
-      if (cfg) sections.push(...splitBySections({ ...cfg, name: cfg.name || p.name }));
-    } else {
-      loading.push(p.name);
-    }
+  for (const pluginId of settingsPluginIds()) {
+    const declaration = declarationFor(pluginId);
+    if (declaration === undefined) { loading.push(pluginId); continue; }
+    if (declaration) sections.push(...splitBySections(declaration));
   }
   S.settingsSections = sections;
   S.settingsEntries = buildSettingsEntries(sections, loading);
@@ -47,16 +43,18 @@ function buildSectionsFromCache() {
   if (!cur || cur.type !== "group") S.settingsCursor = firstSelectableIndex(S.settingsEntries);
 }
 
-// Kick off async schema probes for any plugin not yet probed. S.catalogPending drives the
-// shared spinner (updateSpinner in render); scheduleRender coalesces the burst of redraws.
-function probeSettingsSchemas() {
-  const plugins = (S.pluginItems && S.pluginItems.length) ? S.pluginItems : [];
-  for (const p of plugins) {
-    if (p._cfgProbed === true || p._cfgProbing === true) continue;
-    p._cfgProbing = true;
+// Read any declaration not yet cached. S.catalogPending drives the shared spinner (updateSpinner in
+// render); scheduleRender coalesces the burst of redraws. The in-flight set is local because a
+// declaration's cache entry only appears once the read finishes.
+var READING = new Set();
+
+function readSettingsDeclarations() {
+  for (const pluginId of settingsPluginIds()) {
+    if (declarationFor(pluginId) !== undefined || READING.has(pluginId)) continue;
+    READING.add(pluginId);
     S.catalogPending++;
-    probeConfigSchemaAsync(p).then(function (cfg) {
-      p._cfg = cfg; p._cfgProbed = true; p._cfgProbing = false;
+    readDeclaration(pluginId).then(function () {
+      READING.delete(pluginId);
       S.catalogPending = Math.max(0, S.catalogPending - 1);
       buildSectionsFromCache();
       scheduleRender();
@@ -66,7 +64,7 @@ function probeSettingsSchemas() {
 
 export function refreshSettings(): void {
   buildSectionsFromCache();
-  probeSettingsSchemas();
+  readSettingsDeclarations();
 }
 
 export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {

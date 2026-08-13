@@ -12,7 +12,8 @@ import { cleanup } from "./out.js";
 import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
 import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater, clearUpdaterCache } from "./updater.js";
 import { openProject, openProjectSession, listSessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
-import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig, runPluginAction } from "./plugins.js";
+import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, buildConfigItems, setPluginConfig, declarationFor, invalidateDeclaration, readDeclaration } from "./plugins.js";
+import { runSettingsAction } from "./plugin-surface.js";
 import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync } from "./marketplace.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
@@ -26,21 +27,27 @@ import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
 import { emitLoaderActivity } from "./activity-seam.js";
 
-// Enter on a config row: a boolean flips, a field with a declared choice list steps to
-// its next option, anything else opens the text input. Shared by both config editors so
-// A declared action runs the plugin's own bundle. One declaring `confirm` arms on the
-// first enter and runs on the second, which keeps a destructive action two keystrokes
-// away without a modal the config screen has no room for.
+// A declared action runs through the plugin's own settings capability. One declaring `confirm` arms
+// on the first enter and runs on the second, which keeps a destructive action two keystrokes away
+// without a modal the config screen has no room for. The run is bounded and asynchronous, so the
+// editor stays on screen and busy while it happens.
 function activateConfigAction(citem) {
-  if (!S.configTarget || !S.configTarget.bundle) return;
+  var pluginId = S.configTarget && S.configTarget.plugin;
+  if (!pluginId) return;
   if (citem.confirm && S.configConfirm !== citem.key) { S.configConfirm = citem.key; return; }
   S.configConfirm = null;
-  var err = runPluginAction(S.configTarget.bundle, citem.key);
-  if (err) { flash(citem.label + ": " + err); return; }
-  refreshConfigItems();
-  flash(citem.label + ": done.");
+  S.busy = true;
+  runSettingsAction(pluginId, citem.key).then(function (answer) {
+    S.busy = false;
+    if (!answer || answer.ok !== true) { flash(citem.label + ": " + ((answer && answer.message) || "action failed")); render(); return; }
+    refreshConfigItems();
+    flash(answer.message || (citem.label + ": done."));
+    render();
+  });
 }
 
+// Enter on a config row: a boolean flips, a field with a declared choice list steps to
+// its next option, anything else opens the text input. Shared by both config editors so
 // the write path exists once.
 function activateConfigItem(citem, textMode) {
   if (!citem) return;
@@ -584,9 +591,6 @@ export function handlePluginKey(key) {
       else if (key === "down" || key === "s") { S.pcursor = Math.min(S.pluginItems.length - 1, S.pcursor + 1); }
       else if (key === "enter" || key === "space") {
         if (S.pluginItems.length > 0) {
-          var selp = S.pluginItems[S.pcursor];
-          // detect a core-plugin once (so getPluginActions can offer "Configure")
-          if (selp && selp._cfgProbed !== true) { selp._cfg = probeConfigSchema(selp); selp._cfgProbed = true; }
           S.mode = "pactions"; S.pacursor = 0;
         }
       }
@@ -784,9 +788,9 @@ export function handlePluginKey(key) {
         });
       }
       else if (action === "configure") {
-        var cfg = pitem._cfg;
+        var cfg = declarationFor(pitem.name);
         if (cfg && cfg.items && cfg.items.length) {
-          S.configTarget = cfg;
+          S.configTarget = { ...cfg, plugin: cfg.name };
           S.configItems = cfg.items;
           S.configConfirm = null;
           S.cfgcursor = 0; S.cfgScrollOff = 0;
@@ -1095,8 +1099,7 @@ function runGitMenuAction(action) {
 // Sections (file + keys) come from the same builders the Settings tab uses.
 function openHistoryPicker() {
   var secs = [buildGlobalSection()];
-  var plugins = (S.pluginItems && S.pluginItems.length) ? S.pluginItems : [];
-  for (var s of buildPluginSections(plugins)) secs.push(s);
+  for (var s of buildPluginSections()) secs.push(s);
   S.vgSections = secs; S.vgFileCursor = 0; S.mode = "vghfiles";
 }
 
@@ -1208,7 +1211,7 @@ export function handleSettingsKey(key) {
     var sec = en.section;
     S.configTarget = (sec.kind === "global")
       ? { name: "settings", global: true, file: sec.file, items: sec.items }
-      : { name: sec.label, bundle: sec.bundle, file: sec.file, items: sec.items, addedBy: sec.addedBy, sectionId: sec.sectionId };
+      : { name: sec.label, plugin: sec.plugin, bundle: sec.bundle, file: sec.file, items: sec.items, addedBy: sec.addedBy, sectionId: sec.sectionId };
     S.configItems = sec.items;
     S.configConfirm = null;
     S.cfgcursor = 0;
@@ -1546,38 +1549,36 @@ export function handleSearchData(buf) {
   }
 }
 
-// Re-read a plugin's config schema after a change so the editor shows fresh values.
+// Re-read the edited target after a change so the editor shows fresh values. The global file is
+// read straight from disk; a plugin's declaration is re-read through its capability and its own
+// values channel, which is asynchronous, so the rows land on the next render.
 function refreshConfigItems() {
   if (!S.configTarget) return;
   if (S.configTarget.global) {
     S.configItems = buildConfigItems({ defaults: GLOBAL_SETTINGS_DEFAULTS, current: loadGlobalSettings() });
     S.configTarget.items = S.configItems;
-  } else {
-    try {
-      var out = execSync('node "' + S.configTarget.bundle + '" config schema', { encoding: "utf-8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] });
-      var data = JSON.parse(String(out).trim());
-      var fresh = buildConfigItems(data);
-      // Keep the Settings tab's cached plugin section in sync so its rebuilt rows
-      // show the freshly saved value (buildPluginSections reuses the cached probe).
-      for (var pi = 0; pi < (S.pluginItems || []).length; pi++) {
-        var pit = S.pluginItems[pi];
-        if (pit && pit._cfg && pit._cfg.bundle === S.configTarget.bundle) { pit._cfg.items = fresh; break; }
-      }
-      // A contributed section shows only the controls it claimed, so re-resolve it rather
-      // than replacing its rows with the plugin's whole flat list.
-      if (S.configTarget.sectionId) {
-        var split = splitBySections({ ...data, name: S.configTarget.addedBy, bundle: S.configTarget.bundle, items: fresh });
-        var mine = split.filter(function (s) { return s.sectionId === S.configTarget.sectionId; })[0];
-        S.configItems = mine ? mine.items : fresh;
-      } else {
-        S.configItems = fresh;
-      }
-      S.configTarget.items = S.configItems;
-    } catch { /* keep stale view */ }
+    if (S.cfgcursor >= S.configItems.length) S.cfgcursor = Math.max(0, S.configItems.length - 1);
+    if (S.page === "settings") { try { refreshSettings(); } catch (e) {} }
+    return;
   }
-  if (S.cfgcursor >= S.configItems.length) S.cfgcursor = Math.max(0, S.configItems.length - 1);
-  // On the Settings tab, rebuild the unified rows so values + modified markers refresh.
-  if (S.page === "settings") { try { refreshSettings(); } catch (e) {} }
+  var pluginId = S.configTarget.plugin;
+  if (!pluginId) return;
+  invalidateDeclaration(pluginId);
+  readDeclaration(pluginId).then(function (declaration) {
+    if (!declaration || !S.configTarget || S.configTarget.plugin !== pluginId) return;
+    // A contributed section shows only the controls it claimed, so re-resolve it rather than
+    // replacing its rows with the plugin's whole flat list.
+    if (S.configTarget.sectionId) {
+      var mine = splitBySections(declaration).filter(function (s) { return s.sectionId === S.configTarget.sectionId; })[0];
+      S.configItems = mine ? mine.items : declaration.items;
+    } else {
+      S.configItems = declaration.items;
+    }
+    S.configTarget.items = S.configItems;
+    if (S.cfgcursor >= S.configItems.length) S.cfgcursor = Math.max(0, S.configItems.length - 1);
+    if (S.page === "settings") { try { refreshSettings(); } catch (e) {} }
+    render();
+  });
 }
 
 // Free-text entry for a non-boolean config value; Enter saves via `config set`.

@@ -58,8 +58,8 @@ export const S = {
   ccursor: 0,
   cscrollOff: 0,
 
-  // Plugin config editor (Plugins tab -> Configure). Detected per-plugin by probing
-  // its deployed bundle with `config schema`; editing writes via `config set`.
+  // Plugin config editor (Plugins tab -> Configure). Rows come from the plugin's settings
+  // declaration; editing writes through the plugin's own `config set`.
   configItems: [],
   cfgcursor: 0,
   cfgScrollOff: 0,

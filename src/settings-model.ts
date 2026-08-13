@@ -2,8 +2,8 @@
 // section per plugin that has a config schema, then the flat entry list the renderer and
 // key handler both walk: a "Global" header + its group, then a "Plugins" header + one
 // group row per plugin. Headers are not selectable (nav skips them). Git-free: the
-// Versioning tab owns all config-ledger UI.
-import { probeConfigSchema, buildConfigItems } from "./plugins.js";
+// Versioning tab owns its own UI.
+import { buildConfigItems, declarationFor, settingsPluginIds } from "./plugins.js";
 import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "./config.js";
 import { S } from "./state.js";
 
@@ -13,6 +13,9 @@ export type SettingsRow = SettingsItem | SettingsAction;
 export type SettingsSection = {
   label: string;
   kind: "global" | "plugin";
+  // The plugin this section belongs to, which is how a surface routes an action run or a re-read
+  // back to its owner.
+  plugin?: string;
   file: string;
   bundle: string | null;
   items: SettingsRow[];
@@ -67,7 +70,7 @@ export function splitBySections(cfg: any): SettingsSection[] {
       if (action && !claimed.has("a:" + id)) { rows.push(actionRow(action)); claimed.add("a:" + id); }
     }
     if (!rows.length) continue;
-    const section: SettingsSection = { label: spec.label, kind: "plugin", file, bundle: cfg.bundle, items: rows, addedBy: name, sectionId: spec.id };
+    const section: SettingsSection = { label: spec.label, kind: "plugin", plugin: name, file, bundle: cfg.bundle, items: rows, addedBy: name, sectionId: spec.id };
     if (typeof spec.description === "string") section.description = spec.description;
     if (typeof spec.order === "number") section.order = spec.order;
     sections.push(section);
@@ -77,18 +80,18 @@ export function splitBySections(cfg: any): SettingsSection[] {
   for (const action of cfg.actions || []) {
     if (!claimed.has("a:" + action.id)) rest.push(actionRow(action));
   }
-  if (rest.length) sections.push({ label: name, kind: "plugin", file, bundle: cfg.bundle, items: rest });
+  if (rest.length) sections.push({ label: name, kind: "plugin", plugin: name, file, bundle: cfg.bundle, items: rest });
   return sections;
 }
 
-export function buildPluginSections(pluginItems: any[]): SettingsSection[] {
+// Only declarations already read: this runs on a render path, so it never starts a capability call
+// or a child process of its own.
+export function buildPluginSections(): SettingsSection[] {
   const out: SettingsSection[] = [];
-  for (const p of pluginItems || []) {
-    // reuse a cached probe if the Plugins tab already ran it; else probe now
-    let cfg = p && p._cfg;
-    if (p && p._cfgProbed !== true) { cfg = probeConfigSchema(p); p._cfg = cfg; p._cfgProbed = true; }
-    if (!cfg) continue;
-    out.push(...splitBySections({ ...cfg, name: cfg.name || p.name }));
+  for (const pluginId of settingsPluginIds()) {
+    const declaration = declarationFor(pluginId);
+    if (!declaration) continue;
+    out.push(...splitBySections(declaration));
   }
   return out;
 }

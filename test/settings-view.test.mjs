@@ -6,7 +6,8 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { S } = require("../dist/state.js");
-const { buildSettings, refreshSettings } = require("../dist/views/settings.js");
+const { buildSettings } = require("../dist/views/settings.js");
+const { buildSettingsEntries, splitBySections } = require("../dist/settings-model.js");
 
 const STRIP = /\[[0-9;]*m/g;
 
@@ -17,26 +18,31 @@ function render() {
   return { body, foot };
 }
 
-function pluginWithSection() {
-  return [{
+function declarationWithSection() {
+  return {
     name: "sync-bridge",
-    _cfgProbed: true,
-    _cfg: {
-      name: "sync-bridge",
-      bundle: "/plugins/sync-bridge.js",
-      items: [
-        { key: "logging", value: true, def: true, isSet: false, type: "boolean" },
-        { key: "enabled", value: true, def: true, isSet: false, type: "boolean" },
-      ],
-      actions: [{ id: "sync", label: "Sync now" }],
-      sections: [{ id: "sync", label: "Sync", order: 40, fields: ["enabled"], actions: ["sync"] }],
-    },
-  }];
+    bundle: "/plugins/sync-bridge.js",
+    items: [
+      { key: "logging", value: true, def: true, isSet: false, type: "boolean" },
+      { key: "enabled", value: true, def: true, isSet: false, type: "boolean" },
+    ],
+    actions: [{ id: "sync", label: "Sync now" }],
+    sections: [{ id: "sync", label: "Sync", order: 40, fields: ["enabled"], actions: ["sync"] }],
+  };
+}
+
+// The tab renders whatever the section model resolved, so a view test states that model
+// directly rather than standing up a host to read one declaration back.
+function seedSections() {
+  const sections = splitBySections(declarationWithSection());
+  S.settingsSections = sections;
+  S.settingsEntries = buildSettingsEntries(sections);
+  S.settingsCursor = 0;
 }
 
 let saved;
 beforeEach(() => {
-  saved = { items: S.pluginItems, page: S.page, mode: S.mode, sub: S.settingsSubPage, capabilities: S.capabilities };
+  saved = { page: S.page, mode: S.mode, sub: S.settingsSubPage, capabilities: S.capabilities };
   S.capabilities = {};
   S.page = "settings";
   S.mode = "list";
@@ -46,7 +52,6 @@ beforeEach(() => {
   S.configConfirm = null;
 });
 afterEach(() => {
-  S.pluginItems = saved.items;
   S.page = saved.page;
   S.mode = saved.mode;
   S.settingsSubPage = saved.sub;
@@ -56,8 +61,7 @@ afterEach(() => {
 
 describe("settings tab", () => {
   it("lists a contributed section by its own label and names the plugin that added it", () => {
-    S.pluginItems = pluginWithSection();
-    refreshSettings();
+    seedSections();
     const { body } = render();
 
     const row = body.find((line) => line.includes("Sync") && line.includes("added by sync-bridge"));
@@ -68,10 +72,9 @@ describe("settings tab", () => {
   });
 
   it("shows a declared action as a runnable row inside the section it was contributed to", () => {
-    S.pluginItems = pluginWithSection();
-    refreshSettings();
+    seedSections();
     const section = S.settingsEntries.find((entry) => entry.type === "group" && entry.section.addedBy);
-    S.configTarget = { name: section.section.label, bundle: section.section.bundle, file: section.section.file, addedBy: section.section.addedBy, sectionId: section.section.sectionId };
+    S.configTarget = { name: section.section.label, plugin: section.section.plugin, bundle: section.section.bundle, file: section.section.file, addedBy: section.section.addedBy, sectionId: section.section.sectionId };
     S.configItems = section.section.items;
     S.cfgcursor = 0;
     S.mode = "pconfig";
