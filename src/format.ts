@@ -19,8 +19,8 @@ export const CLR = E + "K";
 // distinct palette: claude-code-loader = warm orange/tan (CC-inspired), opencode
 // -loader = teal. Resolved from IS_CLAUDE (env.ts, the single app-detection source).
 // Swap either constant to re-theme that loader (e.g. CC lavender "38;5;147m"). Used
-// everywhere (active tab, cursor, selection title, official badge); never hardcode
-// it elsewhere.
+// everywhere (app title, active tab, row cursor, spinner, flash message); never
+// hardcode it elsewhere.
 var ACCENT_CLAUDE = E + "38;5;173m";     // warm orange/tan
 var ACCENT_OPENCODE = E + "38;5;73m";    // teal
 export const ACCENT = IS_CLAUDE ? ACCENT_CLAUDE : ACCENT_OPENCODE;

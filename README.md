@@ -50,9 +50,11 @@ which is why a few small facts (such as the storage subdirectory names in
   `src/notify.ts`: the seams to the resolved plugin manager and to notifications
 - Level 1 of the marketplace view lists the marketplaces a home declares in
   `config/marketplaces.json`, read through the capability catalog
-  (`src/catalog-sources.ts`, `src/capability-catalog.ts`), plus the loader's
-  own built-in search catalog and its curated standalone-plugin list; none of
-  it comes from data shipped with the package
+  (`src/catalog-sources.ts`, `src/capability-catalog.ts`), then the loader's own
+  built-in search catalog and its curated standalone-plugin list, then the
+  marketplaces the active app's extension registers, then the seeded default
+  marketplaces (`src/env.ts`) a home has not added yet; the curated and seeded
+  lists are constants in `src/env.ts`, and no `data/` JSON file feeds any of it
 - `dist/` — compiled output (generated; not committed)
 
 There is no barrel module: consumers import the module they need directly
