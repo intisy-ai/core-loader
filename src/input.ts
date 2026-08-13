@@ -14,7 +14,7 @@ import { getUpdater, setupPlugin } from "./updater.js";
 import { openProject, openProjectSession, listSessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, buildConfigItems, setPluginConfig, declarationFor, hostPluginId, invalidateDeclaration, readDeclaration } from "./plugins.js";
 import { runSettingsAction } from "./plugin-surface.js";
-import { buildMarketplaceList, installMarketplacePlugin, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync } from "./marketplace.js";
+import { buildMarketplaceList, installMarketplacePlugin, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync, fetchSourceCatalogAsync } from "./marketplace.js";
 import { invalidateCapabilityCatalog } from "./capability-catalog.js";
 import { homePaths } from "./home-paths.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
@@ -534,6 +534,7 @@ export function handlePluginKey(key) {
         S.sourceFetched = false;
         fetchCatalogsAsync();
         fetchSeedMarketplacesAsync();
+        fetchSourceCatalogAsync();
         S.marketplaceItems = buildMarketplaceList();
         flash("Refreshing catalog...");
       }

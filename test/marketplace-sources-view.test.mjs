@@ -3,9 +3,18 @@
 import { describe, it, beforeEach } from "vitest";
 import assert from "node:assert";
 import { createRequire } from "node:module";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// env.ts derives CONFIG_DIR from HUB_CONFIG_DIR at module-evaluation time, so this must be an
+// isolated temp dir set before the FIRST require of dist/marketplace.js in this file: otherwise
+// fetchSourceCatalogAsync (used below) would read and write the real ~/.config home.
+const sourcesConfigDir = mkdtempSync(join(tmpdir(), "core-loader-marketplace-sources-"));
+process.env.HUB_CONFIG_DIR = sourcesConfigDir;
 
 const require = createRequire(import.meta.url);
-const { sourceRowsFrom } = require("../dist/marketplace.js");
+const { sourceRowsFrom, fetchSourceCatalogAsync } = require("../dist/marketplace.js");
 const { S } = require("../dist/state.js");
 
 function entry(id, sourceId, capabilities) {
@@ -110,5 +119,22 @@ describe("Level 2 for a declared source", () => {
     S.sourceCatalog = null;
     S.inputBuf = "";
     assert.deepEqual(buildMarketplacePluginsList("Org A", "source", "org-a"), []);
+  });
+});
+
+describe("fetchSourceCatalogAsync's guard flag", () => {
+  it("flips S.sourceFetched back to true synchronously, so a cleared flag is never left dangling", () => {
+    // Every declared source is disabled, so readCatalog's per-source map runs over an empty
+    // list and never reaches the network: this is what keeps the call hermetic.
+    const configFolder = join(sourcesConfigDir, "config");
+    mkdirSync(configFolder, { recursive: true });
+    writeFileSync(
+      join(configFolder, "marketplaces.json"),
+      JSON.stringify({ sources: [{ id: "off", type: "github-org", org: "off", enabled: false }] }),
+    );
+    S.sourceCatalog = [entry("stale", "off", [])];
+    S.sourceFetched = false;
+    fetchSourceCatalogAsync();
+    assert.equal(S.sourceFetched, true);
   });
 });
