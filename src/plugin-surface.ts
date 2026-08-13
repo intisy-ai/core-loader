@@ -56,9 +56,16 @@ export function pluginHost(): LoadedHost | null {
   return HOST;
 }
 
-/** Replaces the running host. Tests only. */
+/**
+ * Replaces the running host. Tests only.
+ *
+ * @remarks
+ * Clearing the host also uninstalls the diagnostic sink `startPluginHost` installed, so a later api
+ * diagnostic cannot keep writing through a logger whose home the next test never pinned.
+ */
 export function resetPluginHostForTests(host: LoadedHost | null): void {
   HOST = host;
+  if (!host) setDiagnosticSink(null);
 }
 
 /** Every plugin providing a capability, in activation order. */

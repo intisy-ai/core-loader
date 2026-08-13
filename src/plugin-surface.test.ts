@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { tmpdir } from "node:os";
 import type { PluginManifest } from "@intisy-ai/api";
+import { CONFIG_DIR } from "./env.js";
 import { startPlugins } from "./plugin-host.js";
 import { S } from "./state.js";
 import {
@@ -53,6 +55,16 @@ async function hostWith(...plugins: Array<{ manifest: PluginManifest; module: un
 }
 
 afterEach(() => resetPluginHostForTests(null));
+
+describe("the home these tests write to", () => {
+  // Four tests below reach tuiLog (a throwing schema, a throwing screens(), a throwing invoke, and
+  // the hostless case). Without a pinned home each of them appends a log file to the developer's own
+  // ~/.config/opencode, so the pin is asserted here rather than assumed.
+  it("is inside the temp dir, never the developer's own", () => {
+    expect(CONFIG_DIR).toBe(process.env.HUB_CONFIG_DIR);
+    expect(CONFIG_DIR.startsWith(tmpdir())).toBe(true);
+  });
+});
 
 describe("the surface's view of a running host", () => {
   it("answers with no providers, no bundle and no ledger row when no host started", async () => {
