@@ -129,12 +129,18 @@ describe("runScreenAction", () => {
     expect(seen).toEqual([{ ok: true }]);
   });
 
-  it("does not reject when the callback itself throws", async () => {
+  it("does not reject when the callback itself throws, and never calls it a second time", async () => {
     await hostWith({ manifest: manifest("doer", ["screens"]), module: screensPlugin([spec]) });
+    let calls = 0;
 
     await expect(runScreenAction({ plugin: "doer", spec, actions: [] }, { actionId: "go" }, () => {
+      calls++;
       throw new Error("the caller blew up");
     })).resolves.toBeUndefined();
+
+    // The catch reports a failure so a caller's cleanup always runs, which must not re-enter a
+    // callback that already ran and threw.
+    expect(calls).toBe(1);
   });
 });
 

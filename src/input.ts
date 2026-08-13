@@ -1283,12 +1283,17 @@ function handleScreenKey(key, sub) {
   }
 }
 
+// The busy gate has one owner: it is armed here and released here, in a finally, so no ordering
+// inside this body and no throw out of it can leave every later keystroke dropped by handleKey.
 function runContributedScreenAction(entry, row) {
   S.busy = true;
   runScreenAction(entry, row, function (answer) {
-    S.busy = false;
-    if (answer && answer.message) flash(answer.message);
-    render();
+    try {
+      if (answer && answer.message) flash(answer.message);
+      render();
+    } finally {
+      S.busy = false;
+    }
   });
 }
 

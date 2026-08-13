@@ -82,17 +82,26 @@ export function refreshScreen(entry) {
   });
 }
 
-// done always receives an ActionResult shape, so the caller can flash `message` whether the action
-// ran, refused or failed.
+// done always receives an ActionResult shape, exactly once, on every path including a throw: a
+// caller owns whatever it armed before the call (the busy gate) and releases it in there, so
+// skipping the call would leave the loader gated on an action nothing will ever report.
 export function runScreenAction(entry, row, done) {
   const finish = typeof done === "function" ? done : function () {};
-  if (!entry || !entry.spec || !row || !row.actionId) { finish({ ok: false, message: "nothing to run" }); return; }
+  var reported = false;
+  function report(answer) {
+    if (reported) return;
+    reported = true;
+    finish(answer);
+  }
+  if (!entry || !entry.spec || !row || !row.actionId) { report({ ok: false, message: "nothing to run" }); return; }
   const input = row.argId !== undefined ? { id: row.argId } : {};
   return invokeScreenAction(entry.plugin, entry.spec.id, row.actionId, input).then(function (answer) {
     if (answer && answer.refresh) refreshScreen(entry);
-    finish(answer);
+    report(answer);
   }).catch(function (error) {
-    tuiLog("screen action " + row.actionId + " could not be reported: " + String(error), true);
+    tuiLog("screen action " + row.actionId + " could not be completed: " + String(error), true);
+    // A throw from inside done itself already reported, so this cannot re-enter it.
+    report({ ok: false, message: "the action could not be completed" });
   });
 }
 

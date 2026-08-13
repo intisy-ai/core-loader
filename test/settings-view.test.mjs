@@ -1,6 +1,6 @@
 // The Settings tab renders whatever a plugin declared: its contributed sections carry the
 // plugin's name, and an action shows as a row you run rather than a value you edit.
-import { describe, it, beforeEach, afterEach } from "vitest";
+import { describe, it, beforeEach, afterEach, vi } from "vitest";
 import assert from "node:assert";
 import { createRequire } from "node:module";
 
@@ -57,6 +57,101 @@ afterEach(() => {
   S.settingsSubPage = saved.sub;
   S.capabilities = saved.capabilities;
   S.settingsEntries = null;
+});
+
+// Running an action from a contributed screen arms the busy gate, which drops every keystroke until
+// it is released. Driven through the real key handler against a real host, because the release is
+// split across two modules and only the whole path shows whether it happens.
+describe("a contributed screen's action", () => {
+  const { startPlugins } = require("../dist/plugin-host.js");
+  const { resetPluginHostForTests } = require("../dist/plugin-surface.js");
+  const { handleSettingsKey } = require("../dist/input.js");
+
+  const screenSpec = { id: "s", label: "S", layout: { kind: "stack", children: [{ kind: "text", text: "hi" }] } };
+
+  function runtime() {
+    return {
+      config: { all: () => ({}), get: () => undefined, set: async () => {} },
+      log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+      paths: { home: "/home", repos: "/home/repos", plugin: "/home/plugin", cache: "/home/cache", config: "/home/config" },
+      events: { publish: () => {}, subscribe: () => () => {} },
+    };
+  }
+
+  // An ActionResult is a live object the plugin still owns, so reading a field of it can run the
+  // plugin's code: this one throws on the way to reporting the result rather than inside the report.
+  const hostileResult = {
+    ok: true,
+    message: "did it",
+    get refresh() { throw new Error("refresh exploded"); },
+  };
+
+  async function hostWith(invoke) {
+    const loaded = await startPlugins({
+      app: "test",
+      pluginDir: "/home/plugin",
+      surfaces: ["tui"],
+      runtimeFor: () => runtime(),
+      scan: {
+        loaded: [{
+          manifest: { id: "doer", api: 1, entry: "dist/index.js", capabilities: ["screens"] },
+          manifestPath: "/home/plugin/doer.json",
+          entryPath: "/home/plugin/doer.js",
+        }],
+        failed: [],
+      },
+      importEntry: async () => ({
+        default: {
+          activate: (ctx) => ctx.provide("screens", {
+            screens: () => [screenSpec],
+            read: async () => ({ sources: {} }),
+            invoke,
+          }),
+          deactivate: () => {},
+        },
+      }),
+    });
+    resetPluginHostForTests(loaded);
+  }
+
+  function openScreenWithOneAction() {
+    S.screenSpecs = [{ plugin: "doer", spec: screenSpec, actions: [] }];
+    S.settingsSubPage = "doer:s";
+    S.screenRows = [{ text: "Go", depth: 0, actionId: "go" }];
+    S.screenCursor = 0;
+  }
+
+  afterEach(() => {
+    resetPluginHostForTests(null);
+    S.screenSpecs = [];
+    S.screenRows = [];
+    S.screenFailed = null;
+    S.busy = false;
+    if (S.msgTimeout) { clearTimeout(S.msgTimeout); S.msgTimeout = null; }
+    if (S.renderTimer) { clearTimeout(S.renderTimer); S.renderTimer = null; }
+    S.message = "";
+  });
+
+  it("releases the busy gate and says so when reporting the result throws", async () => {
+    await hostWith(async () => hostileResult);
+    openScreenWithOneAction();
+
+    handleSettingsKey("enter");
+    assert.strictEqual(S.busy, true, "the gate must be armed while the action runs");
+
+    await vi.waitFor(() => assert.strictEqual(S.busy, false, "a dropped report leaves every later keystroke ignored"));
+    assert.match(S.message, /could not be completed/, "the user must be told, got: " + S.message);
+  });
+
+  it("releases the busy gate and flashes the message on a result it can read", async () => {
+    await hostWith(async () => ({ ok: true, message: "did it" }));
+    openScreenWithOneAction();
+
+    handleSettingsKey("enter");
+
+    await vi.waitFor(() => assert.strictEqual(S.busy, false));
+    assert.strictEqual(S.message, "did it");
+  });
 });
 
 describe("settings tab", () => {
