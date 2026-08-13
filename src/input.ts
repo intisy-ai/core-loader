@@ -15,6 +15,8 @@ import { openProject, openProjectSession, listSessions, togglePin, hideItem, unh
 import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, buildConfigItems, setPluginConfig, declarationFor, hostPluginId, invalidateDeclaration, readDeclaration } from "./plugins.js";
 import { runSettingsAction } from "./plugin-surface.js";
 import { buildMarketplaceList, installMarketplacePlugin, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync } from "./marketplace.js";
+import { invalidateCapabilityCatalog } from "./capability-catalog.js";
+import { homePaths } from "./home-paths.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
@@ -526,8 +528,10 @@ export function handlePluginKey(key) {
       else if (key === "r") {
         invalidateCatalogCache();
         invalidateSeedCache();
+        invalidateCapabilityCatalog(homePaths(CONFIG_DIR));
         S.catalogFetched = false;
         S.seedFetched = false;
+        S.sourceFetched = false;
         fetchCatalogsAsync();
         fetchSeedMarketplacesAsync();
         S.marketplaceItems = buildMarketplaceList();
