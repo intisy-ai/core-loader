@@ -142,14 +142,13 @@ export const S = {
   // key handling (see handleKey) so the user stays put and can't fire more work.
   busy: false,
 
-  // Cached "is the updater plugin present" result. The check reads disk + can shell
-  // out, so it must never run on a navigation render, computed until true, then held.
+  // Cached "is the plugin manager present" result. The check reads disk + can import a bundle, so it
+  // must never run on a navigation render: computed until true, then held.
   hasUpdater: false,
 
-  // Updater install progress (shown in-body while installUpdater runs). updaterSteps
-  // accumulates step labels; all but the last render as done (✓), the last as active.
-  updaterInstalling: false,
-  updaterSteps: [],
+  // The plugin manager this home resolved (see plugin-manager.ts). `undefined` means resolution has
+  // not run yet, `null` means it ran and nothing in this home manages plugins.
+  pluginManager: undefined,
 
   // Status message + render scheduling
   message: "",

@@ -1,61 +1,66 @@
 // @ts-nocheck
-// plugin-updater engine discovery and the npm-plugin / repo helpers that wrap it.
+// The plugin manager this home resolved, and the npm-plugin / repo helpers that wrap it.
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, rmSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { readJson, readJsonc } from "./json.js";
-import { join, dirname } from "path";
+import { join } from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
+import { pathToFileURL } from "url";
 import { PLUGINS_DIR, CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, IS_CLAUDE, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { spawnEnv } from "./activity-seam.js";
+import { homePaths } from "./home-paths.js";
+import { readMarketplaceSources } from "./catalog-sources.js";
+import { queryCapability } from "./capability-catalog.js";
+import { bootstrapCommand, managerEntries, resolvePluginManager, PLUGIN_MANAGEMENT_CAPABILITY } from "./plugin-manager.js";
+import { catalogCacheHours } from "./config.js";
 
-// Every place the deployed plugin-updater might live. The npx roots differ per OS:
-// ~/.npm/_npx on unix, %LOCALAPPDATA%/%APPDATA%\npm-cache\_npx on Windows; all must
-// be checked or the loader reports "Updater Plugin Missing" on Windows.
-function updaterCandidatePaths() {
-  const fs = require('fs'); const path = require('path'); const os = require('os');
-  const cands = [
-    path.join(PLUGINS_DIR, "plugin-updater", "index.js"),
-    path.join(CONFIG_DIR, "node_modules", "plugin-updater"),
-    path.join(os.homedir(), ".cache", "opencode", "packages", "plugin-updater@latest", "node_modules", "plugin-updater"),
-  ];
-  const npxRoots = [
-    path.join(os.homedir(), ".npm", "_npx"),
-    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "npm-cache", "_npx") : null,
-    process.env.APPDATA ? path.join(process.env.APPDATA, "npm-cache", "_npx") : null,
-  ].filter(Boolean);
-  for (const npxRoot of npxRoots) {
-    try {
-      for (const entry of fs.readdirSync(npxRoot)) {
-        cands.push(path.join(npxRoot, entry, "node_modules", "plugin-updater"));
-      }
-    } catch {}
-  }
-  return cands.filter(function(p) { return fs.existsSync(p); });
-}
-
-// plugin-updater is ESM with top-level await, so require() throws ERR_REQUIRE_ASYNC_MODULE
-// under Node; it MUST be import()'d. Preload it once (async) at TUI startup; getUpdater()
-// then returns the cached module synchronously to all the sync callers.
+// The manager is an ESM bundle with top-level await, so require() throws ERR_REQUIRE_ASYNC_MODULE
+// under Node and it MUST be import()'d. Resolved and imported once at TUI startup; getUpdater()
+// then answers the sync callers from the cache.
 export async function preloadUpdater() {
   if (S.UPDATER_MODULE !== undefined) return S.UPDATER_MODULE;
-  const fs = require('fs'); const path = require('path'); const { pathToFileURL } = require('url');
-  for (const p of updaterCandidatePaths()) {
-    let entry = p;
-    if (!entry.endsWith(".js")) {
-      try { entry = path.join(p, JSON.parse(fs.readFileSync(path.join(p, "package.json"), "utf8")).main || "index.js"); }
-      catch { entry = path.join(p, "index.js"); }
-    }
+  const paths = homePaths(CONFIG_DIR);
+  const ref = await resolvePluginManager(paths, {
+    queryCapability: (capabilityId) =>
+      queryCapability(capabilityId, readMarketplaceSources(paths), paths, catalogCacheHours() * 3600000, { log: tuiLog }),
+    log: tuiLog,
+  });
+  S.pluginManager = ref;
+  if (!ref) {
+    S.UPDATER_MODULE = null;
+    tuiLog("no plugin in this home declares the " + PLUGIN_MANAGEMENT_CAPABILITY + " capability");
+    return null;
+  }
+  for (const candidate of managerEntries(paths, ref)) {
     try {
-      S.UPDATER_MODULE = await import(pathToFileURL(entry).href);
-      S.UPDATER_PATH = p;        // package dir, for the version lookup
-      S.UPDATER_ENTRY = entry;   // resolved .js, the child process import()s this
+      S.UPDATER_MODULE = await import(pathToFileURL(candidate.entry).href);
+      S.UPDATER_PATH = candidate.packageDir || "";
+      S.UPDATER_ENTRY = candidate.entry;
       return S.UPDATER_MODULE;
-    } catch (e) { tuiLog("Failed to load updater from " + entry + ": " + e); }
+    } catch (e) {
+      tuiLog("Failed to load the plugin manager from " + candidate.entry + ": " + e);
+    }
   }
   S.UPDATER_MODULE = null;
   return null;
+}
+
+/** The plugin manager this home resolved, or null when none did. */
+export function resolvedManager() {
+  return S.pluginManager || null;
+}
+
+/**
+ * The command an operator runs to install the manager, or "" while none is known.
+ *
+ * @remarks
+ * Text, never executed here: npx always fetches the published package, whatever this home installed.
+ */
+export function managerBootstrapCommand() {
+  const ref = resolvedManager();
+  return ref ? bootstrapCommand(ref, IS_CLAUDE ? "claude" : "opencode") : "";
 }
 
 export function getUpdater() {
@@ -71,15 +76,12 @@ export function getUpdaterPath() {
 export function getUpdaterVersion() {
   try {
     if (!getUpdater() || !S.UPDATER_PATH) return "";
-    var pkgPath = S.UPDATER_PATH.endsWith("index.js")
-      ? join(dirname(S.UPDATER_PATH), "package.json")
-      : join(S.UPDATER_PATH, "package.json");
-    return (readJson(pkgPath) || {}).version || "";
+    return (readJson(join(S.UPDATER_PATH, "package.json")) || {}).version || "";
   } catch { return ""; }
 }
 
 // Run the updater's updatePluginPublic (git + build + deploy + activate) in a
-// child node process so the git/build execSync inside plugin-updater blocks that
+// child node process so the git/build execSync inside the manager blocks that
 // child, not our main event loop, so the TUI keeps rendering and animating.
 export function setupPlugin(repo, done) {
   var updater = getUpdater();
@@ -161,10 +163,6 @@ export function loadNpmPlugins() {
   } catch { return []; }
 }
 
-// App-aware install of the plugin-updater engine itself (the bootstrap that lets
-// the loader manage git plugins). Claude registers a SessionStart hook that runs
-// the transient `npx plugin-updater@latest`; OpenCode installs it globally and
-// lists it in opencode.json. Idempotent. Returns "" on success or an error string.
 // Force getUpdater() to re-resolve on next call (after installing the engine, so the
 // gate lifts without an app restart).
 export function clearUpdaterCache() {
@@ -172,81 +170,7 @@ export function clearUpdaterCache() {
   S.UPDATER_PATH = undefined;
   S.UPDATER_ENTRY = undefined;
   S.hasUpdater = false;
-}
-
-// Self-update the engine, the one plugin permitted to use npm/npx. Claude: drop the
-// cached npx copy (npx pins @latest) and re-fetch+run the newest published version.
-// OpenCode: update the opencode.jsonc npm plugin via the engine's own API. Returns
-// "" on success or an error string.
-// Runs OFF-THREAD via a child process and reports through `done(err)` so a blocking
-// execSync never freezes the busy spinner or the TUI's event loop. Keeps S.busy
-// owned by the caller; calls done("") on success.
-export function updateUpdater(done) {
-  var finish = typeof done === "function" ? done : function () {};
-  var spawn = require("child_process").spawn;
-  try {
-    if (IS_CLAUDE) {
-      // drop the cached npx copy (npx pins @latest) so the newest is refetched
-      try {
-        var npxRoot = join(homedir(), ".npm", "_npx");
-        for (var entry of readdirSync(npxRoot)) {
-          if (existsSync(join(npxRoot, entry, "node_modules", "plugin-updater"))) rmSync(join(npxRoot, entry), { recursive: true, force: true });
-        }
-      } catch { /* no cache to clear */ }
-    }
-    var command = IS_CLAUDE
-      ? "npx -y plugin-updater@latest run --app claude"
-      : "npm update -g plugin-updater";
-    // command may be either tool, so the trace is merged unconditionally
-    var child = spawn(command, { stdio: ["ignore", "ignore", "pipe"], shell: true, env: spawnEnv() });
-    var err = "";
-    child.stderr.on("data", function (d) { err += d.toString(); });
-    child.on("error", function (e) { finish("updater self-update failed: " + ((e && e.message) || e)); });
-    child.on("exit", function (code) {
-      clearUpdaterCache();
-      finish(code === 0 ? "" : ("updater self-update failed" + (err.trim() ? ": " + err.trim() : "")));
-    });
-  } catch (e) {
-    finish("updater self-update failed: " + ((e && e.message) || e));
-  }
-}
-
-// onStep(label): optional progress reporter, called before each blocking step so a
-// caller can re-render (the steps run via synchronous execSync, so this is coarse
-// step-by-step progress, not a live spinner).
-export function installUpdater(configDir, appName, onStep) {
-  var step = typeof onStep === "function" ? onStep : function () {};
-  try {
-    var appFlag = appName === "Claude Code" ? "claude" : "opencode";
-    if (appName === "Claude Code") {
-      step("Registering the SessionStart hook");
-      var settingsPath = join(configDir, "settings.json");
-      var settings = readJson(settingsPath, {});
-      var hooks = settings.hooks || (settings.hooks = {});
-      var sessionStart = hooks.SessionStart || (hooks.SessionStart = []);
-      if (!JSON.stringify(sessionStart).includes("plugin-updater")) {
-        sessionStart.push({ hooks: [{ type: "command", command: "npx -y plugin-updater@latest run --app claude" }] });
-      }
-      writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
-    } else {
-      step("Installing the npm package (npm i -g)");
-      execSync("npm install -g plugin-updater", { timeout: 180000, stdio: "ignore" });
-      step("Registering it in opencode.json");
-      var ocPath = join(configDir, "opencode.json");
-      var ocData = readJsonc(ocPath, {});
-      if (!Array.isArray(ocData.plugin)) ocData.plugin = [];
-      if (ocData.plugin.indexOf("plugin-updater") === -1) ocData.plugin.unshift("plugin-updater");
-      writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");
-    }
-    // Run the engine now so it's fetched + resolvable immediately (populates the npx
-    // cache getUpdater() looks in); installing shouldn't require an app restart.
-    step("Fetching + building the engine");
-    try { execSync("npx -y plugin-updater@latest run --app " + appFlag, { timeout: 180000, stdio: "ignore", env: spawnEnv() }); } catch { /* best effort; getUpdater re-checks */ }
-    step("Done");
-    return "";
-  } catch (e) {
-    return "Failed to install updater: " + ((e && e.message) || e);
-  }
+  S.pluginManager = undefined;
 }
 
 export function getFolderName(plugin) {
@@ -255,6 +179,6 @@ export function getFolderName(plugin) {
     var nested = match[1] + "/" + plugin.name;
     if (existsSync(join(REPOS_DIR, nested))) return nested;
   }
-  // plugin-updater clones flat into repos/<name>
+  // clones land flat in repos/<name> unless the owner-nested layout exists
   return plugin.name;
 }
