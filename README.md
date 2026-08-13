@@ -48,10 +48,11 @@ which is why a few small facts (such as the storage subdirectory names in
   declared marketplace sources)
 - `src/updater.ts`, `src/activity-seam.ts`,
   `src/notify.ts`: the seams to the resolved plugin manager and to notifications
-- The marketplace's badged first-party section comes from the marketplaces a
-  home declares in `config/marketplaces.json`, read through the capability
-  catalog (`src/catalog-sources.ts`, `src/capability-catalog.ts`), never from
-  data shipped with the package
+- Level 1 of the marketplace view lists the marketplaces a home declares in
+  `config/marketplaces.json`, read through the capability catalog
+  (`src/catalog-sources.ts`, `src/capability-catalog.ts`), plus the loader's
+  own built-in search catalog and its curated standalone-plugin list; none of
+  it comes from data shipped with the package
 - `dist/` — compiled output (generated; not committed)
 
 There is no barrel module: consumers import the module they need directly
