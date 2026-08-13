@@ -289,7 +289,9 @@ function cachedEntries(paths: HomePaths, windowMs: number, now: () => number): C
   const cached = readJson(join(paths.cacheDir, CATALOG_CACHE_FILE));
   if (!cached || typeof cached !== "object" || !Array.isArray(cached.entries)) return null;
   if (now() - Number(cached.time || 0) > windowMs) return null;
-  return cached.entries as CatalogEntry[];
+  return (cached.entries as unknown[]).filter(
+    (entry): entry is CatalogEntry => !!entry && typeof entry === "object",
+  );
 }
 
 function writeCache(paths: HomePaths, entries: CatalogEntry[], now: () => number): void {

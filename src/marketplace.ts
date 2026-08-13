@@ -23,12 +23,25 @@ export function invalidateSeedCache() {
   try { unlinkSync(SEED_CACHE_PATH); } catch {}
 }
 
+/**
+ * A cached entry carrying a category nothing derives any more, brought onto the current vocabulary.
+ *
+ * @remarks
+ * A cache written before the category came from an entry's own capabilities can still hold
+ * "Official", and the renderer emits a heading on every category change, so a single stale value
+ * interleaves headings down the whole list. The cache is the one place such a value enters.
+ */
+function withCurrentCategory(entry) {
+  if (entry && entry.category === "Official") entry.category = "Community";
+  return entry;
+}
+
 export function loadCatalogCache() {
   try {
     var cached = readJson(CATALOG_CACHE_PATH);
     if (!cached || Date.now() - cached.time > catalogCacheHours() * 3600000) return false;
     if (!Array.isArray(cached.marketplace) || cached.marketplace.length === 0) return false;
-    for (var ce of cached.marketplace) S.MARKETPLACE_CATALOG.push(ce);
+    for (var ce of cached.marketplace) S.MARKETPLACE_CATALOG.push(withCurrentCategory(ce));
     for (var me of (cached.mcp || [])) {
       var existing = MCP_CATALOG.find(function(x) { return x.name === me.name; });
       // a pre-seeded curated entry stays in place but adopts the cached stars/repo
@@ -142,9 +155,13 @@ export function fetchSeedMarketplacesAsync() {
  * Reads what this home's declared marketplace sources offer, once per cache window.
  *
  * @remarks
- * Non-blocking and guarded by `S.sourceFetched`, the same shape the seed fetch uses: Level 1 renders
- * immediately with an unknown count and fills in when this resolves. It reads through the on-disk
- * catalog cache, so a warm home costs no network at all.
+ * Non-blocking and guarded by `S.sourceFetched`: Level 1 renders immediately with an unknown count
+ * and fills in when this resolves. It reads through the on-disk catalog cache, so a warm home costs
+ * no network at all, but that warm path resolves on the first microtask, before boot has picked the
+ * tab to show, so the rebuild must not be conditional on the marketplace tab being the visible one.
+ * `scheduleRender` is throttled, so rebuilding a list nobody is looking at costs nothing.
+ * The success and failure handlers are separate arguments rather than a trailing `catch`, so a throw
+ * from the rebuild cannot empty a catalog that was read successfully.
  */
 export function fetchSourceCatalogAsync() {
   if (S.sourceFetched) return;
@@ -153,12 +170,9 @@ export function fetchSourceCatalogAsync() {
   catalogFor(readMarketplaceSources(paths), paths, catalogCacheHours() * 3600000, { log: tuiLog })
     .then(function (entries) {
       S.sourceCatalog = entries;
-      if (S.pluginSubPage === "marketplace") {
-        S.marketplaceItems = buildMarketplaceList();
-        scheduleRender();
-      }
-    })
-    .catch(function (error) {
+      S.marketplaceItems = buildMarketplaceList();
+      scheduleRender();
+    }, function (error) {
       S.sourceCatalog = [];
       tuiLog("declared marketplace sources could not be read: " + error);
     });
@@ -194,8 +208,8 @@ export function sourceRowsFrom(sources, entries) {
 // Claude's community catalog gets a Curated section like opencode's (whose Curated
 // entries come from the awesome-opencode scrape): seed the VERIFIED FEATURED_PLUGINS
 // repos as category "Curated", one hand-checked source of truth, no new unverified
-// repos. full_name matching mirrors the marketplace.json fetches; stars ride in via
-// the existing enrichment passes.
+// repos. full_name matching mirrors the GitHub-search dedupe further down this file;
+// stars ride in via the existing enrichment passes.
 function seedCuratedPlugins() {
   if (!IS_CLAUDE) return;   // opencode's Curated section is scraped, not seeded
   for (var ci = 0; ci < FEATURED_PLUGINS.length; ci++) {
@@ -203,7 +217,7 @@ function seedCuratedPlugins() {
     var curKey = (cur.full_name || "").toLowerCase();
     var existingCur = S.MARKETPLACE_CATALOG.find(function(e) { return (e.full_name || "").toLowerCase() === curKey; });
     if (existingCur) {
-      if (existingCur.category !== "Official") existingCur.category = "Curated";
+      existingCur.category = "Curated";
       if (!existingCur.desc) existingCur.desc = cur.desc;
     } else {
       S.MARKETPLACE_CATALOG.push({ name: cur.name, desc: cur.desc, category: "Curated", author: cur.author, repoName: cur.repoName, full_name: cur.full_name, url: cur.url });
@@ -371,8 +385,8 @@ export function fetchCatalogsAsync() {
               var it = json.items[i];
               var cleanName = it.name.replace(/^claude-|^opencode-/, "");
               // Match plugins by full_name (owner/repo), never by the stripped display
-              // name: two different repos can strip to the same name, and matching by
-              // name let a community repo overwrite an official entry's star count.
+              // name: two different repos can strip to the same name, so a name match
+              // writes one repo's star count onto the other.
               var exists = catalog.find(function(m) { return catalog === S.MARKETPLACE_CATALOG ? (!!m.full_name && m.full_name === it.full_name) : (m.name === it.name); });
               if (!exists) {
                 var newItem = {
