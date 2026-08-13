@@ -634,7 +634,7 @@ export function buildMarketplaceMarketsList() {
 // Level 2: a single marketplace's plugins, routed by kind. A declared source's entries come from its
 // own manifests (S.sourceCatalog), grouped by the category each entry's capabilities imply. The
 // built-in community catalog is served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG,
-// which already carries an "Official"/"Curated" category on some entries). The curated Featured list
+// which already carries a "Community"/"Curated" category on some entries). The curated Featured list
 // is served from the static FEATURED_PLUGINS list (env.ts). A seed is served from S.seedMarketplaces.
 // Anything else is assumed to be an app-registered capability marketplace, served through
 // capabilities.marketplacePlugins(name), which returns [] if the capability is absent or the

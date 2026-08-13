@@ -352,9 +352,10 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       }
     }
 
-    // section header whenever the plugin's category changes (Official/Community/
-    // Curated for the loader's own catalogs; a single "From <source>" group for a
-    // capability marketplace); also the unit [ / ] fast-nav jumps between.
+    // section header whenever the plugin's category changes (a source's entries by
+    // their capability-derived category, "Community"/"Curated" for the built-in
+    // catalog; a single "From <source>" group for a capability marketplace); also
+    // the unit [ / ] fast-nav jumps between.
     var lastGroup = null;
     for (var pi2 = 0; pi2 < S.marketplaceItems.length; pi2++) {
       var mitem = S.marketplaceItems[pi2];

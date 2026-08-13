@@ -223,8 +223,9 @@ export function switchPluginSubPage() {
 }
 
 // Fast nav within a (potentially long) Level-2 marketplace: jump the cursor to
-// the start of the previous/next category group ("Official"/"Community"/"Curated"
-// for the loader's own two catalogs). A capability marketplace's plugins carry no
+// the start of the previous/next category group (a declared source's entries
+// group by their capability-derived category; the built-in catalog groups by
+// "Community"/"Curated"). A capability marketplace's plugins carry no
 // category, so there is only one implicit group there; in that case (or any
 // single-group list) fall back to a 10-row page jump so the keys stay useful.
 function jumpMarketplaceGroup(dir) {

@@ -145,11 +145,11 @@ export const DEFAULT_MARKETPLACES = [
 ];
 
 // Standalone individual plugin repos (not marketplaces) curated for a built-in
-// "Featured" catalog shown in Level 1 alongside "intisy-ai (official)"/"community"
-// (see marketplace.ts loaderOwnMarketplaces). Each installs like any other
-// catalog plugin, git clone via the updater, using the derived .url below;
-// there is no marketplace.json to fetch, so these never go through the seed
-// fetch machinery. Verified list, do NOT add unverified repos here.
+// "Featured" catalog shown in Level 1 alongside "community" and any declared
+// marketplace source (see marketplace.ts loaderOwnMarketplaces). Each installs
+// like any other catalog plugin, git clone via the updater, using the derived
+// .url below; there is no marketplace.json to fetch, so these never go through
+// the seed fetch machinery. Verified list, do NOT add unverified repos here.
 export const FEATURED_PLUGINS = [
   { name: "claude-mem", repo: "thedotmack/claude-mem", description: "Persistent cross-session memory (capture/compress/reinject)", category: "memory" },
   { name: "hindsight", repo: "vectorize-io/hindsight", description: "Agent memory that learns (+ hindsight-skills)", category: "memory" },

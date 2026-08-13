@@ -20,7 +20,7 @@ flowchart TD
     CL --> CFG["config + settings-model: edit any plugin's settings"]
     CL --> UPD["updater: delegates git plugins to the resolved plugin manager"]
     CL --> PROXY["proxy-runner: starts the app's proxy"]
-    CL --> ENV["env: config dir, app detection, official-plugins data"]
+    CL --> ENV["env: config dir, app detection, static catalogs"]
 ```
 
 This library is **generic**: it contains no per-app job. Anything app-specific
@@ -48,7 +48,10 @@ which is why a few small facts (such as the storage subdirectory names in
   declared marketplace sources)
 - `src/updater.ts`, `src/activity-seam.ts`,
   `src/notify.ts`: the seams to the resolved plugin manager and to notifications
-- `data/official-plugins.json` — the badged official marketplace section
+- The marketplace's badged first-party section comes from the marketplaces a
+  home declares in `config/marketplaces.json`, read through the capability
+  catalog (`src/catalog-sources.ts`, `src/capability-catalog.ts`), never from
+  data shipped with the package
 - `dist/` — compiled output (generated; not committed)
 
 There is no barrel module: consumers import the module they need directly
