@@ -13,6 +13,7 @@ import { hideCur, showCur, cleanup } from "./out.js";
 import { getFolderName, installUpdater, clearUpdaterCache, preloadUpdater } from "./updater.js";
 import { preloadConfigLedger } from "./config-ledger.js";
 import { startPluginHost } from "./plugin-surface.js";
+import { refreshScreenSpecs } from "./views/screens.js";
 import { loadConfig, saveConfig, migrateConfigs, loadPlugins, autoUpdateCheck, updateCheckDelayMs, updateCheckIntervalHours, defaultTab } from "./config.js";
 import { flash } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
@@ -294,7 +295,7 @@ async function boot() {
   await Promise.all([
     preloadUpdater().catch(function () {}),
     preloadConfigLedger().catch(function () {}),
-    startPluginHost(),
+    startPluginHost().then(function () { return refreshScreenSpecs(); }).catch(function () {}),
   ]);
   hideCur();
   render();

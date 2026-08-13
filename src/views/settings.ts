@@ -22,7 +22,7 @@ function rowLabel(row) {
 // spliced in here (not inside views/screens.ts) because it is the pre-existing hardcoded
 // wiring a later task removes; the contributed-screens module stays unaware of it.
 export function settingsSubPages() {
-  var pages = subPages(collectScreens(S.pluginItems));
+  var pages = subPages(collectScreens());
   pages.splice(1, 0, { id: "versioning", label: "Versioning" });
   return pages;
 }

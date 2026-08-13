@@ -4,19 +4,19 @@ import { collectScreens, subPages, entryId, resolveScreenAction } from "./screen
 const spec = { id: "config", label: "Config", layout: { kind: "stack", children: [{ kind: "text", text: "hi" }] } };
 
 describe("contributed screens in the loader", () => {
-  it("collects one entry per screen a plugin declares", () => {
-    const entries = collectScreens([{ name: "p", _cfg: { name: "p", screens: [spec] } }]);
+  it("collects one entry per screen a plugin declared", () => {
+    const entries = collectScreens([{ plugin: "p", spec, actions: [] }]);
     expect(entries).toEqual([{ plugin: "p", spec, actions: [] }]);
   });
 
   it("carries the plugin's declared actions on each entry, for resolving a row action's metadata", () => {
     const action = { id: "restore", label: "Restore", confirm: "Overwrite uncommitted changes?", danger: true };
-    const entries = collectScreens([{ name: "p", _cfg: { name: "p", screens: [spec], actions: [action] } }]);
+    const entries = collectScreens([{ plugin: "p", spec, actions: [action] }]);
     expect(entries).toEqual([{ plugin: "p", spec, actions: [action] }]);
   });
 
-  it("ignores a plugin with no screens", () => {
-    expect(collectScreens([{ name: "p", _cfg: { name: "p" } }])).toEqual([]);
+  it("collects nothing when no plugin declared a screen", () => {
+    expect(collectScreens([])).toEqual([]);
   });
 
   it("lists Settings first, then one sub-page per screen, in declared order", () => {

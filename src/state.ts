@@ -99,8 +99,9 @@ export const S = {
   settingsSections: [],  // SettingsSection[] (Global + one per plugin)
   settingsEntries: [],   // SettingsEntry[] the renderer + key handler walk (headers + groups)
 
-  // Contributed-screen sub-page (views/screens.ts): rows are refreshed by running the
-  // owning plugin's bundle in a child process, so they never block the render loop.
+  // Contributed-screen sub-pages (views/screens.ts): the declarations each plugin's `screens`
+  // capability answered, read once because the sub-page list is walked every render frame.
+  screenSpecs: [],
   screenRows: [],
   screenCursor: 0,
   screenScrollOff: 0,
