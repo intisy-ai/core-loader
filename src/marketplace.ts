@@ -2,7 +2,7 @@
 // Plugin marketplace: async catalog fetches (GitHub topics, npm, awesome list),
 // on-disk catalog cache, list building, and one-shot plugin install via git.
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
+import { existsSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { readJson } from "./json.js";
 import { exec } from "child_process";
 import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, FEATURED_PLUGINS, APP_NAME, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, tuiLog } from "./env.js";

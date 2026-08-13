@@ -3,7 +3,7 @@
 // opencode-loader). Kept core-free (the caller injects its own logger) so
 // core-loader stays independent of the core bundle.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { readJson } from "./json.js";
 import { execSync } from "child_process";
 import { join } from "path";
