@@ -207,7 +207,7 @@ export function switchPluginSubPage() {
   S.inputBuf = "";
   if (S.pluginSubPage === "installed") {
     S.pluginSubPage = "marketplace";
-    S.mkLevel = "markets"; S.mkMarket = null; S.mkMarketKind = null; S.mkSelected = {};
+    S.mkLevel = "markets"; S.mkMarket = null; S.mkMarketKind = null; S.mkMarketSourceId = null; S.mkSelected = {};
     S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0;
   }
   else if (S.pluginSubPage === "marketplace" && S.customTabs.length > 0) { S.pluginSubPage = S.customTabs[0].id; }
@@ -393,7 +393,7 @@ export function handlePluginKey(key) {
     if (key === "escape" && S.pluginSubPage === "marketplace" && S.mkMode === "actions") { S.mkMode = "browse"; return; }
     // Esc at Level 2 backs out to Level 1 (the marketplace list) instead of quitting.
     if (key === "escape" && S.pluginSubPage === "marketplace" && S.mkLevel === "plugins") {
-      S.mkLevel = "markets"; S.mkMarket = null; S.mkMarketKind = null; S.mkSelected = {}; S.inputBuf = "";
+      S.mkLevel = "markets"; S.mkMarket = null; S.mkMarketKind = null; S.mkMarketSourceId = null; S.mkSelected = {}; S.inputBuf = "";
       S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0;
       return;
     }
@@ -496,6 +496,7 @@ export function handlePluginKey(key) {
           if (!curItem) return;
           S.mkMarket = curItem.name;
           S.mkMarketKind = curItem.builtin || (curItem.capability ? "capability" : (curItem.seed ? "seed" : null));
+          S.mkMarketSourceId = curItem.sourceId || null;
           S.mkLevel = "plugins";
           S.mkCursor = 0;
           S.mkScrollOff = 0;

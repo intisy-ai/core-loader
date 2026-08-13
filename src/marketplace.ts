@@ -605,19 +605,12 @@ function buildMarketplaceActionRows() {
   return rows;
 }
 
-// The loader's own two "marketplaces": the built-in catalog (fetched/curated by
-// this file) split into its official and community halves, each reported with a
-// live plugin count. They are marketplaces like any other at Level 1, just backed
-// by S.MARKETPLACE_CATALOG instead of a capabilities.marketplaces() entry.
+// The two Level-1 rows that are not a declared source: the catalog this file fetches by searching
+// GitHub, npm and the awesome list, and the curated standalone list. Both are backed by data this
+// file owns rather than by a marketplace anyone declared.
 function loaderOwnMarketplaces() {
-  var officialCount = 0, communityCount = 0;
-  for (var i = 0; i < S.MARKETPLACE_CATALOG.length; i++) {
-    var e = S.MARKETPLACE_CATALOG[i];
-    if (e.official) officialCount++; else communityCount++;
-  }
   return [
-    { name: "intisy-ai (official)", source: "built-in catalog", count: officialCount, builtin: "official" },
-    { name: "community", source: "built-in catalog", count: communityCount, builtin: "community" },
+    { name: "community", source: "built-in catalog", count: S.MARKETPLACE_CATALOG.length, builtin: "community" },
     { name: "Featured", source: "curated standalone plugins", count: FEATURED_PLUGINS.length, builtin: "featured" },
   ];
 }
@@ -648,19 +641,24 @@ function seedMarketplaceRows(seenNames, seenRepos) {
   return rows;
 }
 
-// Level 1: the marketplace-of-marketplaces list. Unified Add rows up top, then
-// the loader's own two marketplaces, then every marketplace the active app's
-// extension registers via capabilities.marketplaces(), deduped by name (the
-// loader's own entries always win a name collision), then the seeded defaults
-// not already covered by a real entry.
+// Level 1: the marketplace-of-marketplaces list. Unified Add rows up top, then every source this
+// home declares, then the loader's own built-in catalog and curated list, then every marketplace
+// the active app's extension registers via capabilities.marketplaces(), deduped by name (an
+// earlier entry always wins a name collision), then the seeded defaults not already covered by a
+// real entry.
 export function buildMarketplaceMarketsList() {
   fetchCatalogsAsync();
   fetchSeedMarketplacesAsync();
+  fetchSourceCatalogAsync();
   var seen = {};
   var seenRepos = {};
   var rows = buildMarketplaceActionRows();
+  // Declared sources first: they are what this home actually asked for, and the built-in catalog is a
+  // fallback rather than the headline.
+  var declared = sourceRowsFrom(readMarketplaceSources(homePaths(CONFIG_DIR)), S.sourceCatalog);
+  for (var di = 0; di < declared.length; di++) { rows.push(declared[di]); seen[declared[di].name] = true; }
   var own = loaderOwnMarketplaces();
-  for (var oi = 0; oi < own.length; oi++) { rows.push(own[oi]); seen[own[oi].name] = true; }
+  for (var oi = 0; oi < own.length; oi++) { if (seen[own[oi].name]) continue; rows.push(own[oi]); seen[own[oi].name] = true; }
   var mfn = S.capabilities && S.capabilities.marketplaces;
   if (typeof mfn === "function") {
     var caps = [];
@@ -684,22 +682,20 @@ export function buildMarketplaceMarketsList() {
   return rows;
 }
 
-// Level 2: a single marketplace's plugins. "intisy-ai (official)"/"community" are
-// served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG); "Featured"
-// is served from the static FEATURED_PLUGINS list (env.ts); every other name is
-// assumed to be an app-registered marketplace and is served through
+// Level 2: a single marketplace's plugins. "community" is served from the loader's own fetched
+// catalog (S.MARKETPLACE_CATALOG); "Featured" is served from the static FEATURED_PLUGINS list
+// (env.ts); every other name is assumed to be an app-registered marketplace and is served through
 // capabilities.marketplacePlugins(name), which returns [] if the capability is
 // absent or the marketplace is unknown, so this degrades to an empty list rather
 // than throwing.
 export function buildMarketplacePluginsList(marketName, marketKind) {
   fetchCatalogsAsync();
-  // Route by the KIND captured off the Level-1 row (builtin "official"/"community"/
-  // "featured" tag, or "capability"), not by string-comparing marketName against the
-  // loader's own display names: a capability marketplace could itself be named
-  // "community" and would otherwise be misrouted/dedup-swallowed into the built-in
-  // catalog. marketKind is undefined for any caller that predates this param
-  // (defensive fallback to the old name comparison).
-  var kind = marketKind || (marketName === "intisy-ai (official)" ? "official" : marketName === "community" ? "community" : null);
+  // Route by the KIND captured off the Level-1 row (builtin "community"/"featured" tag, "source",
+  // or "capability"), not by string-comparing marketName against the loader's own display names: a
+  // capability marketplace could itself be named "community" and would otherwise be
+  // misrouted/dedup-swallowed into the built-in catalog. marketKind is undefined for any caller
+  // that predates this param (defensive fallback to the old name comparison).
+  var kind = marketKind || (marketName === "community" ? "community" : null);
   if (kind === "official" || kind === "community") {
     var wantOfficial = kind === "official";
     var installed = loadPlugins();

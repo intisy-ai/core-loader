@@ -49,3 +49,24 @@ describe("sourceRowsFrom", () => {
     assert.equal(rows[0].count, undefined);
   });
 });
+
+const { buildMarketplaceMarketsList } = require("../dist/marketplace.js");
+
+describe("Level 1", () => {
+  it("names the declared sources, keeps community and Featured, and names no org itself", () => {
+    S.sourceCatalog = [entry("one", "intisy-ai", ["provider"])];
+    S.sourceFetched = true;        // the fetch is not driven from a test
+    S.seedFetched = true;
+    S.catalogFetched = true;
+    S.inputBuf = "";
+    S.capabilities = {};
+    const rows = buildMarketplaceMarketsList();
+    const names = rows.filter((row) => !row.isAction).map((row) => row.name);
+    assert.ok(names.includes("community"), names.join(","));
+    assert.ok(names.includes("Featured"), names.join(","));
+    assert.ok(!names.includes("intisy-ai (official)"), names.join(","));
+    const sourceRow = rows.find((row) => row.builtin === "source");
+    assert.ok(sourceRow, "a declared source must have a row: " + names.join(","));
+    assert.equal(typeof sourceRow.sourceId, "string");
+  });
+});
