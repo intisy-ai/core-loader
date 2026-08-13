@@ -9,6 +9,11 @@ app-specific paths and names.
 Compiled from the submodule, and published as `@intisy-ai/core-loader` so a
 loader installed from npm resolves it as a dependency instead of inlining a copy.
 
+## Requirements
+
+- Node.js 20.19+ (this library's compiled output is CommonJS and requires the ESM-only
+  `@intisy-ai/api`; `require` of an ESM package is available from Node 20.19 and 22.12).
+
 ## Under-the-Hood Architecture
 
 ```mermaid
