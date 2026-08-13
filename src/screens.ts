@@ -1,7 +1,8 @@
 // Re-implements core's screen-layout.ts flatten rule (libs/core/src/screen-layout.ts) so a
 // contributed screen renders the same way in this TUI as it does in the graphical dashboard.
-// core-loader carries no core submodule by design, so the walk is copied here verbatim and the
-// two implementations are kept honest by asserting against the same fixture file.
+// core-loader carries no core submodule by design, so the walk lives here too and the two
+// implementations are kept honest by asserting against the same fixture file. This one bounds its
+// nesting (MAX_LAYOUT_DEPTH), because it walks a plugin's live object rather than a serialized tree.
 
 export interface ScreenNode {
   kind: string;
@@ -25,6 +26,10 @@ export interface FlatRow {
 
 export const CONTAINER_KINDS = new Set(["stack", "row", "grid", "card", "group", "tabs"]);
 
+// How deep a layout is walked. A plugin's tree is a live in-process object, so it may nest into
+// itself or nest absurdly; without a bound either one exhausts the stack and takes the loader down.
+export const MAX_LAYOUT_DEPTH = 12;
+
 interface Tab {
   id?: string;
   label?: string;
@@ -44,6 +49,7 @@ function join(outer: string | undefined, inner: string | undefined): string | un
 // A surface with no nesting still wants to know what a leaf sat under, so a container
 // contributes its title to the rows below it rather than a row of its own.
 function walk(node: ScreenNode, depth: number, label: string | undefined, rows: FlatRow[]): void {
+  if (depth >= MAX_LAYOUT_DEPTH) return;
   if (!CONTAINER_KINDS.has(node.kind)) {
     rows.push(label === undefined ? { kind: node.kind, node, depth } : { kind: node.kind, label, node, depth });
     return;

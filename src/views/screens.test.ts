@@ -131,11 +131,13 @@ describe("refreshScreenSpecs", () => {
     expect(S.screenSpecs).toEqual([]);
   });
 
-  it("drops a malformed spec (missing label, or a non-string id) but keeps a well-formed sibling", async () => {
+  it("drops a malformed spec (missing label, a non-string id, or no layout) but keeps a well-formed sibling", async () => {
     const wellFormed = { ...spec, id: "ok" };
     const noLabel = { id: "no-label", layout: { kind: "stack" } };
     const numericId = { id: 42, label: "Numeric", layout: { kind: "stack" } };
-    await hostWith({ manifest: manifest("mixed", ["screens"]), module: screensPlugin([noLabel, numericId, wellFormed]) });
+    // Kept, this one lists as a sub-page whose every read throws inside the flattener.
+    const noLayout = { id: "no-layout", label: "No layout" };
+    await hostWith({ manifest: manifest("mixed", ["screens"]), module: screensPlugin([noLabel, numericId, noLayout, wellFormed]) });
 
     await refreshScreenSpecs();
 

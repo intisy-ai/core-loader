@@ -113,7 +113,7 @@ describe("the surface's view of a running host", () => {
     expect(providerIds("settings")).toEqual(["beta"]);
     expect(capabilityOf("alpha", "settings")).toBeUndefined();
     expect(bundleFor("beta")).toBe("/home/plugin/beta.js");
-    expect(await readSettingsSchema("beta")).toEqual({ fields: [{ key: "token", type: "string" }] });
+    expect(await readSettingsSchema("beta")).toEqual({ fields: [{ key: "token", type: "string" }], actions: [], sections: [] });
     expect(await readScreenData("alpha", "s")).toEqual({ rows: [] });
     expect(await runSettingsAction("beta", "sync")).toEqual({ ok: true, message: "ran" });
   });
@@ -264,6 +264,52 @@ describe("the surface's view of a running host", () => {
     expect(await invokeScreenAction("noscreens", "s", "go", {})).toEqual({ ok: false, message: "plugin not available" });
     expect(await invokeScreenAction("failer", "s", "go", {})).toEqual({ ok: false, message: "invoke exploded" });
     expect(loaded.host.ledger.entry("failer")?.status).toBe("active");
+  });
+
+  it("drops a screen with no usable layout, keeping a well-formed sibling", async () => {
+    await hostWith({
+      manifest: manifest("mixed", ["screens"]),
+      module: {
+        default: {
+          activate: (ctx: { provide: (id: string, value: unknown) => void }) =>
+            ctx.provide("screens", {
+              screens: () => [
+                { id: "no-layout", label: "No layout" },
+                { id: "layout-not-an-object", label: "Bad layout", layout: "stack" },
+                { id: "layout-without-kind", label: "Kindless", layout: {} },
+                { id: "ok", label: "Ok", layout: { kind: "stack" } },
+              ],
+              read: async () => ({ sources: {} }),
+              invoke: async () => ({ ok: true }),
+            }),
+          deactivate: () => {},
+        },
+      },
+    });
+
+    expect(await readScreenSpecs("mixed")).toEqual([{ id: "ok", label: "Ok", layout: { kind: "stack" } }]);
+  });
+
+  it("array-guards a settings declaration's lists, its own and each section's", async () => {
+    await hostWith({
+      manifest: manifest("sloppy", ["settings"]),
+      module: {
+        default: {
+          activate: (ctx: { provide: (id: string, value: unknown) => void }) =>
+            ctx.provide("settings", {
+              schema: () => ({ fields: 3, actions: "sync", sections: [{ id: "s", label: "L", fields: 3 }, "not a section"] }),
+              run: async () => ({ ok: true }),
+            }),
+          deactivate: () => {},
+        },
+      },
+    });
+
+    expect(await readSettingsSchema("sloppy")).toEqual({
+      fields: [],
+      actions: [],
+      sections: [{ id: "s", label: "L", fields: [], actions: [] }],
+    });
   });
 
   it("stays hostless when no runtime is injected via capabilities", async () => {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startPlugins } from "./plugin-host.js";
 import { resetPluginHostForTests } from "./plugin-surface.js";
+import { splitBySections } from "./settings-model.js";
 import {
   declarationFor,
   declarationOf,
@@ -105,7 +106,7 @@ async function hostWith(...plugins: Array<{ id: string; capabilities: string[]; 
 
 // Every id any test below reads or caches, cleared between tests so one test's cached
 // declaration can never satisfy the next one's assertion.
-const TEST_IDS = ["cache-demo", "has-settings", "no-settings", "empty-settings", "gated"];
+const TEST_IDS = ["cache-demo", "has-settings", "no-settings", "empty-settings", "gated", "sloppy"];
 
 afterEach(() => {
   resetPluginHostForTests(null);
@@ -131,6 +132,21 @@ describe("the declaration cache", () => {
 
     expect(await readDeclaration("empty-settings")).toBeNull();
     expect(declarationFor("empty-settings")).toBeNull();
+  });
+});
+
+describe("a declaration whose lists are not lists", () => {
+  it("splits into sections without throwing, because the boundary guarded them", async () => {
+    await hostWith({
+      id: "sloppy",
+      capabilities: ["settings"],
+      module: settingsPlugin({ actions: [{ id: "go", label: "Go" }], sections: [{ id: "s", label: "L", fields: 3, actions: 7 }] }),
+    });
+
+    const declaration = await readDeclaration("sloppy");
+    expect(() => splitBySections(declaration)).not.toThrow();
+    // Its section claimed nothing resolvable, so the action stays in the plugin's own group.
+    expect(splitBySections(declaration).map((section: { label: string }) => section.label)).toEqual(["sloppy"]);
   });
 });
 

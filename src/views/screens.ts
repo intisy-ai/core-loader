@@ -24,9 +24,7 @@ export async function refreshScreenSpecs() {
     if (!specs.length) return [];
     const schema = await readSettingsSchema(pluginId);
     const actions = (schema && Array.isArray(schema.actions)) ? schema.actions : [];
-    return specs
-      .filter((spec) => spec && typeof spec.id === "string" && typeof spec.label === "string")
-      .map((spec) => ({ plugin: pluginId, spec, actions }));
+    return specs.map((spec) => ({ plugin: pluginId, spec, actions }));
   }));
   S.screenSpecs = perPlugin.flat();
 }

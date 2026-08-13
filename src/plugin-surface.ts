@@ -1,5 +1,5 @@
 import { setDiagnosticSink } from "@intisy-ai/api";
-import type { ActionResult, CapabilitySchema, ScreenSpec, ScreensCapability, SettingsCapability } from "@intisy-ai/api";
+import type { ActionResult, CapabilitySchema, ScreenNode, ScreenSpec, ScreensCapability, SectionSpec, SettingsCapability } from "@intisy-ai/api";
 import { IS_CLAUDE, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, startPlugins } from "./plugin-host.js";
@@ -96,7 +96,37 @@ export function ledgerRowFor(pluginId: string): PluginLedgerRow | null {
   return ledgerRows(HOST).find((row) => row.pluginId === pluginId) ?? null;
 }
 
-/** The screens a plugin contributes, or an empty list when it contributes none or fails to answer. */
+function isFilledString(value: unknown): boolean {
+  return typeof value === "string" && value.length > 0;
+}
+
+// A capability answers with a live object this library never serialized, so every surface below is
+// reading whatever the plugin's function happened to return. Validating once here is what lets each
+// consumer walk a spec without re-checking it, and what keeps an authoring mistake from reaching a
+// renderer that assumes the declared shape.
+function screenSpecProblem(spec: unknown): string | null {
+  if (!spec || typeof spec !== "object") return "not an object";
+  const declared = spec as Partial<ScreenSpec>;
+  if (!isFilledString(declared.id)) return "no id";
+  if (!isFilledString(declared.label)) return "no label";
+  if (!declared.layout || typeof declared.layout !== "object") return "no layout";
+  if (!isFilledString((declared.layout as ScreenNode).kind)) return "a layout with no kind";
+  return null;
+}
+
+function listOf<T>(value: unknown, what: string, pluginId: string): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (value !== undefined) tuiLog("ignored " + what + " from " + pluginId + ": not a list");
+  return [];
+}
+
+/**
+ * The screens a plugin contributes, or an empty list when it contributes none or fails to answer.
+ *
+ * @remarks
+ * A screen a surface could not render is dropped here with a diagnostic naming the plugin, so an
+ * author whose screen never appears finds out why from the log rather than from an empty sub-page.
+ */
 export async function readScreenSpecs(pluginId: string): Promise<ScreenSpec[]> {
   const screens = capabilityOf(pluginId, "screens") as ScreensCapability | undefined;
   if (!screens) return [];
@@ -105,7 +135,14 @@ export async function readScreenSpecs(pluginId: string): Promise<ScreenSpec[]> {
     tuiLog("screens declaration from " + pluginId + " failed: " + answer.error.detail, true);
     return [];
   }
-  return Array.isArray(answer.value) ? answer.value : [];
+  const kept: ScreenSpec[] = [];
+  for (const spec of listOf<ScreenSpec>(answer.value, "the screens declaration", pluginId)) {
+    const problem = screenSpecProblem(spec);
+    if (problem === null) { kept.push(spec); continue; }
+    const named = spec && typeof spec === "object" && isFilledString(spec.id) ? ' "' + spec.id + '"' : "";
+    tuiLog("ignored screen" + named + " from " + pluginId + ": " + problem);
+  }
+  return kept;
 }
 
 /** The data behind one of a plugin's screens, or `null` when it could not be read. */
@@ -145,7 +182,14 @@ export async function invokeScreenAction(
   return answer.value ?? { ok: true };
 }
 
-/** What a plugin declares on a settings surface, or `null` when it declares nothing readable. */
+/**
+ * What a plugin declares on a settings surface, or `null` when it declares nothing readable.
+ *
+ * @remarks
+ * `fields`, `actions` and `sections` always come back as arrays, each section's own `fields` and
+ * `actions` included, so a consumer iterating one cannot throw on a plugin that declared something
+ * else there.
+ */
 export async function readSettingsSchema(pluginId: string): Promise<CapabilitySchema | null> {
   const settings = capabilityOf(pluginId, "settings") as SettingsCapability | undefined;
   if (!settings) return null;
@@ -154,7 +198,21 @@ export async function readSettingsSchema(pluginId: string): Promise<CapabilitySc
     tuiLog("settings declaration from " + pluginId + " failed: " + answer.error.detail, true);
     return null;
   }
-  return answer.value ?? null;
+  const declared = answer.value;
+  if (!declared || typeof declared !== "object") return null;
+  const sections = listOf<SectionSpec>(declared.sections, "a section list", pluginId)
+    .filter((section) => section && typeof section === "object")
+    .map((section) => ({
+      ...section,
+      fields: listOf<string>(section.fields, 'section "' + section.id + '" fields', pluginId),
+      actions: listOf<string>(section.actions, 'section "' + section.id + '" actions', pluginId),
+    }));
+  return {
+    ...declared,
+    fields: listOf(declared.fields, "a field list", pluginId),
+    actions: listOf(declared.actions, "an action list", pluginId),
+    sections,
+  };
 }
 
 /** Runs one of a plugin's declared settings actions. */

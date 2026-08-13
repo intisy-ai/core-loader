@@ -43,6 +43,25 @@ describe("core-loader flatten", () => {
   });
 });
 
+describe("layout depth", () => {
+  function nested(levels, leaf) {
+    let node = leaf;
+    for (let i = 0; i < levels; i++) node = { kind: "stack", children: [node] };
+    return node;
+  }
+
+  it("walks a deeply nested leaf up to the bound and stops past it", () => {
+    expect(flattenScreen(nested(12, { kind: "text", text: "deep" }))).toHaveLength(1);
+    expect(flattenScreen(nested(13, { kind: "text", text: "too deep" }))).toEqual([]);
+  });
+
+  it("terminates on a layout that nests into itself", () => {
+    const cyclic = { kind: "stack", children: [] };
+    cyclic.children.push(cyclic);
+    expect(flattenScreen(cyclic)).toEqual([]);
+  });
+});
+
 describe("per-surface layout", () => {
   it("prefers this surface's own tree and falls back to the shared layout", () => {
     const spec = {
