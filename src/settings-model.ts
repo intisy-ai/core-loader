@@ -1,8 +1,7 @@
 // Pure builder for the Settings tab: assembles the global settings section plus one
 // section per plugin declaring something configurable, then the flat entry list the renderer
 // and key handler both walk: a "Global" header + its group, then a "Plugins" header + one
-// group row per plugin. Headers are not selectable (nav skips them). Git-free: the
-// Versioning tab owns its own UI.
+// group row per plugin. Headers are not selectable (nav skips them).
 import { buildConfigItems, declarationFor, settingsPluginIds } from "./plugins.js";
 import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "./config.js";
 import { S } from "./state.js";
@@ -38,9 +37,9 @@ export function buildGlobalSection(): SettingsSection {
   return { label: "Global", kind: "global", file: "settings.json", bundle: null, items };
 }
 
-// The config file a declaration edits. This is read back as a real path (the editor header, and the
-// Versioning tab's key history looks the file up by it), so it follows the config name the plugin
-// reports for ITSELF, never the id surfaces route by. One helper, so a second caller cannot drift.
+// The config file a declaration edits. This is read back as a real path (the editor header names it,
+// and any surface reading a plugin's config must name the same file), so it follows the config name
+// the plugin reports for ITSELF, never the id surfaces route by. One helper, so a second caller cannot drift.
 export function configFileFor(cfg: any): string {
   return ((cfg && cfg.configName) || (cfg && cfg.name)) + ".json";
 }

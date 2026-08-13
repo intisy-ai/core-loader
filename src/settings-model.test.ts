@@ -24,8 +24,8 @@ describe("splitBySections", () => {
     expect(section.items).toHaveLength(2);
   });
 
-  // `file` is read back as a real path (the Versioning tab's key history looks the config file up
-  // by it), so it must follow the plugin's own config name and not the id sections route by.
+  // `file` is read back as a real path (any surface reading a plugin's config must name the
+  // same file), so it must follow the plugin's own config name and not the id sections route by.
   it("names the config file from the plugin's own reported config name", () => {
     const [section] = splitBySections({ ...declaration, configName: "demo-config" });
     expect(section.file).toBe("demo-config.json");

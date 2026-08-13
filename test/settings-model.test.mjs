@@ -94,11 +94,11 @@ describe("splitBySections", () => {
       { label: "Global", kind: "global", file: "settings.json", bundle: null, items: [{ key: "a" }] },
       { label: "wakatime-sync", kind: "plugin", file: "w.json", bundle: "/w.js", items: [{ key: "b" }] },
       { label: "Sync", kind: "plugin", file: "s.json", bundle: "/s.js", items: [{ key: "c" }], addedBy: "sync-bridge", order: 40 },
-      { label: "Versioning", kind: "plugin", file: "v.json", bundle: "/v.js", items: [{ key: "d" }], addedBy: "config-ledger", order: 10 },
+      { label: "History", kind: "plugin", file: "h.json", bundle: "/h.js", items: [{ key: "d" }], addedBy: "history-plugin", order: 10 },
     ]);
     assert.deepEqual(
       entries.filter((e) => e.type === "group").map((e) => e.section.label),
-      ["Global", "Versioning", "Sync", "wakatime-sync"],
+      ["Global", "History", "Sync", "wakatime-sync"],
     );
   });
 });

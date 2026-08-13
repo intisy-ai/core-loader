@@ -92,9 +92,8 @@ export const S = {
   // Settings page (unified global + per-plugin settings editor)
   settingsCursor: 0,
   settingsScrollOff: 0,
-  // "settings" | "versioning" | "<plugin>:<screenId>", sub-tabs of the Settings tab (Tab
-  // cycles). "versioning" is the one hardcoded sub-page; every other non-"settings" id
-  // names a screen a plugin contributed (see views/screens.ts).
+  // "settings" | "<plugin>:<screenId>", sub-tabs of the Settings tab (Tab cycles). Any
+  // non-"settings" id names a screen a plugin contributed (see views/screens.ts).
   settingsSubPage: "settings",
   settingsSections: [],  // SettingsSection[] (Global + one per plugin)
   settingsEntries: [],   // SettingsEntry[] the renderer + key handler walk (headers + groups)
@@ -108,32 +107,6 @@ export const S = {
   // The sub-page id whose last read failed, so an empty screen renders as unreadable rather than
   // as forever loading. Cleared by the next read that lands.
   screenFailed: null,
-
-  // Versioning tab (config-ledger git UI). versioningCursor drives the home/setup menus;
-  // the history file→key pickers use vg* fields; git sub-screens reuse the sg*/cl* fields.
-  versioningCursor: 0,
-  versioningScrollOff: 0,
-  clInstalling: false,   // config-ledger install in progress → Versioning shows a spinner screen
-  vgSections: [],        // sections (file + keys) for the history pickers
-  vgFileCursor: 0,
-  vgKeys: [],            // keys of the file chosen in the history picker
-  vgKeyCursor: 0,
-  vgHistFile: "",
-
-  // config-ledger: cached lib module + git-data caches for the Settings tab
-  CONFIG_LEDGER_MODULE: null,   // resolved dist/lib.js module, or null when absent
-  clReady: false,            // cached configLedgerReady() (repo.isRepo spawns git; recomputed in refreshSettings, never per render frame)
-  clDiffRows: [],            // last diffAgainstHead() rows (markers + review screen)
-  clHistory: [],             // last keyHistory() rows (history sub-screen)
-  clHistoryFile: "",         // file the history sub-screen is showing
-  clHistoryKey: "",          // key the history sub-screen is showing
-  clHistoryCursor: 0,
-  clProfiles: [],            // profiles.list() snapshot
-  clProfileCurrent: "",      // profiles.current()
-  clProfileCursor: 0,
-  sgMenuCursor: 0,           // cursor in the config-ledger action menu (sgmenu)
-  sgSetupCursor: 0,          // cursor in the repo-setup menu (sgsetup)
-  _sgSetupOpts: [],          // setup-screen options stashed by the renderer for the input handler
 
   // Marketplace sub-page
   marketplaceItems: [],
