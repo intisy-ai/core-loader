@@ -1,15 +1,21 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { PluginManifest } from "@intisy-ai/api";
 import { startPlugins } from "./plugin-host.js";
+import { S } from "./state.js";
 import {
   bundleFor,
   capabilityOf,
+  capabilityProviders,
+  invokeScreenAction,
   ledgerRowFor,
+  pluginHost,
   providerIds,
   readScreenData,
+  readScreenSpecs,
   readSettingsSchema,
   resetPluginHostForTests,
   runSettingsAction,
+  startPluginHost,
 } from "./plugin-surface.js";
 
 function runtime() {
@@ -49,11 +55,18 @@ async function hostWith(...plugins: Array<{ manifest: PluginManifest; module: un
 afterEach(() => resetPluginHostForTests(null));
 
 describe("the surface's view of a running host", () => {
-  it("answers with no providers, no bundle and no ledger row when no host started", () => {
+  it("answers with no providers, no bundle and no ledger row when no host started", async () => {
     expect(providerIds("screens")).toEqual([]);
+    expect(capabilityProviders("screens")).toEqual([]);
     expect(capabilityOf("demo", "screens")).toBeUndefined();
     expect(bundleFor("demo")).toBeNull();
     expect(ledgerRowFor("demo")).toBeNull();
+    expect(pluginHost()).toBeNull();
+    expect(await readScreenSpecs("demo")).toEqual([]);
+    expect(await readScreenData("demo", "s")).toBeNull();
+    expect(await readSettingsSchema("demo")).toBeNull();
+    expect(await invokeScreenAction("demo", "s", "go", {})).toEqual({ ok: false, message: "plugin not available" });
+    expect(await runSettingsAction("demo", "go")).toEqual({ ok: false, message: "plugin not available" });
   });
 
   it("names every plugin providing a capability and reaches one plugin's implementation", async () => {
@@ -120,5 +133,135 @@ describe("the surface's view of a running host", () => {
     expect(row?.status).toBe("broken");
     expect(row?.error?.detail).toContain("activate failed");
     expect(row?.error?.fix).toBeTruthy();
+  });
+
+  it("lists every plugin providing a capability with its own implementation, in activation order", async () => {
+    const alphaImpl = { screens: () => [], read: async () => ({ sources: {} }), invoke: async () => ({ ok: true }) };
+    const betaImpl = { screens: () => [], read: async () => ({ sources: {} }), invoke: async () => ({ ok: true }) };
+    await hostWith(
+      {
+        manifest: manifest("alpha", ["screens"]),
+        module: {
+          default: {
+            activate: (ctx: { provide: (id: string, value: unknown) => void }) => ctx.provide("screens", alphaImpl),
+            deactivate: () => {},
+          },
+        },
+      },
+      {
+        manifest: manifest("beta", ["screens"]),
+        module: {
+          default: {
+            activate: (ctx: { provide: (id: string, value: unknown) => void }) => ctx.provide("screens", betaImpl),
+            deactivate: () => {},
+          },
+        },
+      },
+    );
+
+    const providers = capabilityProviders("screens");
+    expect(providers.map((provider) => provider.pluginId)).toEqual(["alpha", "beta"]);
+    expect(providers[0].implementation).toBe(alphaImpl);
+    expect(providers[1].implementation).toBe(betaImpl);
+  });
+
+  it("reads the screens a plugin declares, empties on no screens capability, and swallows a throwing declaration", async () => {
+    await hostWith(
+      {
+        manifest: manifest("alpha", ["screens"]),
+        module: {
+          default: {
+            activate: (ctx: { provide: (id: string, value: unknown) => void }) =>
+              ctx.provide("screens", {
+                screens: () => [
+                  { id: "s1", label: "One", layout: { kind: "stack" } },
+                  { id: "s2", label: "Two", layout: { kind: "stack" } },
+                ],
+                read: async () => ({ sources: {} }),
+                invoke: async () => ({ ok: true }),
+              }),
+            deactivate: () => {},
+          },
+        },
+      },
+      {
+        manifest: manifest("silent", []),
+        module: { default: { activate: () => {}, deactivate: () => {} } },
+      },
+      {
+        manifest: manifest("thrower", ["screens"]),
+        module: {
+          default: {
+            activate: (ctx: { provide: (id: string, value: unknown) => void }) =>
+              ctx.provide("screens", {
+                screens: () => { throw new Error("no screens here"); },
+                read: async () => ({ sources: {} }),
+                invoke: async () => ({ ok: true }),
+              }),
+            deactivate: () => {},
+          },
+        },
+      },
+    );
+
+    expect(await readScreenSpecs("alpha")).toEqual([
+      { id: "s1", label: "One", layout: { kind: "stack" } },
+      { id: "s2", label: "Two", layout: { kind: "stack" } },
+    ]);
+    expect(await readScreenSpecs("silent")).toEqual([]);
+    expect(await readScreenSpecs("thrower")).toEqual([]);
+  });
+
+  it("runs a screen's action, degrades when no screens capability, and turns a throw into a failed result", async () => {
+    const loaded = await hostWith(
+      {
+        manifest: manifest("doer", ["screens"]),
+        module: {
+          default: {
+            activate: (ctx: { provide: (id: string, value: unknown) => void }) =>
+              ctx.provide("screens", {
+                screens: () => [],
+                read: async () => ({ sources: {} }),
+                invoke: async () => ({ ok: true, message: "did it", refresh: true }),
+              }),
+            deactivate: () => {},
+          },
+        },
+      },
+      {
+        manifest: manifest("noscreens", []),
+        module: { default: { activate: () => {}, deactivate: () => {} } },
+      },
+      {
+        manifest: manifest("failer", ["screens"]),
+        module: {
+          default: {
+            activate: (ctx: { provide: (id: string, value: unknown) => void }) =>
+              ctx.provide("screens", {
+                screens: () => [],
+                read: async () => ({ sources: {} }),
+                invoke: async () => { throw new Error("invoke exploded"); },
+              }),
+            deactivate: () => {},
+          },
+        },
+      },
+    );
+
+    expect(await invokeScreenAction("doer", "s", "go", { x: 1 })).toEqual({ ok: true, message: "did it", refresh: true });
+    expect(await invokeScreenAction("noscreens", "s", "go", {})).toEqual({ ok: false, message: "plugin not available" });
+    expect(await invokeScreenAction("failer", "s", "go", {})).toEqual({ ok: false, message: "invoke exploded" });
+    expect(loaded.host.ledger.entry("failer")?.status).toBe("active");
+  });
+
+  it("stays hostless when no runtime is injected via capabilities", async () => {
+    const previousCapabilities = S.capabilities;
+    S.capabilities = {};
+    try {
+      await expect(startPluginHost()).resolves.toBeUndefined();
+      expect(pluginHost()).toBeNull();
+    } finally {
+      S.capabilities = previousCapabilities;
+    }
   });
 });
