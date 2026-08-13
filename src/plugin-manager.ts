@@ -74,6 +74,30 @@ function cloneDirs(reposDir: string): string[] {
   return dirs;
 }
 
+/**
+ * The clone directory of one plugin id, flat or owner-nested, or null when neither exists.
+ *
+ * @remarks
+ * Which layout a home has depends on how the plugin was installed, so every step that needs a
+ * clone's directory asks this instead of assuming `repos/<id>`: assuming it costs a deployed
+ * manager its real npm name and its clone's package main.
+ */
+function cloneDirFor(paths: HomePaths, id: string): string | null {
+  const flat = join(paths.reposDir, id);
+  if (existsSync(flat)) return flat;
+  let owners: string[] = [];
+  try {
+    owners = readdirSync(paths.reposDir);
+  } catch {
+    return null;
+  }
+  for (const owner of owners) {
+    const nested = join(paths.reposDir, owner, id);
+    if (existsSync(nested)) return nested;
+  }
+  return null;
+}
+
 function packageNameOf(dir: string, fallback: string): string {
   const name = (readJson(join(dir, "package.json")) || {}).name;
   return typeof name === "string" && name ? name : fallback;
@@ -92,7 +116,8 @@ function fromDeployed(paths: HomePaths): PluginManagerRef | null {
   const found = readDeployedManifests(paths.pluginDir).loaded.find((plugin) => declaresManagement(plugin.manifest));
   if (!found) return null;
   const id = found.manifest.id;
-  return { id, npmName: packageNameOf(join(paths.reposDir, id), id), url: urlFor(paths, id), source: "deployed" };
+  const cloneDir = cloneDirFor(paths, id);
+  return { id, npmName: cloneDir ? packageNameOf(cloneDir, id) : id, url: urlFor(paths, id), source: "deployed" };
 }
 
 function fromClones(paths: HomePaths): PluginManagerRef | null {
@@ -186,11 +211,11 @@ export async function resolvePluginManager(paths: HomePaths, deps: ResolveDeps =
  */
 export function managerEntries(paths: HomePaths, ref: PluginManagerRef): ManagerEntry[] {
   const found: ManagerEntry[] = [];
-  const cloneDir = join(paths.reposDir, ref.id);
+  const cloneDir = cloneDirFor(paths, ref.id);
   const deployed = join(paths.pluginDir, `${ref.id}.js`);
-  if (existsSync(deployed)) found.push({ entry: deployed, packageDir: existsSync(cloneDir) ? cloneDir : null });
+  if (existsSync(deployed)) found.push({ entry: deployed, packageDir: cloneDir });
   const packageDirs = [
-    cloneDir,
+    ...(cloneDir ? [cloneDir] : []),
     join(paths.configDir, "node_modules", ref.npmName),
     join(paths.cacheDir, "node_modules", ref.npmName),
     join(homedir(), ".cache", "opencode", "packages", `${ref.npmName}@latest`, "node_modules", ref.npmName),

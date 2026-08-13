@@ -51,6 +51,13 @@ describe("resolveFromHome", () => {
     });
   });
 
+  it("reads a deployed manager's npm name from an owner-nested clone", () => {
+    const paths = tempPaths();
+    writeSidecar(paths, "demo-manager", [PLUGIN_MANAGEMENT_CAPABILITY]);
+    writeClone(paths, join("some-owner", "demo-manager"), undefined, { name: "@demo/manager" });
+    expect(resolveFromHome(paths)?.npmName).toBe("@demo/manager");
+  });
+
   it("answers an installed clone's own manifest when nothing is deployed, flat or owner-nested", () => {
     const flat = tempPaths();
     writeClone(flat, "flat-manager", { id: "flat-manager", api: 1, capabilities: [PLUGIN_MANAGEMENT_CAPABILITY] }, { name: "flat-manager" });
@@ -131,6 +138,18 @@ describe("managerEntries", () => {
     writeFileSync(join(cloneDir, "dist", "index.js"), "export function updatePluginPublic() {}\n");
 
     const found = managerEntries(paths, { id: "demo-manager", npmName: "demo-manager", source: "deployed" });
+    expect(found[0]).toEqual({ entry: join(paths.pluginDir, "demo-manager.js"), packageDir: cloneDir });
+    expect(found[1]).toEqual({ entry: join(cloneDir, "dist", "index.js"), packageDir: cloneDir });
+  });
+
+  it("offers an owner-nested clone's package main and reports it as the package directory", () => {
+    const paths = tempPaths();
+    writeSidecar(paths, "demo-manager", [PLUGIN_MANAGEMENT_CAPABILITY]);
+    const cloneDir = writeClone(paths, join("some-owner", "demo-manager"), undefined, { name: "@demo/manager", main: "dist/index.js" });
+    mkdirSync(join(cloneDir, "dist"), { recursive: true });
+    writeFileSync(join(cloneDir, "dist", "index.js"), "export function updatePluginPublic() {}\n");
+
+    const found = managerEntries(paths, { id: "demo-manager", npmName: "@demo/manager", source: "deployed" });
     expect(found[0]).toEqual({ entry: join(paths.pluginDir, "demo-manager.js"), packageDir: cloneDir });
     expect(found[1]).toEqual({ entry: join(cloneDir, "dist", "index.js"), packageDir: cloneDir });
   });
