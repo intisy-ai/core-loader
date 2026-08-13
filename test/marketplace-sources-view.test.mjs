@@ -12,7 +12,14 @@ function entry(id, sourceId, capabilities) {
   return { id: id, npmName: id, url: "https://github.com/o/" + id + ".git", capabilities: capabilities, description: id + " desc", sourceId: sourceId };
 }
 
-beforeEach(() => { S.sourceCatalog = []; S.sourceFetched = false; });
+// Every guard is set here, not per case: a list build kicks its fetches, and a filtered run must
+// reach the network no more than a whole run does.
+beforeEach(() => {
+  S.sourceCatalog = [];
+  S.sourceFetched = true;
+  S.catalogFetched = true;
+  S.seedFetched = true;
+});
 
 describe("sourceRowsFrom", () => {
   it("makes one row per source, labelled and counted from what that source offered", () => {
@@ -55,9 +62,6 @@ const { buildMarketplaceMarketsList } = require("../dist/marketplace.js");
 describe("Level 1", () => {
   it("names the declared sources, keeps community and Featured, and names no org itself", () => {
     S.sourceCatalog = [entry("one", "intisy-ai", ["provider"])];
-    S.sourceFetched = true;        // the fetch is not driven from a test
-    S.seedFetched = true;
-    S.catalogFetched = true;
     S.inputBuf = "";
     S.capabilities = {};
     const rows = buildMarketplaceMarketsList();
@@ -82,7 +86,6 @@ describe("Level 2 for a declared source", () => {
       entry("elsewhere", "published", ["provider"]),
     ];
     S.inputBuf = "";
-    S.catalogFetched = true;
     const rows = buildMarketplacePluginsList("Org A", "source", "org-a");
     // category first, then name: Library(z-library), Provider(a-provider), Screens(m-screens)
     assert.deepEqual(rows.map((row) => row.name), ["z-library", "a-provider", "m-screens"]);
