@@ -9,13 +9,23 @@ function makeReposDir() {
   return mkdtempSync(join(tmpdir(), "core-loader-providers-"));
 }
 
-function writeRepo(reposDir, repo, pkg, dynamicManifest) {
+function writeRepo(reposDir, repo, pkg) {
   const repoDir = join(reposDir, repo);
   mkdirSync(repoDir, { recursive: true });
   writeFileSync(join(repoDir, "package.json"), JSON.stringify(pkg));
-  if (dynamicManifest !== undefined) {
-    writeFileSync(join(repoDir, ".dynamic-providers.json"), typeof dynamicManifest === "string" ? dynamicManifest : JSON.stringify(dynamicManifest));
-  }
+}
+
+function makeHome() {
+  const home = mkdtempSync(join(tmpdir(), "core-loader-providers-home-"));
+  const reposDir = join(home, "repos");
+  mkdirSync(reposDir, { recursive: true });
+  return { home, reposDir };
+}
+
+function writeHomeManifest(home, contents) {
+  const cache = join(home, "cache");
+  mkdirSync(cache, { recursive: true });
+  writeFileSync(join(cache, "dynamic-providers.json"), JSON.stringify(contents), "utf8");
 }
 
 describe("readDeployedProviders: accountPool", () => {
@@ -48,16 +58,14 @@ describe("readDeployedProviders: accountPool", () => {
 });
 
 describe("readDeployedProviders: dynamic manifest", () => {
-  it("merges .dynamic-providers.json entries alongside static authProviders", () => {
-    const reposDir = makeReposDir();
-    writeRepo(
-      reposDir,
-      "custom-auth",
-      { claudeHub: { authProviders: [{ name: "static-one", handler: "dist/static.js" }] } },
-      [{ name: "my-endpoint", handler: "dist/dynamic.js", accountPool: "my-endpoint-pool" }],
-    );
+  it("merges the home's dynamic lanes alongside static authProviders", () => {
+    const { home, reposDir } = makeHome();
+    writeRepo(reposDir, "custom-auth", { claudeHub: { authProviders: [{ name: "static-one", handler: "dist/static.js" }] } });
+    writeHomeManifest(home, {
+      "custom-auth": [{ name: "my-endpoint", repo: "custom-auth", handler: "dist/dynamic.js", accountPool: "my-endpoint-pool" }],
+    });
 
-    const entries = readDeployedProviders(reposDir);
+    const entries = readDeployedProviders(reposDir, home);
     const byName = Object.fromEntries(entries.map((e) => [e.provider, e]));
     assert.equal(entries.length, 2);
     assert.ok(byName["static-one"]);
@@ -67,20 +75,24 @@ describe("readDeployedProviders: dynamic manifest", () => {
     assert.equal(byName["my-endpoint"].handlerPath, join(reposDir, "custom-auth", "dist/dynamic.js"));
   });
 
-  it("ignores a malformed .dynamic-providers.json without throwing", () => {
-    const reposDir = makeReposDir();
-    writeRepo(reposDir, "broken-manifest", { claudeHub: { authProviders: [{ name: "ok", handler: "dist/ok.js" }] } }, "{ not valid json");
+  it("ignores a malformed home dynamic-providers.json without throwing", () => {
+    const { home, reposDir } = makeHome();
+    writeRepo(reposDir, "broken-manifest", { claudeHub: { authProviders: [{ name: "ok", handler: "dist/ok.js" }] } });
+    const cache = join(home, "cache");
+    mkdirSync(cache, { recursive: true });
+    writeFileSync(join(cache, "dynamic-providers.json"), "{ not valid json");
 
-    const entries = readDeployedProviders(reposDir);
+    const entries = readDeployedProviders(reposDir, home);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].provider, "ok");
   });
 
-  it("ignores a .dynamic-providers.json that isn't an array", () => {
-    const reposDir = makeReposDir();
-    writeRepo(reposDir, "wrong-shape", { claudeHub: { authProviders: [] } }, { name: "not-an-array" });
+  it("ignores a home dynamic-providers.json that isn't a plugin-id-keyed object", () => {
+    const { home, reposDir } = makeHome();
+    writeRepo(reposDir, "wrong-shape", { claudeHub: { authProviders: [] } });
+    writeHomeManifest(home, [{ name: "not-an-object" }]);
 
-    assert.deepEqual(readDeployedProviders(reposDir), []);
+    assert.deepEqual(readDeployedProviders(reposDir, home), []);
   });
 });
 
@@ -106,28 +118,22 @@ describe("readDeployedProviders: models", () => {
   });
 
   it("carries a dynamic provider's models array through verbatim", () => {
-    const reposDir = makeReposDir();
-    writeRepo(
-      reposDir,
-      "custom-auth",
-      { claudeHub: { authProviders: [] } },
-      [{ name: "my-endpoint", handler: "dist/dynamic.js", models: [{ id: "custom-model", name: "Custom Model" }] }],
-    );
+    const { home, reposDir } = makeHome();
+    writeRepo(reposDir, "custom-auth", { claudeHub: { authProviders: [] } });
+    writeHomeManifest(home, {
+      "custom-auth": [{ name: "my-endpoint", repo: "custom-auth", handler: "dist/dynamic.js", models: [{ id: "custom-model", name: "Custom Model" }] }],
+    });
 
-    const [entry] = readDeployedProviders(reposDir);
+    const [entry] = readDeployedProviders(reposDir, home);
     assert.deepEqual(entry.models, [{ id: "custom-model", name: "Custom Model" }]);
   });
 
   it("defaults a dynamic provider's models to an empty array when absent", () => {
-    const reposDir = makeReposDir();
-    writeRepo(
-      reposDir,
-      "custom-auth",
-      { claudeHub: { authProviders: [] } },
-      [{ name: "my-endpoint", handler: "dist/dynamic.js" }],
-    );
+    const { home, reposDir } = makeHome();
+    writeRepo(reposDir, "custom-auth", { claudeHub: { authProviders: [] } });
+    writeHomeManifest(home, { "custom-auth": [{ name: "my-endpoint", repo: "custom-auth", handler: "dist/dynamic.js" }] });
 
-    const [entry] = readDeployedProviders(reposDir);
+    const [entry] = readDeployedProviders(reposDir, home);
     assert.deepEqual(entry.models, []);
   });
 });

@@ -6,10 +6,10 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { readJson } from "./json.js";
 import { execSync } from "child_process";
-import { join } from "path";
+import { dirname, join } from "path";
 import { homedir } from "os";
 import { pathToFileURL } from "url";
-import { homePaths } from "./home-paths.js";
+import { homePaths, subdirName } from "./home-paths.js";
 import { managerEntries, resolveFromHome, PLUGIN_MANAGEMENT_CAPABILITY } from "./plugin-manager.js";
 
 export function getBinDir() {
@@ -53,11 +53,10 @@ export async function runEarlyLaunchHooks(configDir: string, log: (message: stri
 }
 
 // Provider handlers deployed under <configDir>/repos: each plugin declares them in its
-// package.json via `claudeHub.authProviders` (or a top-level `authProviders`), plus any
-// dynamic providers materialized to .dynamic-providers.json (see readDynamicProviders).
-// One scan shared by the loader CLI's provider/doctor views and the CC proxy's request
-// router, so the "read package.json → pick name/handler" logic lives in exactly one place.
-export function readDeployedProviders(reposDir: string): Array<{
+// package.json via `claudeHub.authProviders` (or a top-level `authProviders`), plus the lanes a
+// plugin materializes into this home (see homeDynamicProviders). One scan shared by the loader
+// CLI's provider/doctor views and the CC proxy's request router.
+export function readDeployedProviders(reposDir: string, configDir: string = dirname(reposDir)): Array<{
   provider: string;
   repo: string;
   handler: string;
@@ -86,30 +85,34 @@ export function readDeployedProviders(reposDir: string): Array<{
         models: provider.models || [],
       });
     }
-    out.push(...readDynamicProviders(reposDir, repo));
   }
+  out.push(...homeDynamicProviders(reposDir, configDir));
   return out;
 }
 
-// Config-driven providers a plugin advertises by writing <repo>/.dynamic-providers.json
-// (one provider per user-configured endpoint). Best-effort and
-// synchronous like the rest of this scan: a missing or malformed manifest yields no
-// entries, so plugins that never write one see no change in behavior.
-function readDynamicProviders(reposDir, repo) {
+// The lanes a plugin materialized into THIS home, one per user-configured endpoint. Best-effort and
+// synchronous like the rest of this scan: an absent or malformed file yields no entries. Keyed by
+// deployed plugin id, and every key is read; nothing here names a plugin.
+function homeDynamicProviders(reposDir, configDir) {
   const out = [];
-  const manifest = readJson(join(reposDir, repo, ".dynamic-providers.json"));
-  if (!Array.isArray(manifest)) return out;
-  for (const entry of manifest) {
-    if (!entry || typeof entry.name !== "string" || typeof entry.handler !== "string") continue;
-    out.push({
-      provider: entry.name,
-      repo,
-      handler: entry.handler,
-      handlerPath: join(reposDir, repo, entry.handler),
-      translator: entry.translator,
-      accountPool: entry.accountPool || entry.name,
-      models: entry.models || [],
-    });
+  const declared = readJson(join(configDir, subdirName("HUB_CACHE_SUBDIR", "cache"), "dynamic-providers.json"));
+  if (!declared || typeof declared !== "object" || Array.isArray(declared)) return out;
+  for (const pluginId of Object.keys(declared)) {
+    const lanes = declared[pluginId];
+    if (!Array.isArray(lanes)) continue;
+    for (const lane of lanes) {
+      if (!lane || typeof lane.name !== "string" || typeof lane.handler !== "string") continue;
+      const repo = typeof lane.repo === "string" && lane.repo ? lane.repo : pluginId;
+      out.push({
+        provider: lane.name,
+        repo,
+        handler: lane.handler,
+        handlerPath: join(reposDir, repo, lane.handler),
+        translator: lane.translator,
+        accountPool: lane.accountPool || lane.name,
+        models: lane.models || [],
+      });
+    }
   }
   return out;
 }
