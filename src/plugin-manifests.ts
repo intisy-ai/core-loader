@@ -61,8 +61,9 @@ export function readDeployedManifests(pluginDir: string): ManifestScan {
   const pendingLoad: Array<{ manifestPath: string; filename: string; manifest: PluginManifest }> = [];
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
-    // Deploy writes this beside the bundles so Node treats them as ESM; it belongs to no plugin,
-    // and no plugin can ever be named "package" (its own bundle would collide with it anyway).
+    // Deploy writes this marker for the directory itself, so Node treats every bundle as ESM.
+    // A plugin id of "package" could never deploy its sidecar here: writing it would overwrite
+    // the marker and change how Node parses the whole directory, so the marker owns the name.
     if (name === "package.json") continue;
     const manifestPath = join(pluginDir, name);
     const filename = basename(name, ".json");
