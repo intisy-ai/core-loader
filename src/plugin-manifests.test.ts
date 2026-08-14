@@ -76,6 +76,23 @@ describe("readDeployedManifests", () => {
     expect(scan.failed).toEqual([]);
   });
 
+  it("ignores the deploy directory's own package.json marker", () => {
+    const dir = home();
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
+    const scan = readDeployedManifests(dir);
+    expect(scan.loaded).toEqual([]);
+    expect(scan.failed).toEqual([]);
+  });
+
+  it("loads the real sidecar alongside the package.json marker with no failures", () => {
+    const dir = home();
+    write(dir, "demo", { id: "demo", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
+    const scan = readDeployedManifests(dir);
+    expect(scan.loaded.map((plugin) => plugin.manifest.id)).toEqual(["demo"]);
+    expect(scan.failed).toEqual([]);
+  });
+
   it("orders the result by id so a host activates deterministically", () => {
     const dir = home();
     write(dir, "zebra", { id: "zebra", api: 1, entry: "dist/index.js", capabilities: ["settings"] });
