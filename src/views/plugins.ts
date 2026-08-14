@@ -2,7 +2,7 @@
 // Plugins page rendering: plugin rows (git + npm + engine), the installed /
 // marketplace / custom sub-pages, and the action/commit menus.
 
-import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL, stringWidth, pad, trunc, timeAgo, ACCENT, OK, BAD, INFO, rule, secretMask, isBooleanRowOn } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL, stringWidth, pad, trunc, timeAgo, ACCENT, OK, BAD, INFO, rule, secretMask, entryMask, isBooleanRowOn } from "../format.js";
 import { selectionKey } from "../selection.js";
 import { S } from "../state.js";
 import { loadPlugins } from "../config.js";
@@ -170,7 +170,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       var csel = ci === S.cfgcursor;
       var editing = S.mode === "pcfginput" && csel;
       var valStr;
-      if (editing) valStr = BG_SEL + " " + S.inputBuf + BOLD + "|" + RST;
+      if (editing) valStr = BG_SEL + " " + (it.type === "secret" ? entryMask(S.inputBuf) : S.inputBuf) + BOLD + "|" + RST;
       else if (it.type === "boolean") valStr = (isBooleanRowOn(it.value) ? OK + "true" : GRAY + "false") + RST;
       else if (it.type === "secret" && S.cfgReveal !== it.key) valStr = GRAY + secretMask(it.value) + RST;
       else valStr = WHITE + JSON.stringify(it.value) + RST;

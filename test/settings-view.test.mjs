@@ -213,6 +213,8 @@ describe("the settings tab's config editor", () => {
     S.cfgcursor = 0;
     S.cfgReveal = "";
     S.configConfirm = null;
+    S.mode = "list";
+    S.inputBuf = "";
   });
 
   it("renders the mask, not the value, for a secret row when nothing is revealed", () => {
@@ -222,6 +224,25 @@ describe("the settings tab's config editor", () => {
     assert.ok(row, "expected a token row, got:\n" + body.join("\n"));
     assert.ok(row.includes("••••••••"), "expected the mask, got: " + row);
     assert.ok(!row.includes("s3cr3t"), "must not leak the value, got: " + row);
+  });
+
+  it("renders one dot per typed character while a secret is being entered, not the token", () => {
+    openSettingsEditor([secretRow()]);
+    S.mode = "pcfginput";
+    S.inputBuf = "sk-live-42";
+    const { body } = render();
+    const row = body.find((line) => line.includes("token"));
+    assert.ok(row.includes("••••••••••"), "expected one dot per character, got: " + row);
+    assert.ok(!row.includes("sk-live-42"), "must not echo the token being typed, got: " + row);
+  });
+
+  it("still echoes a non-secret row being entered, since it is not a secret", () => {
+    openSettingsEditor([{ key: "endpoint", value: "", def: "", isSet: false, type: "string" }]);
+    S.mode = "pcfginput";
+    S.inputBuf = "https://example.test";
+    const { body } = render();
+    const row = body.find((line) => line.includes("endpoint"));
+    assert.ok(row.includes("https://example.test"), "expected cleartext for a plain field, got: " + row);
   });
 
   it("renders the value for a secret row once S.cfgReveal names its key", () => {

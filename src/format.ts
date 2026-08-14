@@ -77,6 +77,19 @@ export function secretMask(value: unknown): string {
 }
 
 /**
+ * Renders a secret being typed as one dot per character.
+ *
+ * @remarks
+ * Deliberately not {@link secretMask}'s fixed width: while typing, a growing line is the only
+ * feedback that a keystroke or a pasted token landed at all. No stored length leaks either way,
+ * because the editor opens a secret row with an empty buffer, so this only ever measures what was
+ * just typed. What was saved is checked afterwards with the row's own reveal.
+ */
+export function entryMask(text: string): string {
+  return "•".repeat(text.length);
+}
+
+/**
  * Whether a row declared `boolean` is on.
  *
  * @remarks

@@ -390,3 +390,59 @@ describe("a revealed secret does not survive switching to a different plugin's e
     expect(S.cfgReveal).toBe("");
   });
 });
+
+describe("a secret being typed", () => {
+  function type(text: string): void {
+    for (const char of text) handleConfigInputData(Buffer.from([char.charCodeAt(0)]));
+  }
+
+  it("renders one dot per character instead of the token, in the Plugins tab's editor", () => {
+    openPluginEditor([secretRow()]);
+    handlePluginKey("enter");
+    type("sk-live-42");
+
+    const row = renderPluginBody().find((line) => line.includes("token"));
+    expect(S.inputBuf).toBe("sk-live-42");
+    expect(row).toContain("••••••••••");
+    expect(row).not.toContain("sk-live-42");
+  });
+
+  it("grows with the buffer, so a keystroke and a paste are both visible as progress", () => {
+    openPluginEditor([secretRow()]);
+    handlePluginKey("enter");
+    type("ab");
+    expect(renderPluginBody().find((line) => line.includes("token"))).toContain("••");
+
+    type("cd");
+    const longer = renderPluginBody().find((line) => line.includes("token"));
+    expect(longer).toContain("••••");
+    expect(longer).not.toContain("abcd");
+  });
+
+  it("shrinks on a backspace, so a correction is visible too", () => {
+    openPluginEditor([secretRow()]);
+    handlePluginKey("enter");
+    type("abc");
+    handleConfigInputData(Buffer.from([127]));
+
+    expect(S.inputBuf).toBe("ab");
+    const row = renderPluginBody().find((line) => line.includes("token"));
+    expect(row).toContain("••");
+    expect(row).not.toContain("•••");
+  });
+
+  it("leaves a row that is not declared secret in cleartext, since it is not a secret", () => {
+    openPluginEditor([{ key: "endpoint", value: "", def: "", isSet: false, type: "string" }]);
+    handlePluginKey("enter");
+    type("https://example.test");
+
+    expect(renderPluginBody().find((line) => line.includes("endpoint"))).toContain("https://example.test");
+  });
+
+  it("still saves what was actually typed, so masking is display only", () => {
+    openPluginEditor([secretRow()]);
+    handlePluginKey("enter");
+    type("newtoken");
+    expect(S.inputBuf).toBe("newtoken");
+  });
+});
