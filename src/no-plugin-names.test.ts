@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 // The whole rework exists to remove these. A library may name a SOURCE (an org) but never a plugin,
 // in any file format, so this scans data and markdown as well as code. Test files are excluded
 // because they legitimately use real names as fixture data, exactly as core's own guard test does.
-const FORBIDDEN = ["plugin-updater", "config-ledger", "sync-bridge", "custom-auth"];
+const FORBIDDEN = ["plugin-updater", "config-ledger", "sync-bridge", "custom-auth", "claude-code-loader", "opencode-loader"];
 
 // data/ is scanned so a JSON catalog can never reintroduce a plugin name behind the guard that
 // exists to catch exactly that. The directory may be absent, which is not a failure.

@@ -20,6 +20,10 @@ export const CLI_CMD = process.env.HUB_CLI_CMD || "opencode";
 // Claude Code has no npm-plugin mechanism (npm plugins are an opencode.jsonc concept),
 // so the loader hides the npm section + npm install option under Claude.
 export const IS_CLAUDE = String(CLI_CMD).indexOf("claude") !== -1 || String(APP_NAME).indexOf("Claude") !== -1;
+// Injected by the loader that owns this home, because which app this is belongs to that app's own
+// project and not to this library. Empty when nothing injected it, which is not an error: a consumer
+// that needs the id degrades rather than guessing one.
+export const APP_ID = (process.env.HUB_APP_ID || "").trim();
 export const NPM_PKG = process.env.HUB_NPM_PKG || "opencode-ai";
 export const CONFIG_DIR = process.env.HUB_CONFIG_DIR || join(HOME, ".config", "opencode");
 

@@ -5,7 +5,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, unlinkSync } from "fs";
 import { readJson } from "./json.js";
 import { join, dirname } from "path";
-import { CONFIG_PATH, CONFIG_FOLDER, CONFIG_DIR, CLI_CMD, IS_CLAUDE, PLUGINS_JSON, MCP_CONFIG_PATH } from "./env.js";
+import { CONFIG_PATH, CONFIG_FOLDER, CONFIG_DIR, CLI_CMD, APP_ID, REPOS_DIR, PLUGINS_JSON, MCP_CONFIG_PATH } from "./env.js";
+import { appOfClone } from "./clone-app.js";
 
 // ── Loader plugin config (config/<loaderName>.json) ─────────────────────────
 // The active loader's OWN plugin config, the same file the loader's plugin.ts
@@ -151,9 +152,13 @@ export function loadPlugins() {
       if (fs.existsSync(candidates[i])) {
         var arr = JSON.parse(fs.readFileSync(candidates[i], "utf-8"));
         if (Array.isArray(arr)) {
-          // never show the OTHER app's loader (the manager's own plugin list filter matches)
-          var foreign = IS_CLAUDE ? "opencode-loader" : "claude-code-loader";
-          return arr.filter(function (e) { return e && e.name !== foreign; });
+          // Another app's loader is a plugin of that app's home, never an entry to offer here.
+          return arr.filter(function (e) {
+            if (!e) return false;
+            if (!APP_ID) return true;
+            var declaredApp = appOfClone(REPOS_DIR, e.name);
+            return declaredApp === null || declaredApp === APP_ID;
+          });
         }
       }
     }
