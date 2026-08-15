@@ -5,37 +5,32 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, unlinkSync } from "fs";
 import { readJson } from "./json.js";
 import { join, dirname } from "path";
-import { CONFIG_PATH, CONFIG_FOLDER, CONFIG_DIR, CLI_CMD, APP_ID, REPOS_DIR, PLUGINS_JSON, MCP_CONFIG_PATH } from "./env.js";
+import { CONFIG_PATH, CONFIG_FOLDER, CONFIG_DIR, APP_ID, REPOS_DIR, PLUGINS_JSON, MCP_CONFIG_PATH } from "./env.js";
 import { appOfClone } from "./clone-app.js";
+import { loaderIdOfHome } from "./app-descriptor.js";
 
-// ── Loader plugin config (config/<loaderName>.json) ─────────────────────────
-// The active loader's OWN plugin config, the same file the loader's plugin.ts
-// registers via defineConfig (opencode-loader.json / claude-code-loader.json).
-// The TUI reads it for the runtime knobs below. Returns {} when no file exists,
-// so every getter falls back to the default that reproduces current behavior.
-//
-// Loader name is derived from CLI_CMD (HUB_CLI_CMD) which the wrapper always
-// sets: "opencode" -> opencode-loader, "claude" -> claude-code-loader. When the
-// env is ambiguous (CLI_CMD unrecognized), fall back to whichever of the two
-// config files actually exists on disk.
+// ── The active loader's own plugin config (config/<loader id>.json) ─────────
+// The same file the loader's plugin.ts registers via defineConfig; the TUI reads it for the
+// runtime knobs below. Returns {} when no file exists, so every getter falls back to the default
+// that reproduces current behavior.
 var LOADER_CONFIG = null;
 
-function loaderName() {
-  var cmd = String(CLI_CMD || "");
-  if (cmd.indexOf("opencode") !== -1) return "opencode-loader";
-  if (cmd.indexOf("claude") !== -1) return "claude-code-loader";
-  // ambiguous: pick the loader whose config file exists (preferred then fallback)
-  var candidates = ["opencode-loader", "claude-code-loader"];
-  for (var i = 0; i < candidates.length; i++) {
-    if (existsSync(join(CONFIG_FOLDER, candidates[i] + ".json"))) return candidates[i];
-    if (existsSync(join(CONFIG_DIR, candidates[i] + ".json"))) return candidates[i];
-  }
-  return "opencode-loader";
+/**
+ * The id of the loader whose config this home holds.
+ *
+ * @remarks
+ * Discovered rather than injected or named: a home holds exactly one clone whose `cairn.json`
+ * declares an app, and that clone is this app's loader. An injected id defaulting to nothing would
+ * make a real home read its loader's knobs as defaults until every loader injects it.
+ */
+export function loaderConfigName() {
+  return loaderIdOfHome();
 }
 
 export function loadLoaderConfig() {
   if (LOADER_CONFIG !== null) return LOADER_CONFIG;
-  var name = loaderName();
+  var name = loaderConfigName();
+  if (!name) return (LOADER_CONFIG = {});
   var preferred = join(CONFIG_FOLDER, name + ".json");
   var fallback = join(CONFIG_DIR, name + ".json");
   var p = existsSync(preferred) ? preferred : existsSync(fallback) ? fallback : null;
