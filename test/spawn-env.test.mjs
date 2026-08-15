@@ -2,7 +2,7 @@
 // site that drops the merge silently breaks the cross-process chain and nothing else.
 // Two halves here: the merge really reaches a real child, and each production spawn
 // site really performs it.
-import { describe, it, afterEach } from "vitest";
+import { describe, it, afterEach, vi } from "vitest";
 import assert from "node:assert";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
@@ -60,5 +60,18 @@ describe("spawn env merge", () => {
       assert.strictEqual(found, expected, `${file}: expected ${expected} spawn sites to use spawnEnv, found ${found}`);
       assert.ok(!text.includes("...loaderActivityEnv()"), `${file} still spreads the activity env by hand`);
     }
+  });
+
+  describe("the manager child is told which app it acts on", () => {
+    it("passes the injected app id straight through", () => {
+      const saved = process.env.HUB_APP_ID;
+      process.env.HUB_APP_ID = "zeta";
+      vi.resetModules();
+      const source = readFileSync(new URL("../dist/updater.js", import.meta.url), "utf8");
+      assert.ok(source.includes("PLUGIN_UPDATER_APP"), "updater.js must pass PLUGIN_UPDATER_APP");
+      assert.ok(!source.match(/PLUGIN_UPDATER_APP:\s*\w+\s*\?/), "PLUGIN_UPDATER_APP must not be conditional");
+      if (saved === undefined) delete process.env.HUB_APP_ID;
+      else process.env.HUB_APP_ID = saved;
+    });
   });
 });

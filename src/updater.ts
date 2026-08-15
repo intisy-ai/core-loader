@@ -115,9 +115,8 @@ export function setupPlugin(repo, done) {
   // positional args would arrive undefined and updatePluginPublic would build nothing.
   // Env is read identically under both runtimes.
   var script = 'const {pathToFileURL}=require("url"); import(pathToFileURL(process.env.PU_PATH).href).then(function(m){return m.updatePluginPublic(process.env.PU_NAME, process.env.PU_URL||undefined, process.env.PU_BRANCH||undefined);}).then(function(){process.exit(0);}).catch(function(e){console.error((e&&e.message)||e);process.exit(1);});';
-  // Tell the child WHICH app + config dir to update: without these it guesses from
-  // argv (no "claude") + ~/.<app>, so it updated the wrong home and the loader's own
-  // repos/<name> clone never advanced (updates "did nothing" / kept showing available).
+  // Tell the child WHICH app and config dir to act on: with neither, it detects its own and can
+  // update a different home than the one this TUI is showing.
   var childEnv = spawnEnv({
     PU_PATH: updaterPath, PU_NAME: repo.name, PU_URL: repo.url || "", PU_BRANCH: repo.branch || "",
     PLUGIN_UPDATER_APP: APP_ID,
