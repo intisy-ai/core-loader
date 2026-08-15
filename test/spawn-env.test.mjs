@@ -63,15 +63,66 @@ describe("spawn env merge", () => {
   });
 
   describe("the manager child is told which app it acts on", () => {
-    it("passes the injected app id to spawn's environment", () => {
-      const saved = process.env.HUB_APP_ID;
+    it("passes the injected app id through to spawn", () => {
+      const savedAppId = process.env.HUB_APP_ID;
+      const savedConfigDir = process.env.HUB_CONFIG_DIR;
+      const savedAppsFile = process.env.HUB_APPS_FILE;
+      const tempDir = mkdtempSync(join(tmpdir(), "core-loader-app-id-"));
+
       process.env.HUB_APP_ID = "zeta";
-      vi.resetModules();
+      process.env.HUB_CONFIG_DIR = tempDir;
+      process.env.HUB_APPS_FILE = join(tempDir, "apps.json");
+      writeFileSync(process.env.HUB_APPS_FILE, "{}");
+
+      const cp = require("child_process");
+      const realSpawn = cp.spawn;
+      let capturedEnv = null;
+      cp.spawn = (cmd, args, opts) => {
+        capturedEnv = opts && opts.env;
+        return {
+          stderr: { on() {} },
+          on() {},
+        };
+      };
+
+      try {
+        const S = require("../dist/state.js").S;
+        const updater = require("../dist/updater.js");
+        S.UPDATER_MODULE = { updatePluginPublic() {} };
+        S.UPDATER_ENTRY = "/fake/entry.js";
+
+        let callbackArg = null;
+        updater.setupPlugin({ name: "demo" }, (arg) => {
+          callbackArg = arg;
+        });
+
+        assert.ok(capturedEnv, "spawn must be called");
+        assert.strictEqual(
+          capturedEnv.PLUGIN_UPDATER_APP,
+          "zeta",
+          "child env must carry the pinned app id"
+        );
+        assert.strictEqual(
+          capturedEnv.HUB_CONFIG_DIR,
+          tempDir,
+          "child env must carry the config dir"
+        );
+      } finally {
+        cp.spawn = realSpawn;
+        rmSync(tempDir, { recursive: true, force: true });
+        if (savedAppId === undefined) delete process.env.HUB_APP_ID;
+        else process.env.HUB_APP_ID = savedAppId;
+        if (savedConfigDir === undefined) delete process.env.HUB_CONFIG_DIR;
+        else process.env.HUB_CONFIG_DIR = savedConfigDir;
+        if (savedAppsFile === undefined) delete process.env.HUB_APPS_FILE;
+        else process.env.HUB_APPS_FILE = savedAppsFile;
+      }
+    });
+
+    it("the compiled source does not make PLUGIN_UPDATER_APP conditional", () => {
       const source = readFileSync(new URL("../dist/updater.js", import.meta.url), "utf8");
       assert.ok(source.includes("PLUGIN_UPDATER_APP"), "updater.js must pass PLUGIN_UPDATER_APP");
       assert.ok(!source.match(/PLUGIN_UPDATER_APP:\s*\w+\s*\?/), "PLUGIN_UPDATER_APP must not be conditional");
-      if (saved === undefined) delete process.env.HUB_APP_ID;
-      else process.env.HUB_APP_ID = saved;
     });
   });
 });
