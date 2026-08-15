@@ -39,7 +39,7 @@ which is why a few small facts (such as the storage subdirectory names in
 - `src/tui.ts`, `src/input.ts`, `src/input-cause.ts`, `src/selection.ts`,
   `src/out.ts`, `src/format.ts` — the terminal surface and its rendering
 - `src/plugins.ts`, `src/provider-rows.ts`, `src/provider-catalog.ts`,
-  `src/provider-def.ts`, `src/custom-provider.ts`, `src/account-menu.ts`,
+  `src/custom-provider.ts`, `src/account-menu.ts`,
   `src/projects.ts`, `src/mcp.ts`, `src/marketplace.ts` — the views
 - `src/state.ts` — the single shared mutable state object
 - `src/config.ts`, `src/settings-model.ts`, `src/json.ts` — config reading and
