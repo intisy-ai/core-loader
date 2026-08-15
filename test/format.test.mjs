@@ -53,3 +53,17 @@ describe("format: isBooleanRowOn", () => {
     assert.equal(isBooleanRowOn(undefined), false);
   });
 });
+
+describe("a declared accent colour", () => {
+  it("maps a hex colour onto the ANSI 256 cube exactly", async () => {
+    const { ansi256FromHex } = await import("../dist/format.js");
+    assert.equal(ansi256FromHex("#d7875f"), "\x1b[38;5;173m");
+    assert.equal(ansi256FromHex("#5fafaf"), "\x1b[38;5;73m");
+  });
+
+  it("answers empty for a value that is not a colour, so the caller keeps its default", async () => {
+    const { ansi256FromHex } = await import("../dist/format.js");
+    assert.equal(ansi256FromHex(""), "");
+    assert.equal(ansi256FromHex("teal"), "");
+  });
+});

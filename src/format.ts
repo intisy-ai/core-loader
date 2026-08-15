@@ -1,5 +1,7 @@
 // @ts-nocheck
 // Terminal formatting: ANSI codes and width-aware string helpers (CJK counts 2).
+import { appAccent } from "./app-descriptor.js";
+
 export const E = "\x1b[";
 export const RST = E + "0m";
 export const BOLD = E + "1m";
@@ -14,10 +16,32 @@ export const MAGENTA = E + "35m";
 export const BG_SEL = E + "48;5;236m";
 export const CLR = E + "K";
 
-// Used everywhere (app title, active tab, row cursor, spinner, flash message); never
-// hardcode it elsewhere.
-var ACCENT_FALLBACK = E + "38;5;110m";
-export const ACCENT = ACCENT_FALLBACK;
+/**
+ * A `#rrggbb` colour as an ANSI 256 foreground code, or "" when it is not a colour.
+ *
+ * @remarks
+ * The 6x6x6 cube is the widest palette a terminal reliably renders, and an app declares a hex
+ * colour because that is the one form both a terminal and a dashboard can use.
+ */
+export function ansi256FromHex(hex: string): string {
+  const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+  if (!match) return "";
+  const value = parseInt(match[1], 16);
+  const levels = [0, 95, 135, 175, 215, 255];
+  const nearest = (channel) => {
+    let best = 0;
+    for (var i = 1; i < levels.length; i++) {
+      if (Math.abs(levels[i] - channel) < Math.abs(levels[best] - channel)) best = i;
+    }
+    return best;
+  };
+  const index = 16 + 36 * nearest((value >> 16) & 255) + 6 * nearest((value >> 8) & 255) + nearest(value & 255);
+  return E + "38;5;" + index + "m";
+}
+
+// The app's own accent, so the loader takes the colour of whatever it is loading. An app that
+// declares none gets the neutral secondary tone rather than another app's colour.
+export const ACCENT = ansi256FromHex(appAccent()) || (E + "38;5;110m");
 
 // Muted status tones that harmonize with the accent (softer than raw ANSI 31/32/33).
 export const OK = E + "38;5;108m";       // sage green, positive (auto, enabled, true, git/active)
