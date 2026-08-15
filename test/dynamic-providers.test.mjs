@@ -72,7 +72,7 @@ describe("readDeployedProviders: the home's dynamic providers", () => {
     assert.deepEqual(readDeployedProviders(repos, home), []);
   });
 
-  it("ignores a checkout's own .dynamic-providers.json, which no longer names a channel", () => {
+  it("ignores a checkout's own .dynamic-providers.json", () => {
     mkdirSync(join(repos, "endpoints"), { recursive: true });
     writeFileSync(join(repos, "endpoints", "package.json"), JSON.stringify({ name: "endpoints" }), "utf8");
     writeFileSync(
