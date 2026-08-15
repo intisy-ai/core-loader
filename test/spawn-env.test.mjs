@@ -63,7 +63,7 @@ describe("spawn env merge", () => {
   });
 
   describe("the manager child is told which app it acts on", () => {
-    it("passes the injected app id straight through", () => {
+    it("passes the injected app id to spawn's environment", () => {
       const saved = process.env.HUB_APP_ID;
       process.env.HUB_APP_ID = "zeta";
       vi.resetModules();
