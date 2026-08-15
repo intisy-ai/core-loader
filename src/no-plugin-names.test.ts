@@ -100,9 +100,9 @@ const CHILD_STARTERS = /\b(exec|execSync|execFile|execFileSync|spawn|spawnSync)\
 // variable on one line and spawned on another. So an npx command STRING is banned too, everywhere
 // except three files that legitimately hold one.
 //   src/plugin-manager.ts  builds the bootstrap command as text for an OPERATOR to run.
-//   src/env.ts             the MCP server catalog, whose `command: "npx"` entries are commands the
+//   src/catalogs.ts        the MCP server catalog, whose `command: "npx"` entries are commands the
 //   src/marketplace.ts     user's own MCP client runs, never this library.
-const NPX_STRING_ALLOWED = ["src/plugin-manager.ts", "src/env.ts", "src/marketplace.ts"];
+const NPX_STRING_ALLOWED = ["src/plugin-manager.ts", "src/catalogs.ts", "src/marketplace.ts"];
 const NPX_STRING = /["'`]npx/;
 
 describe("the loader never runs npx", () => {

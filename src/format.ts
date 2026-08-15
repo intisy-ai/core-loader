@@ -1,6 +1,5 @@
 // @ts-nocheck
 // Terminal formatting: ANSI codes and width-aware string helpers (CJK counts 2).
-import { IS_CLAUDE } from "./env.js";
 export const E = "\x1b[";
 export const RST = E + "0m";
 export const BOLD = E + "1m";
@@ -15,15 +14,10 @@ export const MAGENTA = E + "35m";
 export const BG_SEL = E + "48;5;236m";
 export const CLR = E + "K";
 
-// Per-loader accent so the two loaders (sharing this core-loader TUI) each get a
-// distinct palette: claude-code-loader = warm orange/tan (CC-inspired), opencode
-// -loader = teal. Resolved from IS_CLAUDE (env.ts, the single app-detection source).
-// Swap either constant to re-theme that loader (e.g. CC lavender "38;5;147m"). Used
-// everywhere (app title, active tab, row cursor, spinner, flash message); never
+// Used everywhere (app title, active tab, row cursor, spinner, flash message); never
 // hardcode it elsewhere.
-var ACCENT_CLAUDE = E + "38;5;173m";     // warm orange/tan
-var ACCENT_OPENCODE = E + "38;5;73m";    // teal
-export const ACCENT = IS_CLAUDE ? ACCENT_CLAUDE : ACCENT_OPENCODE;
+var ACCENT_FALLBACK = E + "38;5;110m";
+export const ACCENT = ACCENT_FALLBACK;
 
 // Muted status tones that harmonize with the accent (softer than raw ANSI 31/32/33).
 export const OK = E + "38;5;108m";       // sage green, positive (auto, enabled, true, git/active)

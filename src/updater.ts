@@ -7,7 +7,7 @@ import { join } from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
 import { pathToFileURL } from "url";
-import { CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, IS_CLAUDE, tuiLog } from "./env.js";
+import { CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, APP_ID, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { spawnEnv } from "./activity-seam.js";
 import { homePaths } from "./home-paths.js";
@@ -78,7 +78,7 @@ export function resolvedManager() {
  */
 export function managerBootstrapCommand() {
   const ref = resolvedManager();
-  return ref ? bootstrapCommand(ref, IS_CLAUDE ? "claude" : "opencode") : "";
+  return ref ? bootstrapCommand(ref, APP_ID) : "";
 }
 
 export function getUpdater() {
@@ -120,7 +120,7 @@ export function setupPlugin(repo, done) {
   // repos/<name> clone never advanced (updates "did nothing" / kept showing available).
   var childEnv = spawnEnv({
     PU_PATH: updaterPath, PU_NAME: repo.name, PU_URL: repo.url || "", PU_BRANCH: repo.branch || "",
-    PLUGIN_UPDATER_APP: IS_CLAUDE ? "claude" : "opencode",
+    PLUGIN_UPDATER_APP: APP_ID,
     HUB_CONFIG_DIR: CONFIG_DIR,
   });
   var child = require("child_process").spawn(process.execPath, ["-e", script], { stdio: ["ignore", "ignore", "pipe"], env: childEnv });

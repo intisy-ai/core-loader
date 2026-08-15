@@ -1,6 +1,6 @@
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import assert from "node:assert";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -14,7 +14,7 @@ process.env.HUB_APP_NAME = "Claude Code";
 
 const {
   CONFIG_DIR, CONFIG_FOLDER, CACHE_DIR, PLUGINS_JSON, REPOS_DIR, PLUGINS_DIR,
-  MCP_CONFIG_PATH, CATALOG_CACHE_PATH, SEED_CACHE_PATH, IS_CLAUDE,
+  MCP_CONFIG_PATH, CATALOG_CACHE_PATH, SEED_CACHE_PATH,
   MCP_CATALOG, FEATURED_PLUGINS,
 } = await import("../dist/env.js");
 
@@ -30,9 +30,46 @@ describe("env: path helpers", () => {
     assert.equal(CATALOG_CACHE_PATH, join(configDir, "cache", "marketplace-catalog.json"));
     assert.equal(SEED_CACHE_PATH, join(configDir, "cache", "seed-marketplaces.json"));
   });
+});
 
-  it("detects Claude Code from HUB_CLI_CMD/HUB_APP_NAME", () => {
-    assert.equal(IS_CLAUDE, true);
+describe("an app nothing injected and nothing declares", () => {
+  it("resolves to no id, no name and no home rather than to a default app", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "core-loader-env-unknown-"));
+    writeFileSync(join(dir, "apps.json"), "{}");
+    const saved = { id: process.env.HUB_APP_ID, cfg: process.env.HUB_CONFIG_DIR, apps: process.env.HUB_APPS_FILE, name: process.env.HUB_APP_NAME, cli: process.env.HUB_CLI_CMD };
+    delete process.env.HUB_APP_ID; delete process.env.HUB_CONFIG_DIR; delete process.env.HUB_APP_NAME; delete process.env.HUB_CLI_CMD;
+    process.env.HUB_APPS_FILE = join(dir, "apps.json");
+    vi.resetModules();
+    const env = await import("../dist/env.js");
+    assert.equal(env.APP_ID, "");
+    assert.equal(env.APP_NAME, "");
+    assert.equal(env.CONFIG_DIR, "");
+    for (const [key, value] of Object.entries({ HUB_APP_ID: saved.id, HUB_CONFIG_DIR: saved.cfg, HUB_APPS_FILE: saved.apps, HUB_APP_NAME: saved.name, HUB_CLI_CMD: saved.cli })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("takes its name, binary and home from the declared descriptor when only the id is injected", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "core-loader-env-declared-"));
+    mkdirSync(join(dir, "home"), { recursive: true });
+    writeFileSync(join(dir, "apps.json"), JSON.stringify({
+      zeta: { id: "zeta", label: "Zeta", home: { candidates: [join(dir, "home")] }, detect: { binary: "zeta", pkg: "zeta-cli" } },
+    }));
+    const saved = { id: process.env.HUB_APP_ID, cfg: process.env.HUB_CONFIG_DIR, apps: process.env.HUB_APPS_FILE, name: process.env.HUB_APP_NAME, cli: process.env.HUB_CLI_CMD };
+    delete process.env.HUB_CONFIG_DIR; delete process.env.HUB_APP_NAME; delete process.env.HUB_CLI_CMD;
+    process.env.HUB_APP_ID = "zeta";
+    process.env.HUB_APPS_FILE = join(dir, "apps.json");
+    vi.resetModules();
+    const env = await import("../dist/env.js");
+    assert.equal(env.APP_NAME, "Zeta");
+    assert.equal(env.CLI_CMD, "zeta");
+    assert.equal(env.NPM_PKG, "zeta-cli");
+    assert.equal(env.CONFIG_DIR, join(dir, "home"));
+    for (const [key, value] of Object.entries({ HUB_APP_ID: saved.id, HUB_CONFIG_DIR: saved.cfg, HUB_APPS_FILE: saved.apps, HUB_APP_NAME: saved.name, HUB_CLI_CMD: saved.cli })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 

@@ -5,7 +5,8 @@
 import { existsSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { readJson } from "./json.js";
 import { exec } from "child_process";
-import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, FEATURED_PLUGINS, APP_NAME, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, CONFIG_DIR, tuiLog } from "./env.js";
+import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, FEATURED_PLUGINS, APP_NAME, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, CONFIG_DIR, tuiLog } from "./env.js";
+import { appDiscovery } from "./app-descriptor.js";
 import { S } from "./state.js";
 import { loadPlugins, catalogCacheHours, registerPlugin } from "./config.js";
 import { scheduleRender } from "./views/common.js";
@@ -211,7 +212,7 @@ export function sourceRowsFrom(sources, entries) {
 // repos. full_name matching mirrors the GitHub-search dedupe further down this file;
 // stars ride in via the existing enrichment passes.
 function seedCuratedPlugins() {
-  if (!IS_CLAUDE) return;   // opencode's Curated section is scraped, not seeded
+  if (appDiscovery().awesomeList) return;
   for (var ci = 0; ci < FEATURED_PLUGINS.length; ci++) {
     var cur = FEATURED_PLUGINS[ci];
     var curKey = (cur.full_name || "").toLowerCase();

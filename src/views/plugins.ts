@@ -9,7 +9,8 @@ import { loadPlugins } from "../config.js";
 import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath, managerBootstrapCommand, resolvedManager } from "../updater.js";
 import { getPluginActions, hostPluginId, readUpdateCache } from "../plugins.js";
 import { getMarketplaceActions } from "../marketplace.js";
-import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR, APP_NAME } from "../env.js";
+import { HOME, PLUGINS_DIR, REPOS_DIR, APP_NAME } from "../env.js";
+import { appNpmPlugins } from "../app-descriptor.js";
 import { hints, messageLine, spinnerFrame, marketplaceRow } from "./common.js";
 import { diagnosticLines } from "../plugin-diagnostics.js";
 import { ledgerRowFor } from "../plugin-surface.js";
@@ -369,10 +370,10 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
 
       var msel = pi2 === S.mkCursor;
       var mkNameW = Math.min(30, nameW);
-      var methodW = (IS_CLAUDE || mitem.capability || mitem.seed) ? 0 : 4;
+      var methodW = (!appNpmPlugins() || mitem.capability || mitem.seed) ? 0 : 4;
       // Method badge (git/npm) only makes sense for the loader's own installable
       // catalog entries; capability/seed-sourced rows and Claude (git-only) show none.
-      var methodBadge = (IS_CLAUDE || mitem.capability || mitem.seed) ? ""
+      var methodBadge = (!appNpmPlugins() || mitem.capability || mitem.seed) ? ""
         : mitem.installed ? "    "
         : (OK + "git " + RST);
       // status circle: installed = dim ●, selected = accent ◉, selectable = ○
@@ -467,7 +468,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
   // where plugins live; under Claude the engine's version/update/location live here too
   // (no npm section), under OpenCode the engine is its own npm row so it's omitted here.
   var abbr = function(pth) { return (pth && HOME && String(pth).indexOf(HOME) === 0) ? "~" + String(pth).slice(HOME.length) : pth; };
-  if (IS_CLAUDE) {
+  if (!appNpmPlugins()) {
     var mref = resolvedManager();
     var uv = getUpdaterVersion();
     pushSticky("  " + DIM + "manager " + (mref ? mref.id : "(unresolved)") + (uv ? " v" + uv : "") + GRAY + (getUpdaterPath() ? " · " + abbr(getUpdaterPath()) : "") + RST);
@@ -500,7 +501,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
   // npm plugins are an OpenCode-only concept (opencode.jsonc). Under Claude there is
   // no npm section at all. Under OpenCode, surface it even when empty so it's clearly
   // present, pointing to the Marketplace.
-  if (!hadNpm && !IS_CLAUDE) {
+  if (!hadNpm && appNpmPlugins()) {
     pushBody("", false);
     pushBody("  " + BOLD + WHITE + "npm plugins" + RST, false);
     pushBody("  " + DIM + "none installed — add from the Marketplace" + RST, false);

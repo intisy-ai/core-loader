@@ -1,6 +1,6 @@
 import { setDiagnosticSink } from "@intisy-ai/api";
 import type { ActionResult, CapabilitySchema, ScreenNode, ScreenSpec, ScreensCapability, SectionSpec, SettingsCapability } from "@intisy-ai/api";
-import { IS_CLAUDE, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
+import { APP_ID, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, startPlugins } from "./plugin-host.js";
 import type { LoadedHost, LoaderHostOptions, PluginLedgerRow } from "./plugin-host.js";
@@ -38,7 +38,7 @@ export async function startPluginHost(): Promise<void> {
   }
   try {
     HOST = await startPlugins({
-      app: IS_CLAUDE ? "claude" : "opencode",
+      app: APP_ID,
       pluginDir: PLUGINS_DIR,
       surfaces: ["tui"],
       runtimeFor: runtimeFor as LoaderHostOptions["runtimeFor"],

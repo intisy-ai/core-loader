@@ -99,6 +99,7 @@ export function registryDescriptor(appId: string): AppDescriptor | null {
 
 /** The home directory an app declares. */
 export function resolveHome(desc: AppDescriptor): string {
+  if (!desc.home) return "";
   const over = desc.home.envOverride ? trimmed(process.env[desc.home.envOverride]) : "";
   if (over) return over;
   const native = desc.home.nativeEnv ? trimmed(process.env[desc.home.nativeEnv]) : "";
