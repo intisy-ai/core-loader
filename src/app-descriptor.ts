@@ -38,6 +38,9 @@ export interface AppDescriptor {
   detect?: { binary?: string; pkg?: string };
   loader?: { id: string; url: string };
   accent?: string;
+  /** The command a user types to launch this app through the loader's wrapper. Absent means
+   *  the app is launched by its own binary. */
+  wrapperCommand?: string;
   npmPlugins?: NpmPluginsTrait;
   discovery?: DiscoveryTrait;
   projects?: ProjectsTrait;
@@ -197,6 +200,17 @@ export function loaderIdOfHome(): string {
 /** The app's accent colour as `#rrggbb`, or "" when it declares none. */
 export function appAccent(): string {
   return trimmed(activeDescriptor()?.accent);
+}
+
+/**
+ * The command a user types to launch this app, as the app declares it, or "" when undeclared.
+ *
+ * @remarks
+ * Falling back to `CLI_CMD` here would import env.ts, which already imports this module: the
+ * caller applies that fallback instead.
+ */
+export function appWrapperCommand(): string {
+  return trimmed(activeDescriptor()?.wrapperCommand);
 }
 
 /** The app's npm-plugin mechanism, or null when it has none. */

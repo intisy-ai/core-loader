@@ -16,6 +16,7 @@ import {
   REPOS_DIR,
   PLUGINS_DIR,
 } from "./env.js";
+import { appWrapperCommand } from "./app-descriptor.js";
 import { readDeployedProviders } from "./loader-runtime.js";
 import { getUpdater, managerBootstrapCommand, preloadUpdater, resolvedManager, setupPlugin } from "./updater.js";
 import { loaderConfigName, registerPlugin } from "./config.js";
@@ -25,6 +26,9 @@ const PROXY_URL = "http://127.0.0.1:" + PROXY_PORT;
 const UPDATER_APP = APP_ID;
 const ACCOUNTS_JSON = join(CONFIG_FOLDER, "accounts.json");
 const LOADER_CONFIG = join(CONFIG_FOLDER, loaderConfigName() + ".json");
+// The wrapper's own name is app-specific data (e.g. "cc"/"oc"), declared beside the app's other
+// traits; an app that declares none is launched by its own binary instead.
+const WRAPPER_CMD = appWrapperCommand() || CLI_CMD;
 
 const OK = "✓";
 const BAD = "✗";
@@ -177,16 +181,16 @@ async function probeProxy(timeoutMs) {
 async function proxyStatus() {
   const up = await probeProxy(2000);
   console.log("Proxy (" + PROXY_URL + "): " + (up ? "UP " + OK : "DOWN " + BAD));
-  if (!up) console.log("  Start it by launching `" + CLI_CMD + "` (the wrapper starts the daemon).");
+  if (!up) console.log("  Start it by launching `" + WRAPPER_CMD + "` (the wrapper starts the daemon).");
 }
 
 // ---- doctor --------------------------------------------------------------
 
 function wrapperState() {
-  // An empty CLI_CMD would collapse the join to the bin DIRECTORY itself, and reading that throws
-  // EISDIR rather than answering "not installed".
-  if (!CLI_CMD) return { installed: false };
-  const bin = join(process.env.HOME || process.env.USERPROFILE || "", ".local", "bin", CLI_CMD);
+  // An empty WRAPPER_CMD would collapse the join to the bin DIRECTORY itself, and reading that
+  // throws EISDIR rather than answering "not installed".
+  if (!WRAPPER_CMD) return { installed: false };
+  const bin = join(process.env.HOME || process.env.USERPROFILE || "", ".local", "bin", WRAPPER_CMD);
   if (!existsSync(bin)) return { installed: false };
   const text = readFileSync(bin, "utf8");
   return { installed: true, routesViaToken: text.includes("ANTHROPIC_AUTH_TOKEN") };
@@ -245,7 +249,7 @@ async function main() {
     case "doctor":
       return doctor();
     default:
-      console.log("usage: " + CLI_CMD + " <plugins|providers|proxy|doctor>");
+      console.log("usage: " + WRAPPER_CMD + " <plugins|providers|proxy|doctor>");
       console.log("  plugins list | install <git-url> | update [name]");
       console.log("  providers            list providers, accounts, and tier mapping");
       console.log("  proxy status         check the loader proxy daemon");
