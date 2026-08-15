@@ -52,16 +52,24 @@ function relativeTo(repoRoot: string, file: string): string {
 }
 
 // The rule bans a host BRANCHING on a plugin id, not naming one: a comment or a document may say
-// which plugin something is for. Each file here holds only that kind of mention.
-const PROSE_ALLOWED = ["src/format.ts", "src/loader-runtime.ts", "src/proxy-runner.ts", "README.md", "SPEC.md"];
+// which plugin something is for. Each entry excuses only the names listed against it, so a
+// different forbidden name in that same file still fails.
+const PROSE_ALLOWED: Record<string, string[]> = {
+  "src/format.ts": ["claude-code-loader"],
+  "src/loader-runtime.ts": ["claude-code-loader", "opencode-loader"],
+  "src/proxy-runner.ts": ["claude-code-loader", "opencode-loader"],
+  "README.md": ["claude-code-loader", "opencode-loader"],
+  "SPEC.md": ["opencode-loader"],
+};
 
-// These hold a real branch on a plugin name, locating the loader's OWN config file by a hardcoded
-// name pair, which the rule does forbid. Removing it needs this library's own loader identity to
-// arrive as data rather than a hardcoded pair, which is the app-agnostic-libraries sub-project
-// (docs/superpowers/specs/2026-08-14-app-agnostic-libraries-design.md), not this guard.
-const BRANCH_DEFERRED = ["src/config.ts", "src/cli.ts"];
+// A real branch on a plugin name, not permitted; the app-agnostic-libraries sub-project owns
+// removing it (docs/superpowers/specs/2026-08-14-app-agnostic-libraries-design.md).
+const BRANCH_DEFERRED: Record<string, string[]> = {
+  "src/config.ts": ["claude-code-loader", "opencode-loader"],
+  "src/cli.ts": ["claude-code-loader", "opencode-loader"],
+};
 
-const PLUGIN_NAME_ALLOWED = [...PROSE_ALLOWED, ...BRANCH_DEFERRED];
+const PLUGIN_NAME_ALLOWED: Record<string, string[]> = { ...PROSE_ALLOWED, ...BRANCH_DEFERRED };
 
 describe("the loader names no plugin", () => {
   const files = [
@@ -74,10 +82,10 @@ describe("the loader names no plugin", () => {
   });
 
   for (const file of files) {
-    if (PLUGIN_NAME_ALLOWED.includes(relativeTo(repoRoot, file))) continue;
+    const excused = PLUGIN_NAME_ALLOWED[relativeTo(repoRoot, file)] || [];
     it(`${file.slice(repoRoot.length)} names no plugin`, () => {
       const text = readFileSync(file, "utf8").toLowerCase();
-      expect(FORBIDDEN.filter((name) => text.includes(name))).toEqual([]);
+      expect(FORBIDDEN.filter((name) => text.includes(name) && !excused.includes(name))).toEqual([]);
     });
   }
 });
