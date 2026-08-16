@@ -35,9 +35,9 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
   var bg = sel ? BG_SEL : "";
   var nameStyle = sel ? (BOLD + WHITE) : DIM;
 
-  // App-managed plugins (native to the host app, e.g. Claude Code's own plugin
-  // system): selectable like everything else in the list, actions gated by
-  // whichever capabilities getPluginActions() finds registered.
+  // App-managed plugins (native to the host app's own plugin system): selectable
+  // like everything else in the list, actions gated by whichever capabilities
+  // getPluginActions() finds registered.
   if (pitem.type === "foreign") {
     var fstate = pitem.enabled === false ? (BAD + "disabled" + RST) : (OK + "enabled" + RST);
     var fver = pitem.version ? (GRAY + vlabel(pitem.version) + RST) : (GRAY + "---" + RST);

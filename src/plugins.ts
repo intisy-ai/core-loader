@@ -181,12 +181,11 @@ export function buildCombinedPluginList() {
   return git.concat(npm).concat(buildForeignPluginList());
 }
 
-// The host app's OWN plugins (e.g. Claude Code's native plugin system), exposed
-// read-only-no-more via S.capabilities.foreignPlugins() -> [{name, source, enabled,
-// version}]. Absent capability (opencode) -> []. Tagged `foreign: true` (+ `key` =
-// "name@source", the CLI's own identifier) so callers can guard them out of every
-// updater-only action (update/commits/configure operate on a git clone that simply
-// doesn't exist for these rows).
+// The host app's OWN plugins, exposed via S.capabilities.foreignPlugins() ->
+// [{name, source, enabled, version}]. Absent capability -> []. Tagged `foreign: true`
+// (+ `key` = "name@source", the CLI's own identifier) so callers can guard them out
+// of every updater-only action (update/commits/configure operate on a git clone that
+// simply doesn't exist for these rows).
 export function buildForeignPluginList() {
   var fpFn = S.capabilities && S.capabilities.foreignPlugins;
   if (typeof fpFn !== "function") return [];

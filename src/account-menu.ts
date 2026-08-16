@@ -25,7 +25,7 @@ function paletteColor(color, h) {
   return h.DIM;                                          // uncolored = plain row
 }
 
-// Claude /usage-style bar row (filled = fraction USED), drawn in palette tones.
+// Usage-style bar row (filled = fraction USED), drawn in palette tones.
 function pushBar(h, it) {
   const frac = Math.max(0, Math.min(1, it.fraction || 0));
   const filled = Math.round(frac * BAR_WIDTH);

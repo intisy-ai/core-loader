@@ -7,12 +7,14 @@ import { CONFIG_SUBDIR } from "./env.js";
 //
 //   makeLoaderCommands({ plugin, commandDir, loaderEntry, runConfigCli, authHint, busDrain })
 //     plugin       - package name (also the /<plugin>-config command name)
-//     commandDir   - app command subdir ("commands" for Claude, "command" for opencode)
+//     commandDir   - app command subdir, supplied by the caller from its own
+//                    descriptor's commandsSubdir
 //     loaderEntry  - (configDir) => absolute path to the loader's runtime plugin.js
 //     runConfigCli - core's runConfigCli, bound to the caller's bundle
 //     authHint     - trailing sentence for the /accounts body when none are signed in
-//     busDrain     - optional; drains the event bus and prints a Claude systemMessage
-//                    (wired only by the loader whose app has the drain hook)
+//     busDrain     - optional; drains the event bus and surfaces each message through
+//                    the app's own notification channel (wired only by loaders whose
+//                    app supports it)
 
 import { join } from "path";
 import { readJson } from "./json.js";

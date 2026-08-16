@@ -24,7 +24,8 @@ import { parseKey, handleKey, handleInputData, handlePluginInputData, handleMark
 import { setActivitySeam, withLoaderCause } from "./activity-seam.js";
 import { inputCause } from "./input-cause.js";
 
-global.OpenCodeAPI = {
+// A stable global for an app extension that has no import path into this process.
+global.LoaderAPI = {
   getReposDir: function() { return REPOS_DIR; },
   getPluginsDir: function() { return PLUGINS_DIR; },
   getConfigDir: function() { return CONFIG_DIR; },
