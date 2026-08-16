@@ -229,7 +229,9 @@ function seedCuratedPlugins() {
 
 // catalog rows read better without the app's own prefix repeated on every name
 function withoutAppPrefix(name) {
-  return APP_ID ? String(name).replace(new RegExp("^" + APP_ID + "-"), "") : String(name);
+  var text = String(name);
+  var prefix = APP_ID ? APP_ID + "-" : "";
+  return prefix && text.indexOf(prefix) === 0 ? text.slice(prefix.length) : text;
 }
 
 export function fetchCatalogsAsync() {
