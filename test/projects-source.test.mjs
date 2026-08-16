@@ -46,9 +46,11 @@ afterEach(() => {
 describe("queryProjects reads whatever source the app declares", () => {
   it("groups a declared history file by project, newest first, with distinct session counts", async () => {
     pinApp({ historyFile: "history.jsonl" });
+    // beta is written first (so plain object-key insertion order is [beta, alpha]) but alpha's
+    // later, higher timestamp must still sort it first: this fails if the sort is missing or reversed.
     const lines = [
-      { project: "/repo/alpha", sessionId: "s1", timestamp: 100 },
       { project: "/repo/beta", sessionId: "s2", timestamp: 200 },
+      { project: "/repo/alpha", sessionId: "s1", timestamp: 100 },
       { project: "/repo/alpha", sessionId: "s1", timestamp: 300 },
     ];
     writeFileSync(join(dir, "history.jsonl"), lines.map((line) => JSON.stringify(line)).join("\n") + "\n");

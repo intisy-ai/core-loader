@@ -73,7 +73,7 @@ export function queryProjects() {
   }
 
   var dbPath = resolveSessionDbPath(declared.sessionDb || []);
-  if (!dbPath || !existsSync(dbPath)) return [];
+  if (!dbPath) return [];
   try {
     var db = openSqlite(dbPath);
     if (!db) return [];
