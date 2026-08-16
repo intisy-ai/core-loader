@@ -62,14 +62,7 @@ const PROSE_ALLOWED: Record<string, string[]> = {
   "SPEC.md": ["opencode-loader"],
 };
 
-// A real branch on a plugin name, not permitted; the app-agnostic-libraries sub-project owns
-// removing it (docs/superpowers/specs/2026-08-14-app-agnostic-libraries-design.md).
-const BRANCH_DEFERRED: Record<string, string[]> = {
-  "src/config.ts": ["claude-code-loader", "opencode-loader"],
-  "src/cli.ts": ["claude-code-loader", "opencode-loader"],
-};
-
-const PLUGIN_NAME_ALLOWED: Record<string, string[]> = { ...PROSE_ALLOWED, ...BRANCH_DEFERRED };
+const PLUGIN_NAME_ALLOWED: Record<string, string[]> = PROSE_ALLOWED;
 
 describe("the loader names no plugin", () => {
   const files = [

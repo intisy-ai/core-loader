@@ -22,6 +22,8 @@ export interface DiscoveryTrait {
 export interface ProjectsTrait {
   historyFile?: string;
   sessionDb?: string[];
+  /** The file this app writes inside a project's `.git` directory to record the project id. */
+  markerFile?: string;
 }
 
 /**

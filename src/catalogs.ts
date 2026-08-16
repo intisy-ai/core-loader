@@ -132,3 +132,7 @@ FEATURED_PLUGINS.forEach(function(e) {
 // The de-facto marketplace manifest path every seeded marketplace repo publishes. A third party's
 // file format, read identically whatever app is running.
 export const MARKETPLACE_MANIFEST_PATH = ".claude-plugin/marketplace.json";
+
+// The manifest key several provider repositories publish in their own package.json to declare the
+// auth providers they carry. Renaming it is a cross-repo change, so this library reads it as given.
+export const PROVIDER_MANIFEST_KEY = "claudeHub";

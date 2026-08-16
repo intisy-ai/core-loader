@@ -11,6 +11,7 @@ import { homedir } from "os";
 import { pathToFileURL } from "url";
 import { homePaths, subdirName } from "./home-paths.js";
 import { managerEntries, resolveFromHome, PLUGIN_MANAGEMENT_CAPABILITY } from "./plugin-manager.js";
+import { PROVIDER_MANIFEST_KEY } from "./catalogs.js";
 
 export function getBinDir() {
   return join(homedir(), ".local", "bin");
@@ -53,7 +54,7 @@ export async function runEarlyLaunchHooks(configDir: string, log: (message: stri
 }
 
 // Provider handlers deployed under <configDir>/repos: each plugin declares them in its
-// package.json via `claudeHub.authProviders` (or a top-level `authProviders`), plus the lanes a
+// package.json via its PROVIDER_MANIFEST_KEY (or a top-level `authProviders`), plus the lanes a
 // plugin materializes into this home (see homeDynamicProviders). One scan shared by the loader
 // CLI's provider/doctor views and the CC proxy's request router.
 export function readDeployedProviders(reposDir: string, configDir: string = dirname(reposDir)): Array<{
@@ -71,7 +72,7 @@ export function readDeployedProviders(reposDir: string, configDir: string = dirn
   for (const repo of repos) {
     const pkg = readJson(join(reposDir, repo, "package.json"));
     if (!pkg) continue;
-    const declared = (pkg.claudeHub && pkg.claudeHub.authProviders) || pkg.authProviders || [];
+    const declared = (pkg[PROVIDER_MANIFEST_KEY] && pkg[PROVIDER_MANIFEST_KEY].authProviders) || pkg.authProviders || [];
     for (const provider of declared) {
       if (!provider.handler) continue;
       const name = provider.name || repo;

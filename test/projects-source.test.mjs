@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,5 +78,27 @@ describe("queryProjects reads whatever source the app declares", () => {
     const { queryProjects } = await import("../dist/projects.js");
 
     expect(queryProjects()).toEqual([]);
+  });
+});
+
+describe("writeProjectMarker records the project id under the app's declared name", () => {
+  it("writes the declared marker file with the project id", async () => {
+    const projectDir = join(dir, "project");
+    mkdirSync(join(projectDir, ".git"), { recursive: true });
+
+    const { writeProjectMarker } = await import("../dist/projects.js");
+    writeProjectMarker(projectDir, "zeta", "project-id-1");
+
+    expect(readFileSync(join(projectDir, ".git", "zeta"), "utf8")).toBe("project-id-1");
+  });
+
+  it("writes nothing when the app declares no marker file", async () => {
+    const projectDir = join(dir, "project");
+    mkdirSync(join(projectDir, ".git"), { recursive: true });
+
+    const { writeProjectMarker } = await import("../dist/projects.js");
+    writeProjectMarker(projectDir, undefined, "project-id-1");
+
+    expect(existsSync(join(projectDir, ".git", "zeta"))).toBe(false);
   });
 });

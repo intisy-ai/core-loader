@@ -228,8 +228,19 @@ export function getProjectId(dir) {
   } catch (e) { return null; }
 }
 
+// Records the new project id in the marker file the active app declares inside a project's own
+// .git directory. An app that declares none (markerFile absent) writes nothing.
+export function writeProjectMarker(projectDir, markerFile, projectId) {
+  if (!markerFile) return;
+  try {
+    var gitDir = join(projectDir, ".git");
+    if (existsSync(gitDir)) writeFileSync(join(gitDir, markerFile), projectId);
+  } catch (e) {}
+}
+
 export function changeProjectPath(oldDir, newDir) {
-  var dbPath = resolveSessionDbPath(appProjects().sessionDb || []);
+  var declared = appProjects();
+  var dbPath = resolveSessionDbPath(declared.sessionDb || []);
   if (!dbPath || !existsSync(dbPath)) { flash("DB not found"); return; }
   try {
     var db = new Database(dbPath);
@@ -252,10 +263,7 @@ export function changeProjectPath(oldDir, newDir) {
         db.run("INSERT OR IGNORE INTO project (id, worktree, time_created, time_updated, sandboxes) VALUES (?, ?, ?, ?, '[]')", [newPid, newDir, now, now]);
         db.run("UPDATE session SET project_id = ?, directory = ? WHERE directory = ?", [newPid, newDir, oldDir]);
       }
-      try {
-        var gitDir = join(newDir, ".git");
-        if (existsSync(gitDir)) writeFileSync(join(gitDir, "opencode"), newPid);
-      } catch (e) {}
+      writeProjectMarker(newDir, declared.markerFile, newPid);
     } else {
       db.run("UPDATE session SET project_id = 'global', directory = ? WHERE directory = ?", [newDir, oldDir]);
     }
