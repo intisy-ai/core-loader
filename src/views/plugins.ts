@@ -466,9 +466,13 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
   pushSticky("");   // spacer between the count and the engine/locations block
 
   var abbr = function(pth) { return (pth && HOME && String(pth).indexOf(HOME) === 0) ? "~" + String(pth).slice(HOME.length) : pth; };
-  var mref = resolvedManager();
-  var uv = getUpdaterVersion();
-  pushSticky("  " + DIM + "manager " + (mref ? mref.id : "(unresolved)") + (uv ? " v" + uv : "") + GRAY + (getUpdaterPath() ? " · " + abbr(getUpdaterPath()) : "") + RST);
+  // An app with an npm-plugin mechanism already carries its engine as an npm row, so naming the
+  // manager here too would report the same thing twice.
+  if (!appNpmPlugins()) {
+    var mref = resolvedManager();
+    var uv = getUpdaterVersion();
+    pushSticky("  " + DIM + "manager " + (mref ? mref.id : "(unresolved)") + (uv ? " v" + uv : "") + GRAY + (getUpdaterPath() ? " · " + abbr(getUpdaterPath()) : "") + RST);
+  }
   var npmCache = appNpmPlugins() && appNpmPlugins().packageCache ? expandPath(appNpmPlugins().packageCache, CONFIG_DIR) : "";
   pushSticky("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + (npmCache ? " · npm " + abbr(npmCache) : "") + RST);
 
