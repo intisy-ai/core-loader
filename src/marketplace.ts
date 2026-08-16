@@ -5,7 +5,7 @@
 import { existsSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { readJson } from "./json.js";
 import { exec } from "child_process";
-import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, FEATURED_PLUGINS, APP_NAME, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, CONFIG_DIR, tuiLog } from "./env.js";
+import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, FEATURED_PLUGINS, APP_ID, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, CONFIG_DIR, MARKETPLACE_MANIFEST_PATH, tuiLog } from "./env.js";
 import { appDiscovery } from "./app-descriptor.js";
 import { S } from "./state.js";
 import { loadPlugins, catalogCacheHours, registerPlugin } from "./config.js";
@@ -130,9 +130,9 @@ export function fetchSeedMarketplacesAsync() {
       seedSettled();
       return;
     }
-    var url = "https://raw.githubusercontent.com/" + seed.repo + "/" + branches[idx] + "/.claude-plugin/marketplace.json";
+    var url = "https://raw.githubusercontent.com/" + seed.repo + "/" + branches[idx] + "/" + MARKETPLACE_MANIFEST_PATH;
     S.catalogPending++;
-    exec(curlCmd + ' -sL -H "User-Agent: OpenCode" "' + url + '"', { timeout: 15000 }, function(err, stdout) {
+    exec(curlCmd + ' -sL -H "User-Agent: intisy-ai-loader" "' + url + '"', { timeout: 15000 }, function(err, stdout) {
       S.catalogPending = Math.max(0, S.catalogPending - 1);
       if (!err && stdout) {
         try {
@@ -206,12 +206,13 @@ export function sourceRowsFrom(sources, entries) {
   return rows;
 }
 
-// Claude's community catalog gets a Curated section like opencode's (whose Curated
-// entries come from the awesome-opencode scrape): seed the VERIFIED FEATURED_PLUGINS
-// repos as category "Curated", one hand-checked source of truth, no new unverified
-// repos. full_name matching mirrors the GitHub-search dedupe further down this file;
-// stars ride in via the existing enrichment passes.
+// The built-in verified list is seeded as the Curated section for any app that declares
+// no curated list of its own: seed the VERIFIED FEATURED_PLUGINS repos as category
+// "Curated", one hand-checked source of truth, no new unverified repos. full_name
+// matching mirrors the GitHub-search dedupe further down this file; stars ride in via
+// the existing enrichment passes.
 function seedCuratedPlugins() {
+  // an app with its own curated list does not need the built-in one seeded
   if (appDiscovery().awesomeList) return;
   for (var ci = 0; ci < FEATURED_PLUGINS.length; ci++) {
     var cur = FEATURED_PLUGINS[ci];
@@ -226,10 +227,16 @@ function seedCuratedPlugins() {
   }
 }
 
+// catalog rows read better without the app's own prefix repeated on every name
+function withoutAppPrefix(name) {
+  return APP_ID ? String(name).replace(new RegExp("^" + APP_ID + "-"), "") : String(name);
+}
+
 export function fetchCatalogsAsync() {
   if (S.catalogFetched) return;
   S.catalogFetched = true;
   var curlCmd = process.platform === "win32" ? "curl.exe" : "curl";
+  var discovery = appDiscovery();
   // even with a warm cache the curated MCP entries still need their stars derived
   // (the cache predates them); run that enrichment, then skip the cold registry search
   if (loadCatalogCache()) { seedCuratedPlugins(); enrichCuratedMcpStars(); return; }
@@ -256,7 +263,7 @@ export function fetchCatalogsAsync() {
     for (var entry of missing) {
       (function(target) {
         S.catalogPending++;
-        exec(curlCmd + ' -sL -H "User-Agent: OpenCode" "https://api.github.com/repos/' + target.full_name + '"', function(err, stdout) {
+        exec(curlCmd + ' -sL -H "User-Agent: intisy-ai-loader" "https://api.github.com/repos/' + target.full_name + '"', function(err, stdout) {
           if (!err && stdout) {
             try {
               var repo = JSON.parse(stdout);
@@ -322,7 +329,7 @@ export function fetchCatalogsAsync() {
     }
     function fetchRepoStars(fullName) {
       S.catalogPending++;
-      exec(curlCmd + ' -sL -H "User-Agent: OpenCode" "https://api.github.com/repos/' + fullName + '"', function(err, stdout) {
+      exec(curlCmd + ' -sL -H "User-Agent: intisy-ai-loader" "https://api.github.com/repos/' + fullName + '"', function(err, stdout) {
         if (!err && stdout) {
           try {
             var repo = JSON.parse(stdout);
@@ -353,7 +360,7 @@ export function fetchCatalogsAsync() {
         var pkg = npmPkgFromArgs(target.args);
         if (!pkg) return;
         S.catalogPending++;
-        exec(curlCmd + ' -sL -H "User-Agent: OpenCode" "https://registry.npmjs.org/' + pkg + '"', function(err, stdout) {
+        exec(curlCmd + ' -sL -H "User-Agent: intisy-ai-loader" "https://registry.npmjs.org/' + pkg + '"', function(err, stdout) {
           fetchDone();
           if (err || !stdout) return;
           try {
@@ -375,7 +382,7 @@ export function fetchCatalogsAsync() {
 
   function searchGH(query, catalog, pageNum) {
     S.catalogPending++;
-    exec(curlCmd + ' -s -H "User-Agent: OpenCode" "https://api.github.com/search/repositories?q=' + query + '&sort=stars&order=desc&per_page=100&page=' + pageNum + '"', function(err, stdout) {
+    exec(curlCmd + ' -s -H "User-Agent: intisy-ai-loader" "https://api.github.com/search/repositories?q=' + query + '&sort=stars&order=desc&per_page=100&page=' + pageNum + '"', function(err, stdout) {
       fetchDone();
       if (!err && stdout) {
         try {
@@ -384,7 +391,7 @@ export function fetchCatalogsAsync() {
           if (json.items) {
             for (var i = 0; i < json.items.length; i++) {
               var it = json.items[i];
-              var cleanName = it.name.replace(/^claude-|^opencode-/, "");
+              var cleanName = withoutAppPrefix(it.name);
               // Match plugins by full_name (owner/repo), never by the stripped display
               // name: two different repos can strip to the same name, so a name match
               // writes one repo's star count onto the other.
@@ -464,7 +471,7 @@ export function fetchCatalogsAsync() {
     });
   }
 
-  // the awesome-opencode list is the curated membership oracle: the fuzzy
+  // the declared awesome list is the curated membership oracle: the fuzzy
   // starred search may only contribute repos that the community list contains,
   // which keeps popular plugins in and look-alike repos out
   var awesomeSet = null;
@@ -481,9 +488,9 @@ export function fetchCatalogsAsync() {
     return S.MARKETPLACE_CATALOG.find(function(e) { return (e.full_name || "").toLowerCase() === key; });
   }
 
-  function searchPopular(pageNum) {
+  function searchPopular(query, pageNum) {
     S.catalogPending++;
-    exec(curlCmd + ' -s -H "User-Agent: OpenCode" "https://api.github.com/search/repositories?q=opencode&sort=stars&order=desc&per_page=100&page=' + pageNum + '"', function(err, stdout) {
+    exec(curlCmd + ' -s -H "User-Agent: intisy-ai-loader" "https://api.github.com/search/repositories?q=' + query + '&sort=stars&order=desc&per_page=100&page=' + pageNum + '"', function(err, stdout) {
       fetchDone();
       if (err || !stdout) return;
       try {
@@ -508,9 +515,9 @@ export function fetchCatalogsAsync() {
     });
   }
 
-  function fetchAwesomeList() {
+  function fetchAwesomeList(url) {
     S.catalogPending++;
-    exec(curlCmd + ' -s "https://raw.githubusercontent.com/awesome-opencode/awesome-opencode/main/README.md"', { maxBuffer: 4 * 1024 * 1024 }, function(err, stdout) {
+    exec(curlCmd + ' -s "' + url + '"', { maxBuffer: 4 * 1024 * 1024 }, function(err, stdout) {
       fetchDone();
       if (!err && stdout) {
         try {
@@ -537,17 +544,21 @@ export function fetchCatalogsAsync() {
         } catch(e) {}
       }
       // the broad starred search supplies star counts for the curated entries,
-      // whose badge images carry no numbers; membership keeps it precise
-      searchPopular(1);
-      searchPopular(2);
+      // whose badge images carry no numbers; membership keeps it precise, and it
+      // only runs at all for an app that declares a search query to broaden with
+      if (discovery.searchQuery) {
+        searchPopular(discovery.searchQuery, 1);
+        searchPopular(discovery.searchQuery, 2);
+      }
     });
   }
 
-  var pluginTopic = APP_NAME === "Claude Code" ? "claude-code-plugin" : "opencode-plugin";
-  searchGH("topic:" + pluginTopic, S.MARKETPLACE_CATALOG, 1);
-  searchGH("topic:" + pluginTopic, S.MARKETPLACE_CATALOG, 2);
-  searchNpm(pluginTopic);
-  if (APP_NAME !== "Claude Code") fetchAwesomeList();
+  if (discovery.topic) {
+    searchGH("topic:" + discovery.topic, S.MARKETPLACE_CATALOG, 1);
+    searchGH("topic:" + discovery.topic, S.MARKETPLACE_CATALOG, 2);
+    searchNpm(discovery.topic);
+  }
+  if (discovery.awesomeList) fetchAwesomeList(discovery.awesomeList);
   searchGH("topic:mcp-server", MCP_CATALOG, 1);
   searchGH("topic:mcp-server", MCP_CATALOG, 2);
   enrichCuratedMcpStars();
