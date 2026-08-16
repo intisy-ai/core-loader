@@ -145,10 +145,9 @@ export function buildCombinedPluginList() {
   var git = buildPluginList();
   var savedPlugins = loadPlugins();
   var cache = readUpdateCache();
-  // Under OpenCode the manager IS an npm plugin (opencode.jsonc); list it as the
-  // active engine. It's transient (opencode fetches it at runtime) so it has no
-  // resolvable version; mark it active rather than "not installed". Under Claude
-  // loadNpmPlugins is empty (no opencode.jsonc), so no npm rows appear at all.
+  // Where the app's own plugin list carries the manager, list it as the active engine.
+  // It's transient (the app fetches it at runtime) so it has no resolvable version;
+  // mark it active rather than "not installed".
   var npm = loadNpmPlugins().map(function(np) {
     var manager = resolvedManager();
     var isEngine = !!manager && (np.name === manager.npmName || np.name === manager.id);
@@ -162,7 +161,7 @@ export function buildCombinedPluginList() {
       // from the resolved updater bundle instead of leaving it blank.
       version: isEngine ? (getUpdaterVersion() || np.version) : np.version,
       raw: np.raw,
-      // npm plugins have no disable state, the app loads whatever opencode.jsonc lists
+      // npm plugins have no disable state, the app loads whatever its own list holds
       enabled: true,
       autoUpdate: false,
       installed: isEngine ? true : !!np.version,
@@ -244,7 +243,7 @@ export function getPluginActions(pitem) {
     return a;
   }
   if (pitem.type === "npm") {
-    // managed via opencode.json, no disable state, only update/uninstall (+ Configure
+    // managed via the app's own plugin list, no disable state, only update/uninstall (+ Configure
     // when its settings declaration has something editable, same gate as git plugins)
     var npmDeclaration = declarationFor(pluginId);
     if (npmDeclaration && npmDeclaration.items.length) {
@@ -252,7 +251,7 @@ export function getPluginActions(pitem) {
     }
     pushDiagnostics(a, pluginId);
     a.push({ cat: "Update", key: "update-npm", label: "Update npm plugin" });
-    a.push({ cat: "Manage", key: "uninstall-npm", label: "Uninstall npm plugin (removes from opencode.json)" });
+    a.push({ cat: "Manage", key: "uninstall-npm", label: "Uninstall npm plugin (removes it from the app's plugin list)" });
     a.push({ key: "cancel", label: "Cancel" });
     return a;
   }

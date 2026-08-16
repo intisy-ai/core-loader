@@ -765,7 +765,7 @@ export function handlePluginKey(key) {
       }
       else if (action === "uninstall-npm") {
         S.confirmAction = { type: "uninstall-npm", target: pitem };
-        S.confirmLabel = "Uninstall npm plugin " + pitem.name + "? It is removed from opencode.json.";
+        S.confirmLabel = "Uninstall npm plugin " + pitem.name + "? It is removed from the app's plugin list.";
         S.confirmCursor = 0;
         S.mode = "confirm";
       }
@@ -1039,7 +1039,7 @@ export function handleConfirmKey(key) {
       S.pluginItems = buildCombinedPluginList();
       if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
       if (!npmErr) reportPluginAction("uninstalled", npmName, { kind: "npm", message: "Uninstalled " + npmName });
-      flash(npmErr ? npmName + ": " + npmErr : npmName + " removed from opencode.json. Restart " + APP_NAME + " to unload.");
+      flash(npmErr ? npmName + ": " + npmErr : npmName + " removed from the app's plugin list. Restart " + APP_NAME + " to unload.");
     } else if (S.confirmAction && S.confirmAction.type === "uninstall-mcp") {
       uninstallMcpServer(S.confirmAction.target);
       S.mcpItems = buildMcpList("All");

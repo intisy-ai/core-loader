@@ -1,10 +1,16 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
 import { basename, join } from "path";
-import { homedir } from "os";
 import { readJson } from "./json.js";
 import { readDeployedManifests } from "./plugin-manifests.js";
+import { appNpmPlugins, expandPath } from "./app-descriptor.js";
 import type { HomePaths } from "./home-paths.js";
 import type { CatalogEntry } from "./capability-catalog.js";
+
+// Where the app itself installs an npm plugin, when it has such a mechanism at all.
+function npmPackageCache(paths: HomePaths): string {
+  const declared = appNpmPlugins();
+  return declared?.packageCache ? expandPath(declared.packageCache, paths.configDir) : "";
+}
 
 /** The capability a plugin declares to be the one that manages plugins. */
 export const PLUGIN_MANAGEMENT_CAPABILITY = "plugin-management";
@@ -218,7 +224,7 @@ export function managerEntries(paths: HomePaths, ref: PluginManagerRef): Manager
     ...(cloneDir ? [cloneDir] : []),
     join(paths.configDir, "node_modules", ref.npmName),
     join(paths.cacheDir, "node_modules", ref.npmName),
-    join(homedir(), ".cache", "opencode", "packages", `${ref.npmName}@latest`, "node_modules", ref.npmName),
+    ...(npmPackageCache(paths) ? [join(npmPackageCache(paths), `${ref.npmName}@latest`, "node_modules", ref.npmName)] : []),
   ];
   for (const dir of packageDirs) {
     const main = (readJson(join(dir, "package.json")) || {}).main;

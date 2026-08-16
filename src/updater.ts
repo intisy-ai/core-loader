@@ -4,10 +4,10 @@
 import { existsSync, readFileSync } from "fs";
 import { readJson } from "./json.js";
 import { join } from "path";
-import { homedir } from "os";
 import { execSync } from "child_process";
 import { pathToFileURL } from "url";
 import { CONFIG_DIR, CACHE_PKG_DIR, REPOS_DIR, APP_ID, tuiLog } from "./env.js";
+import { appNpmPlugins, expandPath } from "./app-descriptor.js";
 import { S } from "./state.js";
 import { spawnEnv } from "./activity-seam.js";
 import { homePaths } from "./home-paths.js";
@@ -143,22 +143,25 @@ export function loadNpmPlugins() {
       return updater.getNpmPlugins(CONFIG_DIR);
     } catch(e) {}
   }
-  var ocPath = existsSync(join(CONFIG_DIR, "opencode.json")) ? join(CONFIG_DIR, "opencode.json") : join(CONFIG_DIR, "opencode.jsonc");
-  if (!existsSync(ocPath)) return [];
+  var declared = appNpmPlugins();
+  if (!declared) return [];
+  var candidates = declared.configFiles.map(function (file) { return expandPath(file, CONFIG_DIR); });
+  var appConfigPath = candidates.find(function (candidate) { return existsSync(candidate); });
+  if (!appConfigPath) return [];
   try {
-    var raw = readFileSync(ocPath, "utf-8");
+    var raw = readFileSync(appConfigPath, "utf-8");
     var stripped = raw.replace(/^\s*\/\/[^\n]*/gm, "");
-    var oc = JSON.parse(stripped);
-    var plugins = oc.plugin || [];
+    var appConfig = JSON.parse(stripped);
+    var plugins = appConfig[declared.pluginsKey] || [];
     return plugins
       .filter(function(p) { return typeof p === "string"; })
       .map(function(p) {
         var name = p.replace(/@[^@\/]+$/, "") || p;
         var version = "";
         try {
-          // opencode installs npm plugins into ~/.cache/opencode/packages/<name>@<spec>/
-          var pkgCache = join(homedir(), ".cache", "opencode", "packages");
-          if (existsSync(pkgCache)) {
+          // the app installs an npm plugin into its declared package cache as <name>@<spec>/
+          var pkgCache = declared.packageCache ? expandPath(declared.packageCache, CONFIG_DIR) : "";
+          if (pkgCache && existsSync(pkgCache)) {
             var cacheEntries = require("fs").readdirSync(pkgCache);
             for (var entry of cacheEntries) {
               if (entry !== name && entry.indexOf(name + "@") !== 0) continue;
