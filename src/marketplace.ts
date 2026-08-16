@@ -558,6 +558,7 @@ export function fetchCatalogsAsync() {
     searchGH("topic:" + discovery.topic, S.MARKETPLACE_CATALOG, 2);
     searchNpm(discovery.topic);
   }
+  // searchQuery only ever fires from inside fetchAwesomeList: without the list's membership filter, a broad search would widen the catalog with lookalike repos
   if (discovery.awesomeList) fetchAwesomeList(discovery.awesomeList);
   searchGH("topic:mcp-server", MCP_CATALOG, 1);
   searchGH("topic:mcp-server", MCP_CATALOG, 2);

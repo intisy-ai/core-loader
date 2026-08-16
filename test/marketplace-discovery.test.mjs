@@ -100,9 +100,10 @@ describe("marketplace discovery: an app's declared traits decide where its catal
     registry({});
     const noTopic = loadMarketplace();
     noTopic.marketplace.fetchCatalogsAsync();
+    const topicSearches = noTopic.execCalls.filter((cmd) => cmd.includes("q=topic:"));
     assert.ok(
-      noTopic.execCalls.every((cmd) => !cmd.includes("q=topic:zeta-plugin")),
-      "an app with no declared topic must issue no search for one",
+      topicSearches.every((cmd) => cmd.includes("mcp-server")),
+      "an app with no declared topic must issue no topic search of its own, only the unconditional mcp-server one",
     );
 
     registry({ topic: "zeta-plugin" });
