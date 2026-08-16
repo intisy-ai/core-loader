@@ -28,7 +28,7 @@ let dir;
 const saved = {};
 const KEYS = ["HUB_APPS_FILE", "HUB_CONFIG_DIR", "HUB_APP_ID"];
 
-// The app id this library has never seen, declaring every trait Tasks 12-18 made pluggable.
+// zeta already names fixtures across this repo's and the sibling libraries' tests; what the exit criterion needs is that no PRODUCTION source file in any of the three libraries branches on it.
 function zeta(overrides = {}) {
   return {
     id: "zeta", label: "Zeta", home: { candidates: [dir] },
