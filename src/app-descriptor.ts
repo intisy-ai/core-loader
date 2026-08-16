@@ -148,7 +148,7 @@ export function detectAppId(): string {
 }
 
 function activeId(): string {
-  return trimmed(process.env.HUB_APP_ID) || detectAppId();
+  return trimmed(process.env.CORE_APP) || trimmed(process.env.HUB_APP_ID) || detectAppId();
 }
 
 // The clone's own cairn.json is the app project's declaration and is therefore fresher than the
