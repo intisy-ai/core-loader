@@ -1,11 +1,13 @@
 // @ts-nocheck
-// Project list: query recent projects (Claude history.jsonl or the opencode
-// DB), build the display list, and the pin/hide/change-path actions.
+// Project list: read the projects the app records (a history file or a
+// session database, whichever it declares), build the display list, and the
+// pin/hide/change-path actions.
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
-import { APP_NAME, CONFIG_DIR, DB_PATH, HOME } from "./env.js";
+import { APP_NAME, CONFIG_DIR, HOME } from "./env.js";
+import { appProjects, expandPath } from "./app-descriptor.js";
 import { S } from "./state.js";
 import { loadConfig, saveConfig } from "./config.js";
 import { cleanup } from "./out.js";
@@ -28,9 +30,18 @@ function openSqlite(path) {
   return null;
 }
 
+// The declared sessionDb candidate to use: the first one that exists, or the first
+// declared one so a fresh install still names a file rather than resolving to nothing.
+function resolveSessionDbPath(candidates) {
+  var expanded = candidates.map(function (candidate) { return expandPath(candidate, CONFIG_DIR); });
+  if (!expanded.length) return "";
+  return expanded.find(function (candidate) { return existsSync(candidate); }) || expanded[0];
+}
+
 export function queryProjects() {
-  if (APP_NAME === "Claude Code") {
-    var historyPath = join(CONFIG_DIR, "history.jsonl");
+  var declared = appProjects();
+  if (declared.historyFile) {
+    var historyPath = expandPath(declared.historyFile, CONFIG_DIR);
     if (!existsSync(historyPath)) return [];
     try {
       var lines = readFileSync(historyPath, "utf8").split("\n").filter(Boolean);
@@ -61,9 +72,10 @@ export function queryProjects() {
     } catch (e) { return []; }
   }
 
-  if (!existsSync(DB_PATH)) return [];
+  var dbPath = resolveSessionDbPath(declared.sessionDb || []);
+  if (!dbPath || !existsSync(dbPath)) return [];
   try {
-    var db = openSqlite(DB_PATH);
+    var db = openSqlite(dbPath);
     if (!db) return [];
     var rows = db.query(
       "SELECT directory, MAX(time_updated) as last_used, COUNT(*) as sessions " +
@@ -217,9 +229,10 @@ export function getProjectId(dir) {
 }
 
 export function changeProjectPath(oldDir, newDir) {
-  if (!existsSync(DB_PATH)) { flash("DB not found"); return; }
+  var dbPath = resolveSessionDbPath(appProjects().sessionDb || []);
+  if (!dbPath || !existsSync(dbPath)) { flash("DB not found"); return; }
   try {
-    var db = new Database(DB_PATH);
+    var db = new Database(dbPath);
     var count = db.query("SELECT COUNT(*) as c FROM session WHERE directory = ?").get(oldDir);
     if (!count || count.c === 0) { db.close(); flash("No sessions at old path"); return; }
 
