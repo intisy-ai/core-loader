@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,11 +61,16 @@ describe("an app that declares one", () => {
     expect(loadNpmPlugins().map((entry) => entry.name)).toEqual(["some-plugin"]);
   });
 
+  // Both candidates exist and carry different lists, so first-declared and last-declared give
+  // different answers: this trait declares its order the opposite way round from the model
+  // catalog's, and a one-file fixture cannot tell the two apart.
   it("prefers the first declared file that exists", async () => {
     registry({ configFiles: ["zeta.jsonc", "zeta.json"], pluginsKey: "plugin" });
+    writeFileSync(join(dir, "zeta.jsonc"), JSON.stringify({ plugin: ["from-jsonc"] }));
     writeFileSync(join(dir, "zeta.json"), JSON.stringify({ plugin: ["from-json"] }));
     const { loadNpmPlugins } = await import("../dist/updater.js");
-    expect(loadNpmPlugins().map((entry) => entry.name)).toEqual(["from-json"]);
+    expect(loadNpmPlugins().map((entry) => entry.name)).toEqual(["from-jsonc"]);
+    expect(JSON.parse(readFileSync(join(dir, "zeta.json"), "utf8"))).toEqual({ plugin: ["from-json"] });
   });
 
   it("finds a plugin's version in the declared package cache", async () => {

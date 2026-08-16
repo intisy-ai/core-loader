@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,24 +81,30 @@ describe("queryProjects reads whatever source the app declares", () => {
   });
 });
 
+// Driven by the registry through appProjects(), the way production reaches the writer, so the
+// declaration itself is what the assertions exercise rather than a name the test hands over.
 describe("writeProjectMarker records the project id under the app's declared name", () => {
-  it("writes the declared marker file with the project id", async () => {
+  it("writes the marker file the registry declares", async () => {
+    pinApp({ markerFile: "zeta-project" });
     const projectDir = join(dir, "project");
     mkdirSync(join(projectDir, ".git"), { recursive: true });
 
+    const { appProjects } = await import("../dist/app-descriptor.js");
     const { writeProjectMarker } = await import("../dist/projects.js");
-    writeProjectMarker(projectDir, "zeta", "project-id-1");
+    writeProjectMarker(projectDir, appProjects().markerFile, "project-id-1");
 
-    expect(readFileSync(join(projectDir, ".git", "zeta"), "utf8")).toBe("project-id-1");
+    expect(readFileSync(join(projectDir, ".git", "zeta-project"), "utf8")).toBe("project-id-1");
   });
 
   it("writes nothing when the app declares no marker file", async () => {
+    pinApp({});
     const projectDir = join(dir, "project");
     mkdirSync(join(projectDir, ".git"), { recursive: true });
 
+    const { appProjects } = await import("../dist/app-descriptor.js");
     const { writeProjectMarker } = await import("../dist/projects.js");
-    writeProjectMarker(projectDir, undefined, "project-id-1");
+    writeProjectMarker(projectDir, appProjects().markerFile, "project-id-1");
 
-    expect(existsSync(join(projectDir, ".git", "zeta"))).toBe(false);
+    expect(readdirSync(join(projectDir, ".git"))).toEqual([]);
   });
 });
