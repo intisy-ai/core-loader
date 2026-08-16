@@ -1,7 +1,7 @@
 // Generic loader-proxy daemon runner, shared by every app-proxy-bearing loader
 // (claude-code-loader today; opencode-loader's opt-in path later). Lifts the
-// config-dir resolution, logging, start-marker and listen scaffolding that used
-// to be duplicated per app inside each loader's own src/proxy.ts. The caller
+// config-dir resolution, logging, start-marker and listen scaffolding common to
+// every loader's own src/proxy.ts entry point. The caller
 // injects its OWN createProxyServer/makeDynamicResolver (from its app-proxy,
 // e.g. claude-code-proxy or opencode-proxy) and RoutingProfile -- core-loader
 // must never import an app-proxy or core-proxy directly (core-libs-stay-generic

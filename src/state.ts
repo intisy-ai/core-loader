@@ -44,10 +44,11 @@ export const S = {
   page: "projects",
   inputBuf: "",
   chpathDir: "",
-  // Session picker sub-mode (apps that declare a projects sessionDb, see
-  // app-descriptor.ts's ProjectsTrait): the chosen project's sessions, the cursor
-  // within them, the dir being opened, and whether it was reached via "Open here"
-  // (so a new session preserves the exit-42 arg-forwarding path).
+  // Session picker sub-mode (present only when the loader's injected
+  // S.capabilities.listSessions answers, see enterSessions in input.ts): the
+  // chosen project's sessions, the cursor within them, the dir being opened, and
+  // whether it was reached via "Open here" (so a new session preserves the
+  // exit-42 arg-forwarding path).
   sessionItems: [],
   scursor: 0,
   sessionDir: "",
