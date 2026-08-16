@@ -30,7 +30,7 @@ export function loaderConfigName() {
 export function loadLoaderConfig() {
   if (LOADER_CONFIG !== null) return LOADER_CONFIG;
   var name = loaderConfigName();
-  if (!name) return (LOADER_CONFIG = {});
+  if (!name || !CONFIG_DIR) return (LOADER_CONFIG = {});
   var preferred = join(CONFIG_FOLDER, name + ".json");
   var fallback = join(CONFIG_DIR, name + ".json");
   var p = existsSync(preferred) ? preferred : existsSync(fallback) ? fallback : null;
@@ -63,6 +63,7 @@ export function defaultTab() {
 }
 
 export function loadConfig() {
+  if (!CONFIG_DIR) return { pinned: [], hidden: [] };
   var current = readJson(CONFIG_PATH);
   if (current) return current;
   var legacy = readJson(join(CONFIG_DIR, "oc-config.json"));
@@ -71,6 +72,7 @@ export function loadConfig() {
 }
 
 export function saveConfig(cfg) {
+  if (!CONFIG_DIR) return;
   try {
     if (!existsSync(CONFIG_FOLDER)) mkdirSync(CONFIG_FOLDER, { recursive: true });
     writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
@@ -83,7 +85,7 @@ export function saveConfig(cfg) {
 // editor can manage global settings with no plugin bundle / no agent. These defaults are
 // the FALLBACK: the host loader injects core's own declaration (see buildGlobalSection),
 // which is authoritative and carries field types.
-var GLOBAL_SETTINGS_FILE = join(CONFIG_FOLDER, "settings.json");
+var GLOBAL_SETTINGS_FILE = CONFIG_FOLDER ? join(CONFIG_FOLDER, "settings.json") : "";
 export var GLOBAL_SETTINGS_DEFAULTS = { logConsole: false, logColor: true };
 
 // Cached parsed settings so a navigation render (buildSettings reads these every
@@ -108,6 +110,7 @@ function coerceGlobal(v) {
 }
 
 export function setGlobalSetting(key, valueStr) {
+  if (!GLOBAL_SETTINGS_FILE) return "no app home";
   try {
     var cur = loadGlobalSettings();
     cur[key] = coerceGlobal(valueStr);
@@ -119,6 +122,7 @@ export function setGlobalSetting(key, valueStr) {
 }
 
 export function migrateConfigs() {
+  if (!CONFIG_DIR) return;
   if (!existsSync(CONFIG_FOLDER)) try { mkdirSync(CONFIG_FOLDER, { recursive: true }); } catch {}
   var legacyConfig = join(CONFIG_DIR, "oc-config.json");
   if (existsSync(legacyConfig) && !existsSync(CONFIG_PATH)) {
@@ -140,6 +144,7 @@ export function loadPlugins() {
   // This does NOT hide a missing plugin manager: detecting one is a separate concern handled by
   // buildPlugins, which gates the whole tab on getUpdater() and shows the re-check gate when none
   // is loadable. So this only ever populates the list once a manager is already detected.
+  if (!CONFIG_DIR) return [];
   try {
     var fs = require("fs");
     var candidates = [PLUGINS_JSON, join(CONFIG_DIR, "plugins.json")];
@@ -162,6 +167,7 @@ export function loadPlugins() {
 }
 
 export function savePlugins(plugins) {
+  if (!CONFIG_DIR) return;
   if (!existsSync(CONFIG_FOLDER)) try { mkdirSync(CONFIG_FOLDER, { recursive: true }); } catch {}
   // config/ is always preferred; the top-level file only when config/ cannot exist
   var target = existsSync(CONFIG_FOLDER) ? PLUGINS_JSON : join(CONFIG_DIR, "plugins.json");
@@ -176,6 +182,7 @@ export function savePlugins(plugins) {
  * writing that filtered list back would delete an entry the user never touched.
  */
 export function registerPlugin(name, url) {
+  if (!CONFIG_DIR) return false;
   var file = existsSync(PLUGINS_JSON) ? PLUGINS_JSON : join(CONFIG_DIR, "plugins.json");
   var listed = readJson(file, []);
   if (!Array.isArray(listed)) listed = [];
@@ -197,6 +204,7 @@ export function loadMcpConfig() {
 }
 
 export function saveMcpConfig(config) {
+  if (!MCP_CONFIG_PATH) return;
   try {
     if (!existsSync(dirname(MCP_CONFIG_PATH))) mkdirSync(dirname(MCP_CONFIG_PATH), { recursive: true });
     writeFileSync(MCP_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");

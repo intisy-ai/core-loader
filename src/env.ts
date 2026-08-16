@@ -31,18 +31,24 @@ export const PLUGIN_SUBDIR = subdirName("HUB_PLUGIN_SUBDIR", "plugin");
 export const CACHE_SUBDIR = subdirName("HUB_CACHE_SUBDIR", "cache");
 export const CONFIG_SUBDIR = subdirName("HUB_CONFIG_SUBDIR", "config");
 
-export const CACHE_PKG_DIR = join(CONFIG_DIR, CACHE_SUBDIR, "node_modules");
+// Every home-relative path goes through here: `join("", "config")` yields the RELATIVE "config",
+// so an unknown app would read and write into whatever directory the process was launched from.
+function underHome(...segments) {
+  return CONFIG_DIR ? join(CONFIG_DIR, ...segments) : "";
+}
 
-export const CONFIG_FOLDER = join(CONFIG_DIR, CONFIG_SUBDIR);
-export const CACHE_DIR = join(CONFIG_DIR, CACHE_SUBDIR);
-export const CONFIG_PATH = join(CONFIG_FOLDER, "oc-config.json");
-export const UPDATE_CHECK_PATH = join(CACHE_DIR, "oc-last-update-check");
-export const PLUGINS_JSON = join(CONFIG_FOLDER, "plugins.json");
-export const REPOS_DIR = join(CONFIG_DIR, REPOS_SUBDIR);
-export const PLUGINS_DIR = join(CONFIG_DIR, PLUGIN_SUBDIR);
-export const MCP_CONFIG_PATH = join(CONFIG_DIR, ".mcp.json");
-export const CATALOG_CACHE_PATH = join(CACHE_DIR, "marketplace-catalog.json");
-export const SEED_CACHE_PATH = join(CACHE_DIR, "seed-marketplaces.json");
+export const CACHE_PKG_DIR = underHome(CACHE_SUBDIR, "node_modules");
+
+export const CONFIG_FOLDER = underHome(CONFIG_SUBDIR);
+export const CACHE_DIR = underHome(CACHE_SUBDIR);
+export const CONFIG_PATH = underHome(CONFIG_SUBDIR, "oc-config.json");
+export const UPDATE_CHECK_PATH = underHome(CACHE_SUBDIR, "oc-last-update-check");
+export const PLUGINS_JSON = underHome(CONFIG_SUBDIR, "plugins.json");
+export const REPOS_DIR = underHome(REPOS_SUBDIR);
+export const PLUGINS_DIR = underHome(PLUGIN_SUBDIR);
+export const MCP_CONFIG_PATH = underHome(".mcp.json");
+export const CATALOG_CACHE_PATH = underHome(CACHE_SUBDIR, "marketplace-catalog.json");
+export const SEED_CACHE_PATH = underHome(CACHE_SUBDIR, "seed-marketplaces.json");
 
 // anything printed to the terminal corrupts the TUI, diagnostics go to a file
 export const TUI_START_TIME = new Date().toISOString().replace(/:/g, "-").split(".")[0];
