@@ -28,13 +28,16 @@
   },
   "scripts": {
     "build": "npm run build:deps && npx tsc",
-    "build:deps": "npm --prefix api install && npm --prefix api run build && npm --prefix plugin-host install && npm --prefix plugin-host run build",
+    "build:deps": "npm --prefix api install && npm --prefix api run build && npm --prefix plugin-host run build",
     "test": "npm run build && vitest run",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@intisy-ai/api": "file:api",
     "@intisy-ai/plugin-host": "file:plugin-host"
+  },
+  "overrides": {
+    "@intisy-ai/api": "file:api"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",
