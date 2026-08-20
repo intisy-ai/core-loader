@@ -2,8 +2,8 @@ import { setDiagnosticSink } from "@intisy-ai/api";
 import type { ActionResult, CapabilitySchema, ScreenNode, ScreenSpec, ScreensCapability, SectionSpec, SettingsCapability } from "@intisy-ai/api";
 import { APP_ID, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
-import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, startPlugins } from "./plugin-host.js";
-import type { LoadedHost, LoaderHostOptions, PluginLedgerRow } from "./plugin-host.js";
+import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, startPlugins } from "@intisy-ai/plugin-host";
+import type { LoadedHost, PluginHostOptions, PluginLedgerRow } from "@intisy-ai/plugin-host";
 
 let HOST: LoadedHost | null = null;
 
@@ -41,7 +41,7 @@ export async function startPluginHost(): Promise<void> {
       app: APP_ID,
       pluginDir: PLUGINS_DIR,
       surfaces: ["tui"],
-      runtimeFor: runtimeFor as LoaderHostOptions["runtimeFor"],
+      runtimeFor: runtimeFor as PluginHostOptions["runtimeFor"],
     });
     for (const error of HOST.quarantined) {
       tuiLog("plugin " + error.pluginId + " quarantined: " + error.detail + " (fix: " + error.fix + ")", true);

@@ -63,7 +63,7 @@ afterEach(() => {
 // it is released. Driven through the real key handler against a real host, because the release is
 // split across two modules and only the whole path shows whether it happens.
 describe("a contributed screen's action", () => {
-  const { startPlugins } = require("../dist/plugin-host.js");
+  const { startPlugins } = require("@intisy-ai/plugin-host");
   const { resetPluginHostForTests } = require("../dist/plugin-surface.js");
   const { handleSettingsKey } = require("../dist/input.js");
 

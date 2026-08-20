@@ -1,4 +1,4 @@
-import type { PluginLedgerRow } from "./plugin-host.js";
+import type { PluginLedgerRow } from "@intisy-ai/plugin-host";
 
 function listed(label: string, values: string[]): string[] {
   return values.length ? [label + ": " + values.join(", ")] : [];

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { diagnosticLines } from "./plugin-diagnostics.js";
 import { DIM, RED, WHITE } from "./format.js";
-import { startPlugins } from "./plugin-host.js";
+import { startPlugins } from "@intisy-ai/plugin-host";
 import { resetPluginHostForTests } from "./plugin-surface.js";
 import { S } from "./state.js";
 import { buildPlugins } from "./views/plugins.js";

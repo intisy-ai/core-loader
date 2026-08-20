@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startPlugins } from "./plugin-host.js";
+import { startPlugins } from "@intisy-ai/plugin-host";
 import { resetPluginHostForTests } from "./plugin-surface.js";
 import { splitBySections } from "./settings-model.js";
 import {

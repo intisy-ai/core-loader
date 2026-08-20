@@ -21,7 +21,7 @@ const TEMP_HOME_SETTINGS = { logConsole: true, probeMarker: "temp-home-only" };
 
 let home: string;
 let configFolder: string;
-let host: typeof import("../plugin-host.js");
+let host: typeof import("@intisy-ai/plugin-host");
 let surface: typeof import("../plugin-surface.js");
 let plugins: typeof import("../plugins.js");
 let state: typeof import("../state.js");
@@ -46,7 +46,7 @@ beforeAll(async () => {
   mkdirSync(env.PLUGINS_DIR, { recursive: true });
   writeFileSync(join(configFolder, "settings.json"), JSON.stringify(TEMP_HOME_SETTINGS));
 
-  host = await import("../plugin-host.js");
+  host = await import("@intisy-ai/plugin-host");
   surface = await import("../plugin-surface.js");
   plugins = await import("../plugins.js");
   state = await import("../state.js");

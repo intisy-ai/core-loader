@@ -1,3 +1,7 @@
 [submodule "api"]
 	path = api
 	url = https://github.com/intisy-ai/api.git
+[submodule "plugin-host"]
+	path = plugin-host
+	url = https://github.com/intisy-ai/plugin-host.git
+	branch = experimental
