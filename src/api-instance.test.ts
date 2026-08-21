@@ -1,16 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { setDiagnosticSink } from "@intisy-ai/api/engine";
 import { SETTINGS } from "@intisy-ai/core-contracts";
-import type { PluginContext, PluginManifest, PluginRuntime } from "@intisy-ai/api";
+import type { ContextSurface, PluginRuntimeShape } from "@intisy-ai/api/engine";
+import type { PluginManifest } from "@intisy-ai/api";
 import { startPlugins } from "@intisy-ai/plugin-host";
 
-function runtime(): PluginRuntime {
+function runtime(): PluginRuntimeShape {
   return {
     config: { all: () => ({}), get: () => undefined, set: async () => {} },
     log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
     paths: { home: "/home", repos: "/home/repos", plugin: "/home/plugin", cache: "/home/cache", config: "/home/config" },
     events: { publish: () => {}, subscribe: () => () => {} },
-  } as PluginRuntime;
+  } as PluginRuntimeShape;
 }
 
 const manifest: PluginManifest = { id: "diagnostic", api: 1, entry: "dist/index.js", capabilities: ["not-a-capability"] };
@@ -29,7 +30,7 @@ describe("the api the plugin host reports through", () => {
         scan: { loaded: [{ manifest, manifestPath: "/home/plugin/diagnostic.json", entryPath: "/home/plugin/diagnostic.js" }], failed: [] },
         importEntry: async () => ({
           default: {
-            activate: (ctx: PluginContext) => { ctx.provide("not-a-capability" as never, {}); },
+            activate: (ctx: ContextSurface) => { ctx.provide("not-a-capability", {}); },
             deactivate: () => {},
           },
         }),
