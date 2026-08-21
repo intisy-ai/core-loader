@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { API_VERSION, CAPABILITY_IDS, WELL_KNOWN_SERVICES } from "@intisy-ai/api";
+import { API_VERSION } from "@intisy-ai/api";
+import { ACTIVITY, PLUGIN_MANAGEMENT } from "@intisy-ai/core-contracts";
 
 describe("core-loader depends on the api package", () => {
   // Asserts resolution, not the number. Pinning the value here coupled a resolution check to a
@@ -10,11 +11,11 @@ describe("core-loader depends on the api package", () => {
     expect(API_VERSION).toBeGreaterThanOrEqual(1);
   });
 
-  it("sees the capability vocabulary api owns", () => {
-    expect([...CAPABILITY_IDS]).toContain("plugin-management");
+  it("takes the capability vocabulary from the library that mints it", () => {
+    expect(PLUGIN_MANAGEMENT.id).toBe("plugin-management");
   });
 
-  it("sees the activity service this ecosystem added", () => {
-    expect([...WELL_KNOWN_SERVICES]).toContain("activity");
+  it("takes the service contracts from the library that mints them", () => {
+    expect(ACTIVITY.id).toBe("activity");
   });
 });

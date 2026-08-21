@@ -1,4 +1,5 @@
-import { setDiagnosticSink } from "@intisy-ai/api";
+import { setDiagnosticSink } from "@intisy-ai/api/engine";
+import { ACCOUNTS, ACTIVITY, CUSTOM_ENDPOINTS, PLUGIN_MANAGEMENT, ROUTING, SCREENS, SETTINGS } from "@intisy-ai/core-contracts";
 import type { ActionResult, CapabilitySchema, ScreenNode, ScreenSpec, ScreensCapability, SectionSpec, SettingsCapability } from "@intisy-ai/core-contracts";
 import { APP_ID, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
@@ -24,9 +25,12 @@ export interface Provider {
  * nothing injected there is no host, and every surface below answers empty rather than failing,
  * which is the same degradation rule the rest of the plugin system follows.
  *
- * The diagnostic sink is installed first: api reports an ignored unknown id through
- * `reportDiagnostic`, whose fallback writes to the console, and anything written to the terminal
- * corrupts this TUI.
+ * The diagnostic sink is installed first: the engine's fallback for an ignored unknown id writes to
+ * the console, and anything written to the terminal corrupts this TUI.
+ *
+ * The vocabulary is the four capability categories this library's own surfaces read, so an
+ * unrecognised id is reported against what this host actually renders rather than against a list of
+ * every id the ecosystem mints.
  */
 export async function startPluginHost(): Promise<void> {
   if (HOST) return;
@@ -41,6 +45,8 @@ export async function startPluginHost(): Promise<void> {
       app: APP_ID,
       pluginDir: PLUGINS_DIR,
       surfaces: ["tui"],
+      vocabulary: [SCREENS, SETTINGS, CUSTOM_ENDPOINTS, PLUGIN_MANAGEMENT],
+      wellKnownServices: [ACCOUNTS, ROUTING, ACTIVITY],
       runtimeFor: runtimeFor as PluginHostOptions["runtimeFor"],
     });
     for (const error of HOST.quarantined) {
