@@ -1,5 +1,5 @@
 import { setDiagnosticSink } from "@intisy-ai/api";
-import type { ActionResult, CapabilitySchema, ScreenNode, ScreenSpec, ScreensCapability, SectionSpec, SettingsCapability } from "@intisy-ai/api";
+import type { ActionResult, CapabilitySchema, ScreenNode, ScreenSpec, ScreensCapability, SectionSpec, SettingsCapability } from "@intisy-ai/core-contracts";
 import { APP_ID, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, startPlugins } from "@intisy-ai/plugin-host";

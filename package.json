@@ -28,13 +28,14 @@
   },
   "scripts": {
     "build": "npm run build:deps && npx tsc",
-    "build:deps": "npm --prefix api install && npm --prefix api run build && npm --prefix plugin-host run build",
+    "build:deps": "npm --prefix api install && npm --prefix api run build && npm --prefix core-contracts install && npm --prefix core-contracts run build && npm --prefix plugin-host run build",
     "test": "npm run build && vitest run",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@intisy-ai/api": "file:api",
-    "@intisy-ai/plugin-host": "file:plugin-host"
+    "@intisy-ai/plugin-host": "file:plugin-host",
+    "@intisy-ai/core-contracts": "file:core-contracts"
   },
   "overrides": {
     "@intisy-ai/api": "file:api"
