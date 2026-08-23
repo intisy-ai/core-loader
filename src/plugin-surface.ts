@@ -1,10 +1,10 @@
 import { setDiagnosticSink } from "@intisy-ai/api/engine";
-import { ACCOUNTS, ACTIVITY, CUSTOM_ENDPOINTS, PLUGIN_MANAGEMENT, ROUTING, SCREENS, SETTINGS } from "@intisy-ai/core-contracts";
-import type { ActionResult, CapabilitySchema, ScreenNode, ScreenSpec, ScreensCapability, SectionSpec, SettingsCapability } from "@intisy-ai/core-contracts";
+import type { ActionResult, CapabilitySchema, ScreensCapability, SectionSpec, SettingsCapability } from "./capability-shapes.js";
+import type { ScreenNode, ScreenSpec } from "./screens.js";
 import { APP_ID, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, startPlugins } from "@intisy-ai/plugin-host";
-import type { LoadedHost, PluginHostOptions, PluginLedgerRow } from "@intisy-ai/plugin-host";
+import type { LoadedHost, PluginHostOptions, PluginLedgerRow, VocabularyEntry } from "@intisy-ai/plugin-host";
 
 let HOST: LoadedHost | null = null;
 
@@ -14,6 +14,30 @@ export interface Provider {
   pluginId: string;
   /** The implementation itself. */
   implementation: unknown;
+}
+
+function entries(value: unknown): ReadonlyArray<VocabularyEntry> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const kept = value.filter((entry) => entry && typeof (entry as VocabularyEntry).id === "string");
+  return kept.length ? (kept as VocabularyEntry[]) : undefined;
+}
+
+/**
+ * The capability and service ids the loader registered, as the host verifies plugin declarations
+ * against.
+ *
+ * @remarks
+ * Injected rather than imported, for the same reason `runtimeFor` is: this library carries no core
+ * submodule, so the loader that does passes the ids core mints. An absent list leaves the host
+ * unable to tell an unrecognised id from an unverifiable one, which is a diagnostic worth naming
+ * rather than a failure.
+ */
+export function hostVocabulary(capabilities: unknown): {
+  vocabulary?: ReadonlyArray<VocabularyEntry>;
+  wellKnownServices?: ReadonlyArray<VocabularyEntry>;
+} {
+  const bag = capabilities as Record<string, unknown> | undefined;
+  return { vocabulary: entries(bag?.vocabulary), wellKnownServices: entries(bag?.wellKnownServices) };
 }
 
 /**
@@ -27,10 +51,6 @@ export interface Provider {
  *
  * The diagnostic sink is installed first: the engine's fallback for an ignored unknown id writes to
  * the console, and anything written to the terminal corrupts this TUI.
- *
- * The vocabulary is the four capability categories this library's own surfaces read, so an
- * unrecognised id is reported against what this host actually renders rather than against a list of
- * every id the ecosystem mints.
  */
 export async function startPluginHost(): Promise<void> {
   if (HOST) return;
@@ -40,13 +60,15 @@ export async function startPluginHost(): Promise<void> {
     tuiLog("no plugin runtime registered; plugin screens and settings stay empty");
     return;
   }
+  const declared = hostVocabulary(S.capabilities);
+  if (!declared.vocabulary) tuiLog("no capability vocabulary registered; a plugin's declarations cannot be verified");
   try {
     HOST = await startPlugins({
       app: APP_ID,
       pluginDir: PLUGINS_DIR,
       surfaces: ["tui"],
-      vocabulary: [SCREENS, SETTINGS, CUSTOM_ENDPOINTS, PLUGIN_MANAGEMENT],
-      wellKnownServices: [ACCOUNTS, ROUTING, ACTIVITY],
+      vocabulary: declared.vocabulary,
+      wellKnownServices: declared.wellKnownServices,
       runtimeFor: runtimeFor as PluginHostOptions["runtimeFor"],
     });
     for (const error of HOST.quarantined) {

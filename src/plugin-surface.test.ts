@@ -8,6 +8,7 @@ import {
   bundleFor,
   capabilityOf,
   capabilityProviders,
+  hostVocabulary,
   invokeScreenAction,
   ledgerRowFor,
   pluginHost,
@@ -321,5 +322,27 @@ describe("the surface's view of a running host", () => {
     } finally {
       S.capabilities = previousCapabilities;
     }
+  });
+});
+
+describe("hostVocabulary", () => {
+  it("takes the ids the loader registered", () => {
+    expect(hostVocabulary({ vocabulary: [{ id: "screens" }], wellKnownServices: [{ id: "accounts" }] })).toEqual({
+      vocabulary: [{ id: "screens" }],
+      wellKnownServices: [{ id: "accounts" }],
+    });
+  });
+
+  it("reports nothing registered as absent rather than empty", () => {
+    expect(hostVocabulary({})).toEqual({ vocabulary: undefined, wellKnownServices: undefined });
+    expect(hostVocabulary(undefined)).toEqual({ vocabulary: undefined, wellKnownServices: undefined });
+  });
+
+  // An absent list and an all-malformed one mean the same thing to the host: it cannot verify a
+  // declaration. Keeping the malformed entries would have it reject ids on a list nobody meant.
+  it("drops an entry carrying no id, and a list left with none", () => {
+    expect(hostVocabulary({ vocabulary: [{ id: "screens" }, {}, "settings"] }).vocabulary).toEqual([{ id: "screens" }]);
+    expect(hostVocabulary({ vocabulary: ["screens"] }).vocabulary).toBeUndefined();
+    expect(hostVocabulary({ vocabulary: "screens" }).vocabulary).toBeUndefined();
   });
 });

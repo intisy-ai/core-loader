@@ -5,6 +5,3 @@
 	path = plugin-host
 	url = https://github.com/intisy-ai/plugin-host.git
 	branch = experimental
-[submodule "core-contracts"]
-	path = core-contracts
-	url = https://github.com/intisy-ai/core-contracts.git

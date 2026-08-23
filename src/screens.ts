@@ -15,6 +15,8 @@ export interface ScreenSpec {
   label: string;
   layout: ScreenNode;
   surfaces?: Record<string, ScreenNode>;
+  /** Sort order among screens. Lower sorts first. */
+  order?: number;
 }
 
 export interface FlatRow {

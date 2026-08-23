@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { setDiagnosticSink } from "@intisy-ai/api/engine";
-import { SETTINGS } from "@intisy-ai/core-contracts";
 import type { ContextSurface, PluginRuntimeShape } from "@intisy-ai/api/engine";
 import type { PluginManifest } from "@intisy-ai/api";
 import { startPlugins } from "@intisy-ai/plugin-host";
@@ -25,7 +24,7 @@ describe("the api the plugin host reports through", () => {
         app: "test",
         pluginDir: "/home/plugin",
         surfaces: ["tui"],
-        vocabulary: [SETTINGS],
+        vocabulary: [{ id: "settings" }],
         runtimeFor: () => runtime(),
         scan: { loaded: [{ manifest, manifestPath: "/home/plugin/diagnostic.json", entryPath: "/home/plugin/diagnostic.js" }], failed: [] },
         importEntry: async () => ({
