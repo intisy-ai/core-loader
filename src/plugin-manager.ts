@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
 import { basename, join } from "path";
 import { readJson } from "./json.js";
-import { readDeployedManifests } from "@intisy-ai/plugin-host";
+import { readDeployedManifests } from "@intisy-ai/api/host";
 import { appNpmPlugins, expandPath } from "./app-descriptor.js";
 import type { HomePaths } from "./home-paths.js";
 import type { CatalogEntry } from "./capability-catalog.js";

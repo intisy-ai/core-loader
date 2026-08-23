@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { tmpdir } from "node:os";
 import type { PluginManifest } from "@intisy-ai/api";
 import { CONFIG_DIR } from "./env.js";
-import { startPlugins } from "@intisy-ai/plugin-host";
+import { startPlugins } from "@intisy-ai/api/host";
 import { S } from "./state.js";
 import {
   bundleFor,

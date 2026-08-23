@@ -3,8 +3,8 @@ import type { ActionResult, CapabilitySchema, ScreensCapability, SectionSpec, Se
 import type { ScreenNode, ScreenSpec } from "./screens.js";
 import { APP_ID, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
-import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, readDeployedManifests, startPlugins } from "@intisy-ai/plugin-host";
-import type { LoadedHost, PluginHostOptions, PluginLedgerRow, VocabularyEntry } from "@intisy-ai/plugin-host";
+import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, readDeployedManifests, startPlugins } from "@intisy-ai/api/host";
+import type { LoadedHost, PluginHostOptions, PluginLedgerRow, VocabularyEntry } from "@intisy-ai/api/host";
 
 let HOST: LoadedHost | null = null;
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect } from "vitest";
-import { startPlugins } from "@intisy-ai/plugin-host";
+import { startPlugins } from "@intisy-ai/api/host";
 import { resetPluginHostForTests } from "../plugin-surface.js";
 import { S } from "../state.js";
 import { buildContributedScreen, collectScreens, refreshScreenSpecs, refreshScreen, runScreenAction, subPages, entryId, resolveScreenAction } from "./screens.js";
