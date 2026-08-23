@@ -41,6 +41,24 @@ export function hostVocabulary(capabilities: unknown): {
 }
 
 /**
+ * The services the loader implements on every plugin's behalf.
+ *
+ * @remarks
+ * Injected for the third time and the same reason: a plugin reaching behaviour from a library it may
+ * not link gets it from the host, and this library may not link that library either. An entry
+ * missing an id or an implementation is dropped rather than passed on, since the host would
+ * register a service nothing can call.
+ */
+export function hostServices(capabilities: unknown): ReadonlyArray<{ id: string; implementation: unknown }> {
+  const value = (capabilities as Record<string, unknown> | undefined)?.services;
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry) => {
+    const service = entry as { id?: unknown; implementation?: unknown } | null;
+    return !!service && typeof service.id === "string" && service.implementation !== undefined;
+  }) as ReadonlyArray<{ id: string; implementation: unknown }>;
+}
+
+/**
  * Starts the in-process plugin host for this home.
  *
  * @remarks
@@ -72,6 +90,7 @@ export async function startPluginHost(): Promise<void> {
       surfaces: ["tui"],
       vocabulary: declared.vocabulary,
       wellKnownServices: declared.wellKnownServices,
+      services: hostServices(S.capabilities),
       runtimeFor: runtimeFor as PluginHostOptions["runtimeFor"],
     });
     for (const error of HOST.quarantined) {

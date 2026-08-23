@@ -8,6 +8,7 @@ import {
   bundleFor,
   capabilityOf,
   capabilityProviders,
+  hostServices,
   hostVocabulary,
   invokeScreenAction,
   ledgerRowFor,
@@ -369,5 +370,26 @@ describe("hostVocabulary", () => {
     expect(hostVocabulary({ vocabulary: [{ id: "screens" }, {}, "settings"] }).vocabulary).toEqual([{ id: "screens" }]);
     expect(hostVocabulary({ vocabulary: ["screens"] }).vocabulary).toBeUndefined();
     expect(hostVocabulary({ vocabulary: "screens" }).vocabulary).toBeUndefined();
+  });
+});
+
+describe("hostServices", () => {
+  it("takes the services the loader implements on a plugin's behalf", () => {
+    const support = { capability: () => ({}) };
+    expect(hostServices({ services: [{ id: "provider-support", implementation: support }] }))
+      .toEqual([{ id: "provider-support", implementation: support }]);
+  });
+
+  it("reports nothing registered as none", () => {
+    expect(hostServices({})).toEqual([]);
+    expect(hostServices(undefined)).toEqual([]);
+    expect(hostServices({ services: "provider-support" })).toEqual([]);
+  });
+
+  // Registering an id with nothing behind it would have a plugin find a service and call undefined,
+  // which is worse than finding none: the plugin's own absence handling never runs.
+  it("drops an entry carrying no id or no implementation", () => {
+    expect(hostServices({ services: [{ id: "kept", implementation: 1 }, { id: "gone" }, { implementation: 2 }] }))
+      .toEqual([{ id: "kept", implementation: 1 }]);
   });
 });
