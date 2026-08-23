@@ -21,7 +21,7 @@ import { readJson } from "./json.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 
 export function makeLoaderCommands(opts) {
-  const { plugin, commandDir, loaderEntry, runConfigCli, authHint, busDrain } = opts;
+  const { plugin, commandDir, loaderEntry, runConfigCli, runAllConfigCli, configTargets, authHint, busDrain } = opts;
 
   function commandDefs(entry) {
     const node = `node "${entry}"`;
@@ -32,6 +32,13 @@ export function makeLoaderCommands(opts) {
         argumentHint: "list | get <key> | set <key> <value>",
         shell: `${node} config $ARGUMENTS`,
         body: `Above is the ${plugin} config result. Report it; if the user changed a setting, confirm the new value.`,
+      },
+      {
+        name: "config",
+        description: "View/change any plugin's settings and the global settings",
+        argumentHint: "[global | <plugin>] [list | get <key> | set <key> <value>]",
+        shell: `${node} config-all $ARGUMENTS`,
+        body: "Above is the global settings block plus one block per installed plugin. Present it clearly. To change one, run `/config <target> set <key> <value>`, where the target is `global` or a plugin name, then confirm the new value.",
       },
       {
         name: "plugins",
@@ -99,6 +106,17 @@ export function makeLoaderCommands(opts) {
     const argv = process.argv.slice(2);
     if (argv[0] === "config") {
       runConfigCli(plugin, argv.slice(1));
+      return true;
+    }
+    // The app's settings command, which the LOADER owns: a plugin declares what its settings ARE
+    // and knows nothing about how they are edited, so one command serves every plugin here rather
+    // than each plugin shipping its own.
+    if (argv[0] === "config-all") {
+      if (typeof runAllConfigCli !== "function" || typeof configTargets !== "function") return true;
+      // Registering the installed plugins' declarations is what makes them answerable HERE: this is
+      // a fresh process, so nothing has read a manifest yet.
+      const declared = configTargets(configDir);
+      runAllConfigCli(argv.slice(1), { plugins: declared, declared });
       return true;
     }
     if (argv[0] === "plugins") {
