@@ -43,15 +43,15 @@ describe("the settings command the loader owns", () => {
   // The point of the loader owning it: a plugin declares what its settings ARE and knows nothing
   // about how they are edited, so one command reaches every plugin.
   it("serves every plugin whose declarations the host registered", async () => {
-    const dispatched: Array<{ argv: string[]; declared: string[] }> = [];
+    const dispatched: Array<{ argv: string[]; plugins: string[] }> = [];
     const engine = commandsWith({
       configTargets: () => ["alpha", "beta"],
-      runAllConfigCli: (argv: string[], opts: { declared: string[] }) => dispatched.push({ argv, declared: opts.declared }),
+      runAllConfigCli: (argv: string[], opts: { plugins: string[] }) => dispatched.push({ argv, plugins: opts.plugins }),
     });
 
     process.argv = ["node", "plugin.js", "config-all", "alpha", "set", "logging", "false"];
     expect(await engine.maybeRunCli(home)).toBe(true);
-    expect(dispatched).toEqual([{ argv: ["alpha", "set", "logging", "false"], declared: ["alpha", "beta"] }]);
+    expect(dispatched).toEqual([{ argv: ["alpha", "set", "logging", "false"], plugins: ["alpha", "beta"] }]);
   });
 
   it("still edits the loader's own settings through its own command", async () => {

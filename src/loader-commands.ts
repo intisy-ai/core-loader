@@ -113,10 +113,10 @@ export function makeLoaderCommands(opts) {
     // than each plugin shipping its own.
     if (argv[0] === "config-all") {
       if (typeof runAllConfigCli !== "function" || typeof configTargets !== "function") return true;
-      // Registering the installed plugins' declarations is what makes them answerable HERE: this is
+      // Registering the installed plugins declarations is what makes them answerable HERE: this is
       // a fresh process, so nothing has read a manifest yet.
       const declared = configTargets(configDir);
-      runAllConfigCli(argv.slice(1), { plugins: declared, declared });
+      runAllConfigCli(argv.slice(1), { plugins: declared });
       return true;
     }
     if (argv[0] === "plugins") {
