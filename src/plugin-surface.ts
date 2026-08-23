@@ -3,7 +3,7 @@ import type { ActionResult, CapabilitySchema, ScreensCapability, SectionSpec, Se
 import type { ScreenNode, ScreenSpec } from "./screens.js";
 import { APP_ID, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
-import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, startPlugins } from "@intisy-ai/plugin-host";
+import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, readDeployedManifests, startPlugins } from "@intisy-ai/plugin-host";
 import type { LoadedHost, PluginHostOptions, PluginLedgerRow, VocabularyEntry } from "@intisy-ai/plugin-host";
 
 let HOST: LoadedHost | null = null;
@@ -55,6 +55,9 @@ export function hostVocabulary(capabilities: unknown): {
 export async function startPluginHost(): Promise<void> {
   if (HOST) return;
   setDiagnosticSink((message: string) => tuiLog("[plugin-api] " + message));
+  // Before the runtime guard: a slash command is a file the APP reads, so it must be written even
+  // in a home where nothing drives plugins in-process.
+  applyDeclarations();
   const runtimeFor = (S.capabilities as Record<string, unknown> | undefined)?.runtimeFor;
   if (typeof runtimeFor !== "function") {
     tuiLog("no plugin runtime registered; plugin screens and settings stay empty");
@@ -76,6 +79,25 @@ export async function startPluginHost(): Promise<void> {
     }
   } catch (error) {
     tuiLog("plugin host failed to start: " + String(error), true);
+  }
+}
+
+/**
+ * Registers each deployed plugin's declared settings and commands.
+ *
+ * @remarks
+ * Before the host starts, and whatever the host then makes of a plugin: a settings row and a slash
+ * command are things a plugin DECLARES, so they must exist for one that is broken, disabled, or has
+ * simply never been activated. Injected for the same reason `runtimeFor` is, since carrying them out
+ * is core's job and this library carries no core submodule.
+ */
+function applyDeclarations(): void {
+  const apply = (S.capabilities as Record<string, unknown> | undefined)?.applyDeclarations;
+  if (typeof apply !== "function") return;
+  try {
+    (apply as (manifests: unknown[]) => unknown)(readDeployedManifests(PLUGINS_DIR).loaded.map((plugin) => plugin.manifest));
+  } catch (error) {
+    tuiLog("could not register what the installed plugins declare: " + String(error), true);
   }
 }
 

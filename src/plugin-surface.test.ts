@@ -323,6 +323,31 @@ describe("the surface's view of a running host", () => {
       S.capabilities = previousCapabilities;
     }
   });
+
+  // A slash command and a settings row are things a plugin DECLARES, so they must be registered for
+  // one that is broken, disabled, or has simply never been activated.
+  it("registers what the installed plugins declare even when nothing drives them", async () => {
+    const previousCapabilities = S.capabilities;
+    const handed: unknown[][] = [];
+    S.capabilities = { applyDeclarations: (manifests: unknown[]) => { handed.push(manifests); } };
+    try {
+      await startPluginHost();
+      expect(handed).toHaveLength(1);
+      expect(pluginHost()).toBeNull();
+    } finally {
+      S.capabilities = previousCapabilities;
+    }
+  });
+
+  it("carries on when registering the declarations throws", async () => {
+    const previousCapabilities = S.capabilities;
+    S.capabilities = { applyDeclarations: () => { throw new Error("no command dir"); } };
+    try {
+      await expect(startPluginHost()).resolves.toBeUndefined();
+    } finally {
+      S.capabilities = previousCapabilities;
+    }
+  });
 });
 
 describe("hostVocabulary", () => {
