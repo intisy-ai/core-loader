@@ -9,7 +9,7 @@ import { createRequire } from "node:module";
 // SAME createRequire() keeps them on one real Node require cache, matching how
 // marketplace.js itself requires state.js.
 const require = createRequire(import.meta.url);
-const { parseSeedPlugins, selectInstallMethod, getMarketplaceActions } = require("../dist/marketplace.js");
+const { parseSeedPlugins, getMarketplaceActions } = require("../dist/marketplace.js");
 const { S } = require("../dist/state.js");
 
 afterEach(() => { S.capabilities = {}; });
@@ -30,14 +30,6 @@ describe("marketplace: parseSeedPlugins", () => {
   });
 });
 
-describe("marketplace: selectInstallMethod", () => {
-  it("prefers git via the updater unless the entry hints npm or no updater is loadable", () => {
-    assert.equal(selectInstallMethod({}, true), "git");
-    assert.equal(selectInstallMethod({ install: "npm" }, true), "npm");
-    assert.equal(selectInstallMethod({}, false), "npm");
-  });
-});
-
 describe("marketplace: getMarketplaceActions", () => {
   it("a seed row offers install-seed only when both addMarketplace + installAppPlugin are registered", () => {
     S.capabilities = {};
@@ -55,13 +47,12 @@ describe("marketplace: getMarketplaceActions", () => {
     assert.deepEqual(getMarketplaceActions({ capability: true, installed: true }, false).map((a) => a.key), ["cancel"]);
   });
 
-  it("an already-installed catalog item offers no install action; one with a url and an updater gets install-git + browser", () => {
+  it("an uninstalled catalog item offers install-git only when a manager is present, browser only when it has a url", () => {
     S.capabilities = {};
     assert.deepEqual(getMarketplaceActions({ installed: true }, false).map((a) => a.key), ["cancel"]);
 
-    const withUrl = getMarketplaceActions({ url: "https://x" }, true);
-    assert.ok(withUrl.some((a) => a.key === "install-git"));
-    assert.ok(withUrl.some((a) => a.key === "browser"));
-    assert.ok(withUrl.some((a) => a.key === "cancel"));
+    assert.deepEqual(getMarketplaceActions({ url: "https://x" }, true).map((a) => a.key), ["install-git", "browser", "cancel"]);
+    assert.deepEqual(getMarketplaceActions({}, true).map((a) => a.key), ["install-git", "cancel"]);
+    assert.deepEqual(getMarketplaceActions({ url: "https://x" }, false).map((a) => a.key), ["browser", "cancel"]);
   });
 });

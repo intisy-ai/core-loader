@@ -1,6 +1,6 @@
 import { describe, it } from "vitest";
 import assert from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -37,14 +37,11 @@ describe("updater: getFolderName", () => {
 });
 
 describe("updater: getUpdaterVersion + clearUpdaterCache", () => {
-  it("reads the version from the updater's package.json, both index.js-sibling and directory forms", () => {
+  it("reads the version from the package directory the resolved entry named", () => {
     const pkgDir = mkdtempSync(join(tmpdir(), "core-loader-updater-pkg-"));
     writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ version: "9.9.9" }));
 
     S.UPDATER_MODULE = {};
-    S.UPDATER_PATH = join(pkgDir, "index.js");
-    assert.equal(getUpdaterVersion(), "9.9.9");
-
     S.UPDATER_PATH = pkgDir;
     assert.equal(getUpdaterVersion(), "9.9.9");
   });
@@ -62,5 +59,95 @@ describe("updater: getUpdaterVersion + clearUpdaterCache", () => {
     assert.equal(S.UPDATER_PATH, undefined);
     assert.equal(S.UPDATER_ENTRY, undefined);
     assert.equal(S.hasUpdater, false);
+  });
+});
+
+describe("updater: the resolved plugin manager", () => {
+  it("imports the deployed bundle of whichever plugin declares plugin-management", async () => {
+    const { preloadUpdater, getUpdater, getUpdaterPath, getUpdaterVersion, clearUpdaterCache, resolvedManager, managerBootstrapCommand } = require("../dist/updater.js");
+    const { PLUGINS_DIR, REPOS_DIR } = require("../dist/env.js");
+
+    mkdirSync(PLUGINS_DIR, { recursive: true });
+    // A deployed bundle is ESM, and the plugin dir declares it so, exactly as a real home does.
+    writeFileSync(join(PLUGINS_DIR, "package.json"), JSON.stringify({ type: "module" }));
+    writeFileSync(join(PLUGINS_DIR, "demo-manager.json"), JSON.stringify({ id: "demo-manager", api: 1, entry: "dist/index.js", capabilities: ["plugin-management"] }));
+    writeFileSync(join(PLUGINS_DIR, "demo-manager.js"), "export function updatePluginPublic() { return Promise.resolve(); }\n");
+    mkdirSync(join(REPOS_DIR, "demo-manager"), { recursive: true });
+    writeFileSync(join(REPOS_DIR, "demo-manager", "package.json"), JSON.stringify({ name: "@demo/manager", version: "4.5.6" }));
+
+    clearUpdaterCache();
+    const loaded = await preloadUpdater();
+    assert.ok(loaded, "the deployed bundle should have been imported");
+    assert.equal(typeof getUpdater().updatePluginPublic, "function");
+    assert.equal(getUpdaterPath(), join(REPOS_DIR, "demo-manager"));
+    assert.equal(getUpdaterVersion(), "4.5.6");
+    assert.equal(resolvedManager().id, "demo-manager");
+    assert.equal(resolvedManager().npmName, "@demo/manager");
+    assert.ok(managerBootstrapCommand().includes("@demo/manager@latest init --app"));
+  });
+
+  it("answers null and names no plugin when nothing in the home declares the capability", async () => {
+    const { preloadUpdater, getUpdater, clearUpdaterCache, resolvedManager, managerBootstrapCommand } = require("../dist/updater.js");
+    const { PLUGINS_DIR, REPOS_DIR, CACHE_DIR } = require("../dist/env.js");
+    const emptyHome = mkdtempSync(join(tmpdir(), "core-loader-empty-home-"));
+    // The module reads CONFIG_DIR from env.js, pinned above, so an empty home is made by emptying
+    // this one: remove the three answers resolution reads.
+    rmSync(join(PLUGINS_DIR, "demo-manager.json"), { force: true });
+    rmSync(join(REPOS_DIR, "demo-manager"), { recursive: true, force: true });
+    rmSync(join(CACHE_DIR, "plugin-manager.json"), { force: true });
+
+    clearUpdaterCache();
+    assert.equal(await preloadUpdater(), null);
+    assert.equal(getUpdater(), null);
+    assert.equal(resolvedManager(), null);
+    assert.equal(managerBootstrapCommand(), "");
+    assert.ok(existsSync(emptyHome));
+  });
+
+  it("stays on disk with no argument, and queries only the injected seam", async () => {
+    const { preloadUpdater, clearUpdaterCache, resolvedManager } = require("../dist/updater.js");
+    const { CACHE_DIR } = require("../dist/env.js");
+    rmSync(join(CACHE_DIR, "plugin-manager.json"), { force: true });
+
+    let queried = 0;
+    clearUpdaterCache();
+    assert.equal(await preloadUpdater(), null);
+    assert.equal(queried, 0, "boot must reach no marketplace");
+
+    clearUpdaterCache();
+    await preloadUpdater({
+      queryCapability: async (capabilityId) => {
+        queried++;
+        assert.equal(capabilityId, "plugin-management");
+        return [{ id: "offered", npmName: "@demo/offered", url: "u", capabilities: [capabilityId], description: "", sourceId: "s" }];
+      },
+    });
+    assert.equal(queried, 1);
+    assert.equal(resolvedManager().id, "offered");
+    rmSync(join(CACHE_DIR, "plugin-manager.json"), { force: true });
+  });
+});
+
+describe("updater: setupPlugin", () => {
+  it("runs the resolved entry even when no package directory is known", async () => {
+    const { setupPlugin } = require("../dist/updater.js");
+    const dir = mkdtempSync(join(tmpdir(), "core-loader-entry-"));
+    const entry = join(dir, "manager.mjs");
+    writeFileSync(entry, "export function updatePluginPublic() { return Promise.resolve(); }\n");
+
+    S.UPDATER_MODULE = { updatePluginPublic() {} };
+    S.UPDATER_ENTRY = entry;
+    S.UPDATER_PATH = "";
+    const failure = await new Promise((resolve) => setupPlugin({ name: "demo", url: "" }, resolve));
+    assert.equal(failure, "", "a known entry with no package dir must still install");
+  });
+
+  it("reports the manager unavailable when no entry was resolved", async () => {
+    const { setupPlugin } = require("../dist/updater.js");
+    S.UPDATER_MODULE = { updatePluginPublic() {} };
+    S.UPDATER_ENTRY = undefined;
+    S.UPDATER_PATH = "/some/package/dir";
+    const failure = await new Promise((resolve) => setupPlugin({ name: "demo", url: "" }, resolve));
+    assert.equal(failure, "updater not available");
   });
 });

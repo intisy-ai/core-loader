@@ -3,58 +3,61 @@
 // opencode-loader). Kept core-free (the caller injects its own logger) so
 // core-loader stays independent of the core bundle.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { readJson } from "./json.js";
 import { execSync } from "child_process";
-import { join } from "path";
+import { dirname, join } from "path";
 import { homedir } from "os";
 import { pathToFileURL } from "url";
+import { homePaths, subdirName } from "./home-paths.js";
+import { managerEntries, resolveFromHome, PLUGIN_MANAGEMENT_CAPABILITY } from "./plugin-manager.js";
+import { PROVIDER_MANIFEST_KEY } from "./catalogs.js";
 
 export function getBinDir() {
   return join(homedir(), ".local", "bin");
 }
 
-// Resolve plugin-updater: bare specifier first, then known install locations.
-export async function loadUpdater(): Promise<any> {
-  try {
-    return await import("plugin-updater");
-  } catch {
-    // opencode installs npm plugins into its package cache, off the deployed
-    // plugin's resolution path; this candidate is simply absent under Claude.
-    const candidates = [
-      join(homedir(), ".cache", "opencode", "packages", "plugin-updater@latest", "node_modules", "plugin-updater", "dist", "index.js"),
-    ];
-    for (const candidate of candidates) {
-      if (existsSync(candidate)) return await import(pathToFileURL(candidate).href);
+// Resolve the plugin that manages plugins in THIS home, then import it. Disk only: this runs inside
+// an app's plugin activation under a hook timeout, where reading a marketplace over the network is
+// the wrong thing to do.
+export async function loadUpdater(configDir: string): Promise<any> {
+  const paths = homePaths(configDir);
+  const ref = resolveFromHome(paths);
+  if (!ref) throw new Error("no plugin in this home declares the " + PLUGIN_MANAGEMENT_CAPABILITY + " capability");
+  const failures: string[] = [];
+  for (const candidate of managerEntries(paths, ref)) {
+    try {
+      return await import(pathToFileURL(candidate.entry).href);
+    } catch (e) {
+      failures.push(candidate.entry + ": " + e);
     }
-    throw new Error("plugin-updater not resolvable");
   }
+  throw new Error(ref.id + " declares " + PLUGIN_MANAGEMENT_CAPABILITY + " but no module of it could be imported" + (failures.length ? " (" + failures.join("; ") + ")" : ""));
 }
 
-// Run plugin-updater's earlyLaunch on activation. `log(message)` is the caller's
-// per-plugin logger; skipped when we're already inside a plugin-updater run.
+// Run the plugin manager's earlyLaunch on activation. `log(message)` is the caller's
+// per-plugin logger; skipped when we're already inside a plugin manager run.
 export async function runEarlyLaunchHooks(configDir: string, log: (message: string) => void) {
-  if (process.env.PLUGIN_UPDATER_ACTIVATION === "1") {
-    log("Updates driven by plugin-updater (activation context), skipping earlyLaunch");
+  if (process.env.INTISY_PLUGIN_ACTIVATION === "1" || process.env.PLUGIN_UPDATER_ACTIVATION === "1") {
+    log("Updates driven by the plugin manager (activation context), skipping earlyLaunch");
     return;
   }
   try {
-    const updater: any = await loadUpdater();
+    const updater: any = await loadUpdater(configDir);
     const gitPlugins = updater.getPlugins(configDir);
-    log("Running plugin-updater earlyLaunch for " + gitPlugins.length + " plugins");
+    log("Running earlyLaunch for " + gitPlugins.length + " plugins");
     await updater.earlyLaunch(configDir, gitPlugins);
-    log("plugin-updater earlyLaunch complete");
+    log("earlyLaunch complete");
   } catch (e) {
-    log("plugin-updater not available, skipping updates: " + e);
+    log("no plugin manager available, skipping updates: " + e);
   }
 }
 
 // Provider handlers deployed under <configDir>/repos: each plugin declares them in its
-// package.json via `claudeHub.authProviders` (or a top-level `authProviders`), plus any
-// dynamic providers materialized to .dynamic-providers.json (see readDynamicProviders).
-// One scan shared by the loader CLI's provider/doctor views and the CC proxy's request
-// router, so the "read package.json → pick name/handler" logic lives in exactly one place.
-export function readDeployedProviders(reposDir: string): Array<{
+// package.json via its PROVIDER_MANIFEST_KEY (or a top-level `authProviders`), plus the lanes a
+// plugin materializes into this home (see homeDynamicProviders). One scan shared by the loader
+// CLI's provider/doctor views and the CC proxy's request router.
+export function readDeployedProviders(reposDir: string, configDir: string = dirname(reposDir)): Array<{
   provider: string;
   repo: string;
   handler: string;
@@ -69,7 +72,7 @@ export function readDeployedProviders(reposDir: string): Array<{
   for (const repo of repos) {
     const pkg = readJson(join(reposDir, repo, "package.json"));
     if (!pkg) continue;
-    const declared = (pkg.claudeHub && pkg.claudeHub.authProviders) || pkg.authProviders || [];
+    const declared = (pkg[PROVIDER_MANIFEST_KEY] && pkg[PROVIDER_MANIFEST_KEY].authProviders) || pkg.authProviders || [];
     for (const provider of declared) {
       if (!provider.handler) continue;
       const name = provider.name || repo;
@@ -83,30 +86,34 @@ export function readDeployedProviders(reposDir: string): Array<{
         models: provider.models || [],
       });
     }
-    out.push(...readDynamicProviders(reposDir, repo));
   }
+  out.push(...homeDynamicProviders(reposDir, configDir));
   return out;
 }
 
-// Config-driven providers a plugin advertises by writing <repo>/.dynamic-providers.json
-// (e.g. custom-auth, one provider per user-configured endpoint). Best-effort and
-// synchronous like the rest of this scan: a missing or malformed manifest yields no
-// entries, so plugins that never write one see no change in behavior.
-function readDynamicProviders(reposDir, repo) {
+// The lanes a plugin materialized into THIS home, one per user-configured endpoint. Best-effort and
+// synchronous like the rest of this scan: an absent or malformed file yields no entries. Keyed by
+// deployed plugin id, and every key is read; nothing here names a plugin.
+function homeDynamicProviders(reposDir, configDir) {
   const out = [];
-  const manifest = readJson(join(reposDir, repo, ".dynamic-providers.json"));
-  if (!Array.isArray(manifest)) return out;
-  for (const entry of manifest) {
-    if (!entry || typeof entry.name !== "string" || typeof entry.handler !== "string") continue;
-    out.push({
-      provider: entry.name,
-      repo,
-      handler: entry.handler,
-      handlerPath: join(reposDir, repo, entry.handler),
-      translator: entry.translator,
-      accountPool: entry.accountPool || entry.name,
-      models: entry.models || [],
-    });
+  const declared = readJson(join(configDir, subdirName("HUB_CACHE_SUBDIR", "cache"), "dynamic-providers.json"));
+  if (!declared || typeof declared !== "object" || Array.isArray(declared)) return out;
+  for (const pluginId of Object.keys(declared)) {
+    const lanes = declared[pluginId];
+    if (!Array.isArray(lanes)) continue;
+    for (const lane of lanes) {
+      if (!lane || typeof lane.name !== "string" || typeof lane.handler !== "string") continue;
+      const repo = typeof lane.repo === "string" && lane.repo ? lane.repo : pluginId;
+      out.push({
+        provider: lane.name,
+        repo,
+        handler: lane.handler,
+        handlerPath: join(reposDir, repo, lane.handler),
+        translator: lane.translator,
+        accountPool: lane.accountPool || lane.name,
+        models: lane.models || [],
+      });
+    }
   }
   return out;
 }

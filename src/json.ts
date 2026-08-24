@@ -15,7 +15,7 @@ export function readJson(file, fallback = null) {
   }
 }
 
-// Some app configs (opencode.json) carry // comments, which JSON.parse rejects. Stripping
+// Some app configs carry // comments, which JSON.parse rejects. Stripping
 // whole-line comments only, so a // inside a string value survives.
 export function readJsonc(file, fallback = null) {
   try {

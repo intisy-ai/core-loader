@@ -1,0 +1,18 @@
+{
+  "id": "fixture",
+  "label": "Fixture",
+  "layout": {
+    "kind": "stack",
+    "children": [
+      { "kind": "stats", "source": "summary" },
+      {
+        "kind": "tabs",
+        "tabs": [
+          { "id": "a", "label": "Changes", "child": { "kind": "card", "title": "Pending", "children": [{ "kind": "table", "source": "pending", "columns": [{ "key": "key" }] }] } },
+          { "id": "b", "label": "Profiles", "child": { "kind": "chips", "source": "profiles", "select": "switch" } }
+        ]
+      },
+      { "kind": "grid", "columns": 2, "children": [{ "kind": "text", "text": "left" }, { "kind": "text", "text": "right" }] }
+    ]
+  }
+}

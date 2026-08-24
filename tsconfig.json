@@ -11,10 +11,10 @@
     "isolatedModules": true,
     "moduleResolution": "nodenext",
     "esModuleInterop": true,
-    "resolveJsonModule": true,
     "skipLibCheck": true,
     "types": ["node"],
     "lib": ["esnext"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts"]
 }

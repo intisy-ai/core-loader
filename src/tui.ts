@@ -7,22 +7,25 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
 import { S } from "./state.js";
+import { librariesTab } from "./views/libraries.js";
 import { APP_NAME, CLI_CMD, NPM_PKG, CONFIG_DIR, CACHE_DIR, UPDATE_CHECK_PATH, REPOS_DIR, PLUGINS_DIR, tuiLog } from "./env.js";
 import { hideCur, showCur, cleanup } from "./out.js";
-import { getFolderName, installUpdater, clearUpdaterCache, preloadUpdater } from "./updater.js";
-import { preloadConfigLedger } from "./config-ledger.js";
+import { getFolderName, clearUpdaterCache, marketplaceQuery, preloadUpdater } from "./updater.js";
+import { startPluginHost } from "./plugin-surface.js";
+import { refreshScreenSpecs } from "./views/screens.js";
 import { loadConfig, saveConfig, migrateConfigs, loadPlugins, autoUpdateCheck, updateCheckDelayMs, updateCheckIntervalHours, defaultTab } from "./config.js";
 import { flash } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
 import { buildMarketplaceList } from "./marketplace.js";
-import { buildCombinedPluginList } from "./plugins.js";
+import { buildCombinedPluginList, primeDeclarations } from "./plugins.js";
 import { buildList, outputDir } from "./projects.js";
 import { render } from "./views/render.js";
-import { parseKey, handleKey, handleInputData, handlePluginInputData, handleMarketplaceAddInputData, handleMcpAddInputData, handleSearchData, handleTabInputData, handleConfigInputData, handleSettingsGitInputData, switchPluginSubPage } from "./input.js";
+import { parseKey, handleKey, handleInputData, handlePluginInputData, handleMarketplaceAddInputData, handleMcpAddInputData, handleSearchData, handleTabInputData, handleConfigInputData, switchPluginSubPage } from "./input.js";
 import { setActivitySeam, withLoaderCause } from "./activity-seam.js";
 import { inputCause } from "./input-cause.js";
 
-global.OpenCodeAPI = {
+// A stable global for an app extension that has no import path into this process.
+global.LoaderAPI = {
   getReposDir: function() { return REPOS_DIR; },
   getPluginsDir: function() { return PLUGINS_DIR; },
   getConfigDir: function() { return CONFIG_DIR; },
@@ -152,6 +155,9 @@ function runBlocking(fn) {
 
 async function loadCustomTabs() {
   S.customTabs = [];
+  // Built in, but registered here so it survives the reset above and plugin tabs
+  // append after it rather than in front of it.
+  tuiApi.registerTab(librariesTab);
   const { pathToFileURL } = require("url");
   async function loadExt(extPath) {
     if (!extPath || !existsSync(extPath)) return;
@@ -188,6 +194,9 @@ S.mcpItems = buildMcpList("All");
 S.marketplaceItems = buildMarketplaceList();
 
 process.on("exit", function() { showCur(); });
+// Last line of defence for the asynchronous paths: without a handler Node terminates the process on
+// an unhandled rejection, skipping cleanup() and leaving a half-drawn TUI under a stack trace.
+process.on("unhandledRejection", function(reason) { tuiLog("unhandled rejection: " + String(reason), true); });
 process.on("SIGINT", function() { cleanup(); process.exit(1); });
 process.on("SIGTERM", function() { cleanup(); process.exit(1); });
 try { process.stderr.on("resize", function() { render(); }); } catch(e) {}
@@ -288,8 +297,13 @@ async function boot() {
   process.stderr.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l");
   await Promise.all([
     preloadUpdater().catch(function () {}),
-    preloadConfigLedger().catch(function () {}),
+    startPluginHost().then(function () {
+      return Promise.all([refreshScreenSpecs(), primeDeclarations()]);
+    }).catch(function () {}),
   ]);
+  // Rebuilt once resolution has settled: the manager's own npm row is marked and versioned from
+  // resolvedManager(), which answers nothing until preloadUpdater has run.
+  S.pluginItems = buildCombinedPluginList();
   hideCur();
   render();
   // Guarded like every other raw-mode call here: boot() runs on import, and stdin
@@ -307,27 +321,20 @@ function onData(buf) {
 }
 
 function dispatchInput(buf, key) {
-  if (S.globalKeyHandler === "updater_install") {
-    // The updater gate offers install-or-quit, but must NOT trap the arrow keys: ← →
-    // still switch tabs (the other tabs don't need the updater). Everything else is
-    // swallowed here so stray keys don't act on the hidden list behind the gate.
+  if (S.globalKeyHandler === "manager_recheck") {
+    // The gate offers re-check-or-quit but must NOT trap the arrow keys: the other tabs need no
+    // plugin manager. Everything else is swallowed so a stray key cannot act on the hidden list.
     if (key === "enter" || key === "space") {
-      // Show progress IN the TUI body (a step checklist), not a raw write below the
-      // footer. installUpdater is synchronous, so onStep re-renders between steps.
-      S.updaterInstalling = true; S.updaterSteps = []; S.globalKeyHandler = null;
-      render();
-      var installErr = installUpdater(CONFIG_DIR, APP_NAME, function (label) { S.updaterSteps.push(label); render(); });
-      S.updaterInstalling = false;
-      if (installErr) { tuiLog(installErr); flash(installErr); }
-      clearUpdaterCache();   // installUpdater ran the engine; re-import it now so the gate lifts
-      preloadUpdater().catch(function () {}).then(function () {
-        S.pluginItems = buildCombinedPluginList();   // re-detects the engine; if still unresolved, gate re-shows
+      clearUpdaterCache();
+      // The one surface that queries the marketplaces: the operator is asking what to install.
+      preloadUpdater({ queryCapability: marketplaceQuery() }).catch(function () {}).then(function () {
+        S.pluginItems = buildCombinedPluginList();
         render();
       });
       return;
     }
     if (key === "escape" || key === "q" || buf[0] === 3) process.exit(0);
-    if (key !== "left" && key !== "right") return;   // ← → fall through to tab switching
+    if (key !== "left" && key !== "right") return;
   }
   
   if (S.mode === "input") { handleInputData(buf); render(); return; }
@@ -335,7 +342,6 @@ function dispatchInput(buf, key) {
   if (S.mode === "mkinput") { handleMarketplaceAddInputData(buf); render(); return; }
   if (S.mode === "mcpaddinput") { handleMcpAddInputData(buf); render(); return; }
   if (S.mode === "pcfginput") { handleConfigInputData(buf); render(); return; }
-  if (S.mode === "sgprofinput" || S.mode === "sgurlinput") { handleSettingsGitInputData(buf); render(); return; }
   if (S.mode === "search") { handleSearchData(buf); render(); return; }
   if (S.mode === "tabinput") { handleTabInputData(buf); render(); return; }
   if (key) {

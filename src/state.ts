@@ -29,6 +29,12 @@ export const S = {
   seedMarketplaces: {},
   seedFetched: false,
 
+  // The entries this home's DECLARED marketplace sources offer (see catalog-sources.ts and
+  // capability-catalog.ts), filled in by marketplace.ts's fetchSourceCatalogAsync. `null` means not
+  // read yet, so Level 1 shows a count of "…" rather than a wrong zero.
+  sourceCatalog: null,
+  sourceFetched: false,
+
   // Projects page
   items: [],
   cursor: 0,
@@ -38,9 +44,11 @@ export const S = {
   page: "projects",
   inputBuf: "",
   chpathDir: "",
-  // Session picker sub-mode (Claude only): the chosen project's sessions,
-  // the cursor within them, the dir being opened, and whether it was reached
-  // via "Open here" (so a new session preserves the exit-42 arg-forwarding path).
+  // Session picker sub-mode (present only when the loader's injected
+  // S.capabilities.listSessions answers, see enterSessions in input.ts): the
+  // chosen project's sessions, the cursor within them, the dir being opened, and
+  // whether it was reached via "Open here" (so a new session preserves the
+  // exit-42 arg-forwarding path).
   sessionItems: [],
   scursor: 0,
   sessionDir: "",
@@ -58,13 +66,18 @@ export const S = {
   ccursor: 0,
   cscrollOff: 0,
 
-  // Plugin config editor (Plugins tab -> Configure). Detected per-plugin by probing
-  // its deployed bundle with `config schema`; editing writes via `config set`.
+  // Plugin config editor (Plugins tab -> Configure). Rows come from the plugin's settings
+  // declaration; editing writes through the plugin's own `config set`.
   configItems: [],
   cfgcursor: 0,
   cfgScrollOff: 0,
   configTarget: null,
   configEditKey: "",
+  // the action row armed by a first enter, waiting for the confirming second one
+  configConfirm: null,
+  // The one config row whose secret value is currently shown, by key. Cleared by moving the cursor
+  // or leaving the editor, so a revealed secret never survives a navigation.
+  cfgReveal: "",
 
   // Activity page: read-only feed from the injected `capabilities.activity` reader.
   // activityRecords caches the last read() result; refreshed on tab entry and 'r'.
@@ -90,35 +103,21 @@ export const S = {
   // Settings page (unified global + per-plugin settings editor)
   settingsCursor: 0,
   settingsScrollOff: 0,
-  settingsSubPage: "settings",  // "settings" | "versioning", sub-tabs of the Settings tab (Tab switches)
+  // "settings" | "<plugin>:<screenId>", sub-tabs of the Settings tab (Tab cycles). Any
+  // non-"settings" id names a screen a plugin contributed (see views/screens.ts).
+  settingsSubPage: "settings",
   settingsSections: [],  // SettingsSection[] (Global + one per plugin)
   settingsEntries: [],   // SettingsEntry[] the renderer + key handler walk (headers + groups)
 
-  // Versioning tab (config-ledger git UI). versioningCursor drives the home/setup menus;
-  // the history file→key pickers use vg* fields; git sub-screens reuse the sg*/cl* fields.
-  versioningCursor: 0,
-  versioningScrollOff: 0,
-  clInstalling: false,   // config-ledger install in progress → Versioning shows a spinner screen
-  vgSections: [],        // sections (file + keys) for the history pickers
-  vgFileCursor: 0,
-  vgKeys: [],            // keys of the file chosen in the history picker
-  vgKeyCursor: 0,
-  vgHistFile: "",
-
-  // config-ledger: cached lib module + git-data caches for the Settings tab
-  CONFIG_LEDGER_MODULE: null,   // resolved dist/lib.js module, or null when absent
-  clReady: false,            // cached configLedgerReady() (repo.isRepo spawns git; recomputed in refreshSettings, never per render frame)
-  clDiffRows: [],            // last diffAgainstHead() rows (markers + review screen)
-  clHistory: [],             // last keyHistory() rows (history sub-screen)
-  clHistoryFile: "",         // file the history sub-screen is showing
-  clHistoryKey: "",          // key the history sub-screen is showing
-  clHistoryCursor: 0,
-  clProfiles: [],            // profiles.list() snapshot
-  clProfileCurrent: "",      // profiles.current()
-  clProfileCursor: 0,
-  sgMenuCursor: 0,           // cursor in the config-ledger action menu (sgmenu)
-  sgSetupCursor: 0,          // cursor in the repo-setup menu (sgsetup)
-  _sgSetupOpts: [],          // setup-screen options stashed by the renderer for the input handler
+  // Contributed-screen sub-pages (views/screens.ts): the declarations each plugin's `screens`
+  // capability answered, read once because the sub-page list is walked every render frame.
+  screenSpecs: [],
+  screenRows: [],
+  screenCursor: 0,
+  screenScrollOff: 0,
+  // The sub-page id whose last read failed, so an empty screen renders as unreadable rather than
+  // as forever loading. Cleared by the next read that lands.
+  screenFailed: null,
 
   // Marketplace sub-page
   marketplaceItems: [],
@@ -133,11 +132,14 @@ export const S = {
   mkLevel: "markets",
   mkMarket: null,
   // Kind of the drilled-in marketplace, captured from its Level-1 row's
-  // builtin/capability tag ("official" | "community" | "capability" | null).
-  // buildMarketplacePluginsList() routes on THIS, not on comparing mkMarket's
-  // display name to "intisy-ai (official)"/"community": a capability
-  // marketplace could otherwise share one of those names and be misrouted.
+  // builtin/capability tag: "source" | "community" | "featured" | "seed" |
+  // "capability" | null. buildMarketplacePluginsList() routes on THIS, not on
+  // comparing mkMarket's display name: a capability marketplace could
+  // otherwise share a built-in name and be misrouted.
   mkMarketKind: null,
+  // The declared source a Level-2 list is showing, captured off its Level-1 row, because a source is
+  // identified by its id while the row is labelled by the source's own label.
+  mkMarketSourceId: null,
   // Which leading action row is being confirmed while S.mode === "mkinput":
   // "add_plugin_url" | "add_marketplace" (see input.ts handleMarketplaceAddInputData).
   mkAddAction: null,
@@ -151,14 +153,13 @@ export const S = {
   // key handling (see handleKey) so the user stays put and can't fire more work.
   busy: false,
 
-  // Cached "is the updater plugin present" result. The check reads disk + can shell
-  // out, so it must never run on a navigation render, computed until true, then held.
+  // Cached "is the plugin manager present" result. The check reads disk + can import a bundle, so it
+  // must never run on a navigation render: computed until true, then held.
   hasUpdater: false,
 
-  // Updater install progress (shown in-body while installUpdater runs). updaterSteps
-  // accumulates step labels; all but the last render as done (✓), the last as active.
-  updaterInstalling: false,
-  updaterSteps: [],
+  // The plugin manager this home resolved (see plugin-manager.ts). `undefined` means resolution has
+  // not run yet, `null` means it ran and nothing in this home manages plugins.
+  pluginManager: undefined,
 
   // Status message + render scheduling
   message: "",

@@ -1,11 +1,13 @@
 // @ts-nocheck
-// Project list: query recent projects (Claude history.jsonl or the opencode
-// DB), build the display list, and the pin/hide/change-path actions.
+// Project list: read the projects the app records (a history file or a
+// session database, whichever it declares), build the display list, and the
+// pin/hide/change-path actions.
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
-import { APP_NAME, CONFIG_DIR, DB_PATH, HOME } from "./env.js";
+import { APP_NAME, CONFIG_DIR, HOME } from "./env.js";
+import { appProjects, expandPath } from "./app-descriptor.js";
 import { S } from "./state.js";
 import { loadConfig, saveConfig } from "./config.js";
 import { cleanup } from "./out.js";
@@ -28,9 +30,18 @@ function openSqlite(path) {
   return null;
 }
 
+// The declared sessionDb candidate to use: the first one that exists, or the first
+// declared one so a fresh install still names a file rather than resolving to nothing.
+function resolveSessionDbPath(candidates) {
+  var expanded = candidates.map(function (candidate) { return expandPath(candidate, CONFIG_DIR); });
+  if (!expanded.length) return "";
+  return expanded.find(function (candidate) { return existsSync(candidate); }) || expanded[0];
+}
+
 export function queryProjects() {
-  if (APP_NAME === "Claude Code") {
-    var historyPath = join(CONFIG_DIR, "history.jsonl");
+  var declared = appProjects();
+  if (declared.historyFile) {
+    var historyPath = expandPath(declared.historyFile, CONFIG_DIR);
     if (!existsSync(historyPath)) return [];
     try {
       var lines = readFileSync(historyPath, "utf8").split("\n").filter(Boolean);
@@ -61,9 +72,10 @@ export function queryProjects() {
     } catch (e) { return []; }
   }
 
-  if (!existsSync(DB_PATH)) return [];
+  var dbPath = resolveSessionDbPath(declared.sessionDb || []);
+  if (!dbPath) return [];
   try {
-    var db = openSqlite(DB_PATH);
+    var db = openSqlite(dbPath);
     if (!db) return [];
     var rows = db.query(
       "SELECT directory, MAX(time_updated) as last_used, COUNT(*) as sessions " +
@@ -216,10 +228,22 @@ export function getProjectId(dir) {
   } catch (e) { return null; }
 }
 
-export function changeProjectPath(oldDir, newDir) {
-  if (!existsSync(DB_PATH)) { flash("DB not found"); return; }
+// Records the new project id in the marker file the active app declares inside a project's own
+// .git directory. An app that declares none (markerFile absent) writes nothing.
+export function writeProjectMarker(projectDir, markerFile, projectId) {
+  if (!markerFile) return;
   try {
-    var db = new Database(DB_PATH);
+    var gitDir = join(projectDir, ".git");
+    if (existsSync(gitDir)) writeFileSync(join(gitDir, markerFile), projectId);
+  } catch (e) {}
+}
+
+export function changeProjectPath(oldDir, newDir) {
+  var declared = appProjects();
+  var dbPath = resolveSessionDbPath(declared.sessionDb || []);
+  if (!dbPath || !existsSync(dbPath)) { flash("DB not found"); return; }
+  try {
+    var db = new Database(dbPath);
     var count = db.query("SELECT COUNT(*) as c FROM session WHERE directory = ?").get(oldDir);
     if (!count || count.c === 0) { db.close(); flash("No sessions at old path"); return; }
 
@@ -239,10 +263,7 @@ export function changeProjectPath(oldDir, newDir) {
         db.run("INSERT OR IGNORE INTO project (id, worktree, time_created, time_updated, sandboxes) VALUES (?, ?, ?, ?, '[]')", [newPid, newDir, now, now]);
         db.run("UPDATE session SET project_id = ?, directory = ? WHERE directory = ?", [newPid, newDir, oldDir]);
       }
-      try {
-        var gitDir = join(newDir, ".git");
-        if (existsSync(gitDir)) writeFileSync(join(gitDir, "opencode"), newPid);
-      } catch (e) {}
+      writeProjectMarker(newDir, declared.markerFile, newPid);
     } else {
       db.run("UPDATE session SET project_id = 'global', directory = ? WHERE directory = ?", [newDir, oldDir]);
     }

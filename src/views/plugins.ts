@@ -2,15 +2,18 @@
 // Plugins page rendering: plugin rows (git + npm + engine), the installed /
 // marketplace / custom sub-pages, and the action/commit menus.
 
-import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL, stringWidth, pad, trunc, timeAgo, ACCENT, OK, BAD, INFO, rule } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, CYAN, RED, MAGENTA, BG_SEL, stringWidth, pad, trunc, timeAgo, ACCENT, OK, BAD, INFO, rule, secretMask, entryMask, isBooleanRowOn } from "../format.js";
 import { selectionKey } from "../selection.js";
 import { S } from "../state.js";
 import { loadPlugins } from "../config.js";
-import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath } from "../updater.js";
-import { getPluginActions, readUpdateCache } from "../plugins.js";
-import { getMarketplaceActions, selectInstallMethod } from "../marketplace.js";
-import { IS_CLAUDE, HOME, PLUGINS_DIR, REPOS_DIR, APP_NAME } from "../env.js";
-import { hints, messageLine, spinnerFrame, marketplaceRow, updaterInstallProgress } from "./common.js";
+import { loadNpmPlugins, getUpdater, getUpdaterVersion, getUpdaterPath, managerBootstrapCommand, resolvedManager } from "../updater.js";
+import { getPluginActions, hostPluginId, readUpdateCache } from "../plugins.js";
+import { getMarketplaceActions } from "../marketplace.js";
+import { HOME, CONFIG_DIR, PLUGINS_DIR, REPOS_DIR, APP_NAME } from "../env.js";
+import { appNpmPlugins, expandPath } from "../app-descriptor.js";
+import { hints, messageLine, spinnerFrame, marketplaceRow } from "./common.js";
+import { diagnosticLines } from "../plugin-diagnostics.js";
+import { ledgerRowFor } from "../plugin-surface.js";
 
 // Normalizes any rendered version/tag to a single "vX.Y.Z" form: strips a
 // leading v/V (if present) then re-adds exactly one "v", so a git tag, an npm
@@ -32,9 +35,9 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
   var bg = sel ? BG_SEL : "";
   var nameStyle = sel ? (BOLD + WHITE) : DIM;
 
-  // App-managed plugins (native to the host app, e.g. Claude Code's own plugin
-  // system): selectable like everything else in the list, actions gated by
-  // whichever capabilities getPluginActions() finds registered.
+  // App-managed plugins (native to the host app's own plugin system): selectable
+  // like everything else in the list, actions gated by whichever capabilities
+  // getPluginActions() finds registered.
   if (pitem.type === "foreign") {
     var fstate = pitem.enabled === false ? (BAD + "disabled" + RST) : (OK + "enabled" + RST);
     var fver = pitem.version ? (GRAY + vlabel(pitem.version) + RST) : (GRAY + "---" + RST);
@@ -54,7 +57,7 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
     var typeLabel = pitem.engine ? (DIM + "engine" + RST) : (GRAY + "npm" + RST);
     pushBody("  " + bg + arrow + nameStyle + pad(trunc(pitem.name, nameW), nameW) + RST + bg + " " + typeLabel + "  " + nvstr + RST, isSelected);
     if (sel) {
-      var subInfo = GRAY + "     " + (pitem.engine ? "manages plugin installs and updates" : "managed via npm (opencode.json)") + RST;
+      var subInfo = GRAY + "     " + (pitem.engine ? "manages plugin installs and updates" : "managed by the app's own plugin list") + RST;
       pushBody("  " + subInfo, isSelected);
     }
     return;
@@ -77,6 +80,9 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
       statusParts.push(BAD + "missing" + RST);
     }
   }
+  if (pitem.onExperimental) {
+    statusParts.push(ACCENT + "experimental" + RST);
+  }
 
   var statusStr = statusParts.join(GRAY + " | " + RST);
   var versionStr = pitem.latestTag
@@ -95,43 +101,41 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
 export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
   var nameW = Math.min(32, Math.max(20, cols - 44));
 
-  // "hasUpdater" must mean the updater is actually INSTALLED AND LOADABLE, not
-  // merely listed in plugins.json. Basing it on the listing (name.includes("updater"))
-  // made the git-plugins tab look usable when the updater was listed-but-not-installed:
-  // every action then hit getUpdater()===null and silently no-op'd ("looked like it was
-  // updating"). getUpdater() resolves + loads the deployed bundle, so it's the true
-  // functional test. Cache it: recompute only while not yet loaded (the "updater
-  // missing" prompt has no list to navigate); once loaded it can't vanish mid-session.
+  // "hasUpdater" must mean the manager is actually INSTALLED AND LOADABLE, not merely listed:
+  // basing it on the listing made the tab look usable when the manager was listed-but-absent, and
+  // every action then silently no-op'd. getUpdater() answers with the imported module, so it is the
+  // true functional test. Cache it: recompute only while not yet loaded, since it cannot vanish
+  // mid-session.
   if (S.hasUpdater !== true) {
     var upd = getUpdater();
     S.hasUpdater = !!(upd && typeof upd.updatePluginPublic === "function");
   }
   var hasUpdater = S.hasUpdater;
 
-  // The updater is the foundation: every plugin (git AND npm) is installed through it.
-  // Without it there is nothing to manage or install, so BOTH the Installed and
-  // Marketplace surfaces are gated to a single install-updater action. (Providers/auth
-  // is unrelated and stays reachable via Tab.)
-  // While installUpdater runs, show a step checklist in the BODY (its onStep callback
-  // re-renders between the synchronous steps) instead of a raw write under the footer.
-  if (S.updaterInstalling) {
-    updaterInstallProgress(pushBody, pushFoot, barW);
-    return;
-  }
-
+  // Every plugin is installed and updated by whichever plugin declares plugin-management. With none
+  // loadable there is nothing to manage, so both the Installed and Marketplace surfaces gate to one
+  // instruction. The command is shown for the operator to run: npx always fetches the published
+  // package, so this library never runs it.
   if (!hasUpdater && (S.pluginSubPage === "installed" || S.pluginSubPage === "marketplace")) {
-    pushBody("  " + BOLD + BAD + "Updater Plugin Missing" + RST, false);
-    pushBody("  The hub installs and manages every plugin through the updater engine.", false);
+    var bootstrap = managerBootstrapCommand();
+    pushBody("  " + BOLD + BAD + "No plugin manager installed" + RST, false);
+    pushBody("  Plugins are installed and updated by the plugin that declares plugin-management.", false);
+    pushBody("  None is loadable in this home.", false);
     pushBody("", false);
-    pushBody("  Press " + BOLD + WHITE + "Enter" + RST + " to install it. Nothing else is available until it is.", false);
+    if (bootstrap) {
+      pushBody("  " + GRAY + "Install it yourself, then press " + WHITE + "Enter" + GRAY + " to re-check:" + RST, false);
+      pushBody("    " + WHITE + bootstrap + RST, false);
+    } else {
+      pushBody("  " + GRAY + "No repository in the declared marketplaces declares that capability." + RST, false);
+      pushBody("  " + GRAY + "Add a source that offers one to config/marketplaces.json." + RST, false);
+    }
     pushBody("", false);
     pushFoot("  " + rule(barW));
-    pushFoot(hints([["enter", "install"], ["q", "quit"]]));
-    S.globalKeyHandler = "updater_install";
+    pushFoot(hints([["enter", "re-check"], ["q", "quit"]]));
+    S.globalKeyHandler = "manager_recheck";
     return;
-  } else {
-    if (S.globalKeyHandler === "updater_install") S.globalKeyHandler = null;
   }
+  if (S.globalKeyHandler === "manager_recheck") S.globalKeyHandler = null;
 
   if (S.mode === "pcommits") {
     pushBody("  " + BOLD + WHITE + "Select commit for " + S.pluginItems[S.pcursor].name + RST, false);
@@ -167,8 +171,9 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       var csel = ci === S.cfgcursor;
       var editing = S.mode === "pcfginput" && csel;
       var valStr;
-      if (editing) valStr = BG_SEL + " " + S.inputBuf + BOLD + "|" + RST;
-      else if (it.type === "boolean") valStr = (it.value ? OK + "true" : GRAY + "false") + RST;
+      if (editing) valStr = BG_SEL + " " + (it.type === "secret" ? entryMask(S.inputBuf) : S.inputBuf) + BOLD + "|" + RST;
+      else if (it.type === "boolean") valStr = (isBooleanRowOn(it.value) ? OK + "true" : GRAY + "false") + RST;
+      else if (it.type === "secret" && S.cfgReveal !== it.key) valStr = GRAY + secretMask(it.value) + RST;
       else valStr = WHITE + JSON.stringify(it.value) + RST;
       var mark = it.isSet ? "" : (GRAY + " (default)" + RST);
       var carrow = csel ? (ACCENT + " ❯ " + RST) : "   ";
@@ -179,8 +184,27 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
     pushBody("", false);
     if (S.message) pushFoot(messageLine(cols));
     pushFoot("  " + rule(barW));
+    var hasSecret = S.configItems.some(function (row) { return row.type === "secret"; });
     if (S.mode === "pcfginput") pushFoot(hints([["enter", "save"], ["esc", "cancel"]]));
-    else pushFoot(hints([["↑↓", "move"], ["enter", "edit/toggle"], ["esc", "back"]]));
+    else pushFoot(hints(hasSecret ? [["↑↓", "move"], ["enter", "edit/toggle"], ["r", "reveal"], ["esc", "back"]] : [["↑↓", "move"], ["enter", "edit/toggle"], ["esc", "back"]]));
+    return;
+  }
+
+  if (S.mode === "pdiag" && S.pluginItems.length > 0 && S.pluginItems[S.pcursor]) {
+    var dpitem = S.pluginItems[S.pcursor];
+    pushBody("  " + BOLD + WHITE + trunc(dpitem.name, cols - 6) + RST, false);
+    pushBody("  " + GRAY + "what the plugin host recorded for this plugin" + RST, false);
+    pushBody("", false);
+    var dlines = diagnosticLines(ledgerRowFor(hostPluginId(dpitem)));
+    for (var dj = 0; dj < dlines.length; dj++) {
+      var style = dj === 0 ? WHITE : DIM;
+      if (dlines[dj].indexOf("Reason: ") === 0 || dlines[dj].indexOf("Unresolved: ") === 0) style = RED;
+      pushBody("    " + style + trunc(dlines[dj], Math.max(20, cols - 8)) + RST, false);
+    }
+    pushBody("", false);
+    if (S.message) pushFoot(messageLine(cols));
+    pushFoot("  " + rule(barW));
+    pushFoot(hints([["esc/enter", "back"], ["q", "quit"]]));
     return;
   }
 
@@ -329,13 +353,16 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       }
     }
 
-    // section header whenever the plugin's category changes (Official/Community/
-    // Curated for the loader's own catalogs; a single "From <source>" group for a
-    // capability marketplace); also the unit [ / ] fast-nav jumps between.
+    // section header whenever the plugin's category changes (a source's entries by
+    // their capability-derived category, "Community"/"Curated" for the built-in
+    // catalog, the curated Featured list by its own `category` field such as Memory
+    // or Statusline; a single "From <source>" group for a capability marketplace);
+    // also the unit [ / ] fast-nav jumps between.
     var lastGroup = null;
+    var hasNpm = !!appNpmPlugins();
     for (var pi2 = 0; pi2 < S.marketplaceItems.length; pi2++) {
       var mitem = S.marketplaceItems[pi2];
-      var group = mitem.category || ((mitem.capability || mitem.seed) ? "From " + (mitem.source || S.mkMarket) : (mitem.official ? "Official" : "Community"));
+      var group = mitem.category || ((mitem.capability || mitem.seed) ? "From " + (mitem.source || S.mkMarket) : "Community");
       if (group !== lastGroup) {
         pushBody("", false);
         pushBody("  " + BOLD + WHITE + group + RST, false);
@@ -344,12 +371,11 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
 
       var msel = pi2 === S.mkCursor;
       var mkNameW = Math.min(30, nameW);
-      var methodW = (IS_CLAUDE || mitem.capability || mitem.seed) ? 0 : 4;
-      // Method badge (git/npm) only makes sense for the loader's own installable
-      // catalog entries; capability/seed-sourced rows and Claude (git-only) show none.
-      var methodBadge = (IS_CLAUDE || mitem.capability || mitem.seed) ? ""
+      var methodW = (!hasNpm || mitem.capability || mitem.seed) ? 0 : 4;
+      // the method badge only means something where the app has a second install method
+      var methodBadge = (!hasNpm || mitem.capability || mitem.seed) ? ""
         : mitem.installed ? "    "
-        : (selectInstallMethod(mitem, S.hasUpdater) === "git" ? (OK + "git " + RST) : (INFO + "npm " + RST));
+        : (OK + "git " + RST);
       // status circle: installed = dim ●, selected = accent ◉, selectable = ○
       var circle = mitem.installed ? (DIM + "●" + RST)
         : (S.mkSelected[selectionKey(mitem)] ? (ACCENT + "◉" + RST) : (GRAY + "○" + RST));
@@ -422,7 +448,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       (npmCount > 0 ? ", " + GRAY + npmCount + " npm" + GRAY : "") +
       ")" + RST);
 
-  // Makes background auto-updates (applied by plugin-updater's earlyLaunch, before
+  // Makes background auto-updates (applied at app start, before
   // the TUI ever ran) visible; otherwise a silent pull looks indistinguishable from
   // "nothing happened". Reads the same cache buildPluginList/buildCombinedPluginList
   // already consulted; absent cache (never checked yet) shows nothing.
@@ -439,17 +465,16 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
 
   pushSticky("");   // spacer between the count and the engine/locations block
 
-  // where plugins live; under Claude the engine's version/update/location live here too
-  // (no npm section), under OpenCode the engine is its own npm row so it's omitted here.
   var abbr = function(pth) { return (pth && HOME && String(pth).indexOf(HOME) === 0) ? "~" + String(pth).slice(HOME.length) : pth; };
-  if (IS_CLAUDE) {
+  // An app with an npm-plugin mechanism already carries its engine as an npm row, so naming the
+  // manager here too would report the same thing twice.
+  if (!appNpmPlugins()) {
+    var mref = resolvedManager();
     var uv = getUpdaterVersion();
-    var upath = getUpdaterPath();
-    pushSticky("  " + DIM + "updater " + (uv ? "v" + uv : "(resolving)") + GRAY + " · press " + WHITE + "E" + GRAY + " to update" + (upath ? " · " + abbr(upath) : "") + RST);
-    pushSticky("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + RST);
-  } else {
-    pushSticky("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + " · npm " + abbr(HOME + "/.cache/opencode/packages") + RST);
+    pushSticky("  " + DIM + "manager " + (mref ? mref.id : "(unresolved)") + (uv ? " v" + uv : "") + GRAY + (getUpdaterPath() ? " · " + abbr(getUpdaterPath()) : "") + RST);
   }
+  var npmCache = appNpmPlugins() && appNpmPlugins().packageCache ? expandPath(appNpmPlugins().packageCache, CONFIG_DIR) : "";
+  pushSticky("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + (npmCache ? " · npm " + abbr(npmCache) : "") + RST);
 
   pushSticky("");   // spacer between the locations block and the plugin list
 
@@ -472,10 +497,8 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
     buildPluginItem(pushBody, i, pitem, nameW, cols, i === S.pcursor);
   }
 
-  // npm plugins are an OpenCode-only concept (opencode.jsonc). Under Claude there is
-  // no npm section at all. Under OpenCode, surface it even when empty so it's clearly
-  // present, pointing to the Marketplace.
-  if (!hadNpm && !IS_CLAUDE) {
+  // an app with an npm-plugin mechanism gets the section even when empty, pointing at the Marketplace
+  if (!hadNpm && appNpmPlugins()) {
     pushBody("", false);
     pushBody("  " + BOLD + WHITE + "npm plugins" + RST, false);
     pushBody("  " + DIM + "none installed — add from the Marketplace" + RST, false);

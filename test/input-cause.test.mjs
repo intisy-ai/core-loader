@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { inputCause } = require("../dist/input-cause.js");
 
-const TEXT_INPUT_MODES = ["input", "pinput", "mkinput", "mcpaddinput", "pcfginput", "sgprofinput", "sgurlinput", "search", "tabinput"];
+const TEXT_INPUT_MODES = ["input", "pinput", "mkinput", "mcpaddinput", "pcfginput", "search", "tabinput"];
 
 describe("inputCause", () => {
   it("keeps detail and a plain surface in list mode", () => {

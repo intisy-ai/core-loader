@@ -5,10 +5,12 @@
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { readJson } from "./json.js";
 import { join } from "path";
-import { HOME, MCP_CATALOG } from "./env.js";
+import { MCP_CATALOG } from "./env.js";
 import { loadMcpConfig, saveMcpConfig } from "./config.js";
 import { fetchCatalogsAsync } from "./marketplace.js";
 import { S } from "./state.js";
+import { appDescriptors, resolveHome } from "./app-descriptor.js";
+import { subdirName } from "./home-paths.js";
 
 // Cached once per session: the scan does readdirSync + many reads across the repos
 // and plugin-cache dirs, which made every MCP render (buildMcpList) hit disk and lag
@@ -95,12 +97,13 @@ export function scanPluginEmbeddedMcps() {
     } catch {}
   }
 
-  var claudeDir = join(HOME, ".config", "claude");
-  var ocDir = join(HOME, ".config", "opencode");
-  scanReposDir(join(claudeDir, "repos"));
-  scanReposDir(join(ocDir, "repos"));
-  scanPluginCache(join(claudeDir, "plugins", "cache"));
-  scanPluginCache(join(ocDir, "plugins", "cache"));
+  // every home the registry declares, so an app installed after this library shipped is scanned too
+  for (var desc of appDescriptors()) {
+    var home = resolveHome(desc);
+    if (!home) continue;
+    scanReposDir(join(home, subdirName("HUB_REPOS_SUBDIR", "repos")));
+    scanPluginCache(join(home, "plugins", "cache"));
+  }
 
   embedded._baseMcpNames = baseMcpNames;
   EMBEDDED_MCP_CACHE = embedded;

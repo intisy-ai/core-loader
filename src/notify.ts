@@ -1,9 +1,9 @@
 // @ts-nocheck
-// Claude-side bridge for auth-provider notifications. The proxy publishes user
-// notifications onto core's shared event bus; this registers a PostToolUse + Stop
-// hook that runs the loader's `bus-drain` action, which drains the bus and re-emits
-// each message as a Claude Code hook `systemMessage` (shown to the USER, never added
-// to the model's context). opencode uses toasts instead.
+// Bridge for auth-provider notifications. The proxy publishes user notifications onto
+// core's shared event bus; this registers a PostToolUse + Stop hook that runs the
+// loader's `bus-drain` action, which drains the bus and hands each message to the
+// app's own notification surface (shown to the USER, never added to the model's
+// context).
 
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "fs";
 import { readJson } from "./json.js";

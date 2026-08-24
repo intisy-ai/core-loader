@@ -5,41 +5,89 @@
 import { existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
-import { RST, BOLD, WHITE, RED } from "./format.js";
-import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH, OFFICIAL_PLUGINS } from "./env.js";
+import { RST, BOLD, WHITE, RED, isBooleanRowOn } from "./format.js";
+import { APP_NAME, CONFIG_DIR, HOME, PLUGINS_DIR, REPOS_DIR, MCP_CONFIG_PATH, tuiLog } from "./env.js";
 import { S } from "./state.js";
 import { cleanup } from "./out.js";
-import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS } from "./config.js";
-import { getUpdater, setupPlugin, installUpdater, updateUpdater, preloadUpdater, clearUpdaterCache } from "./updater.js";
+import { loadConfig, saveConfig, loadPlugins, savePlugins, loadGlobalSettings, setGlobalSetting, GLOBAL_SETTINGS_DEFAULTS, registerPlugin } from "./config.js";
+import { getUpdater, setupPlugin } from "./updater.js";
 import { openProject, openProjectSession, listSessions, togglePin, hideItem, unhideAll, changeProjectPath, outputDir, getActions } from "./projects.js";
-import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, probeConfigSchema, buildConfigItems, setPluginConfig } from "./plugins.js";
-import { buildMarketplaceList, installMarketplacePlugin, installViaNpm, selectInstallMethod, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync } from "./marketplace.js";
+import { getPluginActions, buildCombinedPluginList, fetchPluginRemotes, buildConfigItems, setPluginConfig, declarationFor, hostPluginId, invalidateDeclaration, readDeclaration } from "./plugins.js";
+import { runSettingsAction } from "./plugin-surface.js";
+import { buildMarketplaceList, installMarketplacePlugin, getMarketplaceActions, invalidateCatalogCache, fetchCatalogsAsync, invalidateSeedCache, fetchSeedMarketplacesAsync, fetchSourceCatalogAsync } from "./marketplace.js";
+import { invalidateCapabilityCatalog } from "./capability-catalog.js";
+import { homePaths } from "./home-paths.js";
 import { selectionKey, selectedInstallables } from "./selection.js";
 import { buildMcpList, installMcpServer, uninstallMcpServer, getMcpActions, buildInstalledMcpRows } from "./mcp.js";
 import { flash } from "./views/common.js";
-import { refreshSettings } from "./views/settings.js";
-import { getConfigLedger, configLedgerReady, configLedgerInstalled, preloadConfigLedger } from "./config-ledger.js";
-import { refreshVersioning, reconcileConfigLedger, VG_INIT_OPTS, VG_MENU_ITEMS } from "./views/versioning.js";
-import { buildGlobalSection, buildPluginSections } from "./settings-model.js";
+import { refreshSettings, settingsSubPages } from "./views/settings.js";
+import { refreshScreen, runScreenAction, resolveScreenAction } from "./views/screens.js";
+import { configFileFor, splitBySections } from "./settings-model.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
 import { emitLoaderActivity } from "./activity-seam.js";
+
+// A declared action runs through the plugin's own settings capability. One declaring `confirm` arms
+// on the first enter and runs on the second, which keeps a destructive action two keystrokes away
+// without a modal the config screen has no room for. The run is bounded and asynchronous, so the
+// editor stays on screen and busy while it happens; the trailing "..." is what animates the spinner.
+function activateConfigAction(citem) {
+  var pluginId = S.configTarget && S.configTarget.plugin;
+  if (!pluginId) return;
+  if (citem.confirm && S.configConfirm !== citem.key) { S.configConfirm = citem.key; return; }
+  S.configConfirm = null;
+  S.busy = true;
+  setBusyMessage(citem.label + "...");
+  render();
+  runSettingsAction(pluginId, citem.key).then(function (answer) {
+    S.busy = false;
+    if (!answer || answer.ok !== true) { flash(citem.label + ": " + ((answer && answer.message) || "action failed")); render(); return; }
+    refreshConfigItems();
+    flash(answer.message || (citem.label + ": done."));
+    render();
+  }).catch(function (error) {
+    S.busy = false;
+    tuiLog("reporting " + citem.key + " failed: " + String(error), true);
+  });
+}
+
+// Repaint the written row from the value that was just saved, before the authoritative re-read
+// lands. The re-read is asynchronous, so without this the frame drawn right after the keystroke
+// still shows the old value under a message saying it changed, and a second Enter would compute its
+// next value from the stale one and write the same thing again instead of toggling back.
+function markRowSaved(row, saved) {
+  if (!row) return;
+  row.value = (row.type === "number" && saved !== "" && !isNaN(Number(saved))) ? Number(saved) : saved;
+  row.isSet = true;
+}
+
+// Moves the config editor's cursor, clamped to the row list, clearing a revealed secret only
+// when the index actually changes: a clamp at either end must not drop a reveal on a keypress
+// that moved nothing.
+function stepCfgCursor(dir) {
+  var next = dir < 0 ? Math.max(0, S.cfgcursor - 1) : Math.min(S.configItems.length - 1, S.cfgcursor + 1);
+  if (next !== S.cfgcursor) S.cfgReveal = "";
+  S.cfgcursor = next;
+}
 
 // Enter on a config row: a boolean flips, a field with a declared choice list steps to
 // its next option, anything else opens the text input. Shared by both config editors so
 // the write path exists once.
 function activateConfigItem(citem, textMode) {
   if (!citem) return;
+  if (citem.kind === "action") { activateConfigAction(citem); return; }
+  S.configConfirm = null;
   var next = null;
-  if (citem.type === "boolean") next = !citem.value;
-  else if (Array.isArray(citem.options) && citem.options.length) {
+  if (citem.type === "boolean") next = !isBooleanRowOn(citem.value);
+  else if (citem.type !== "secret" && Array.isArray(citem.options) && citem.options.length) {
     var values = citem.options.map(function (o) { return typeof o === "string" ? o : o.value; });
     var at = values.indexOf(String(citem.value));
     next = values[(at + 1) % values.length];
   }
   if (next === null) {
     S.configEditKey = citem.key;
-    S.inputBuf = (citem.value === undefined || citem.value === null) ? "" : String(citem.value);
+    S.inputBuf = (citem.value === undefined || citem.value === null || citem.type === "secret") ? "" : String(citem.value);
+    S.cfgReveal = "";
     S.mode = textMode;
     return;
   }
@@ -47,6 +95,7 @@ function activateConfigItem(citem, textMode) {
     ? setGlobalSetting(citem.key, String(next))
     : setPluginConfig(S.configTarget.bundle, citem.key, String(next));
   if (err) { flash(citem.key + ": " + err); return; }
+  markRowSaved(citem, next);
   refreshConfigItems();
   flash(citem.key + " = " + next + " (restart to apply)");
 }
@@ -75,9 +124,9 @@ function cycleImpactFilter() {
   S.activityImpacts = IMPACT_CYCLE[(at + 1) % IMPACT_CYCLE.length].slice();
 }
 
-// Plugin lifecycle facts share one vocabulary with plugin-updater's, so a reader sees
-// the same actions whoever performed them. Only actions this menu performs ITSELF are
-// reported here: what it delegates to plugin-updater, plugin-updater already reports.
+// Plugin lifecycle facts share one vocabulary with the plugin manager's, so a reader
+// sees the same actions whoever performed them. Only actions this menu performs ITSELF
+// are reported here: what it delegates to the manager, the manager already reports.
 function reportPluginAction(action, name, details) {
   emitLoaderActivity({
     topic: "plugin.installed",
@@ -160,7 +209,7 @@ export function switchPluginSubPage() {
   S.inputBuf = "";
   if (S.pluginSubPage === "installed") {
     S.pluginSubPage = "marketplace";
-    S.mkLevel = "markets"; S.mkMarket = null; S.mkMarketKind = null; S.mkSelected = {};
+    S.mkLevel = "markets"; S.mkMarket = null; S.mkMarketKind = null; S.mkMarketSourceId = null; S.mkSelected = {};
     S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0;
   }
   else if (S.pluginSubPage === "marketplace" && S.customTabs.length > 0) { S.pluginSubPage = S.customTabs[0].id; }
@@ -176,14 +225,15 @@ export function switchPluginSubPage() {
 }
 
 // Fast nav within a (potentially long) Level-2 marketplace: jump the cursor to
-// the start of the previous/next category group ("Official"/"Community"/"Curated"
-// for the loader's own two catalogs). A capability marketplace's plugins carry no
+// the start of the previous/next category group (a declared source's entries
+// group by their capability-derived category; the built-in catalog groups by
+// "Community"/"Curated"). A capability marketplace's plugins carry no
 // category, so there is only one implicit group there; in that case (or any
 // single-group list) fall back to a 10-row page jump so the keys stay useful.
 function jumpMarketplaceGroup(dir) {
   var items = S.marketplaceItems;
   if (items.length === 0) return;
-  var groupOf = function(it) { return it.category || (it.official ? "Official" : it.capability ? "capability" : "Community"); };
+  var groupOf = function(it) { return it.category || (it.capability ? "capability" : "Community"); };
   var boundaries = [];
   for (var i = 0; i < items.length; i++) {
     if (i === 0 || groupOf(items[i]) !== groupOf(items[i - 1])) boundaries.push(i);
@@ -201,19 +251,9 @@ function jumpMarketplaceGroup(dir) {
   }
 }
 
-// Route a marketplace entry to the right installer: the engine itself (isUpdater)
-// goes through the app-aware installUpdater; everything else through the git/npm
-// path selectInstallMethod chooses. Calls done(errOrNull, methodLabel).
-function marketplaceInstall(item, done, forceMethod) {
-  if (item.isUpdater) {
-    var uerr = installUpdater(CONFIG_DIR, APP_NAME);
-    S.hasUpdater = false;   // re-detect on next render now the engine is set up
-    done(uerr || null, "updater");
-    return;
-  }
-  var method = forceMethod || selectInstallMethod(item, S.hasUpdater);
-  var install = method === "git" ? installMarketplacePlugin : installViaNpm;
-  install(item, function(err) { done(err, method); });
+// Install a marketplace entry through the resolved manager. Calls done(errOrNull, methodLabel).
+function marketplaceInstall(item, done) {
+  installMarketplacePlugin(item, function (err) { done(err, "git"); });
 }
 
 // Install a plugin browsed from a SEEDED default marketplace (not yet added to
@@ -269,9 +309,7 @@ export function handleKey(key) {
     var pi = pages.indexOf(S.page);
     var switchTo = function (np) {
       S.page = np; S.mode = "list";
-      S.globalKeyHandler = null;   // leaving the updater gate: don't let it intercept keys on the new tab
-      // landing on Settings with the Versioning sub-tab active → re-detect config-ledger
-      if (np === "settings" && S.settingsSubPage === "versioning") { try { reconcileConfigLedger(); } catch (e) {} }
+      S.globalKeyHandler = null;   // leaving the plugin-manager gate: don't let it intercept keys on the new tab
       if (np === "activity") {
         S.activityRecords = readActivityRecords();
         S.activityCursor = 0;
@@ -346,6 +384,11 @@ export function handleProjectKey(key) {
 }
 
 export function handlePluginKey(key) {
+  if (S.mode === "pdiag") {
+    if (key === "q") { cleanup(); process.exit(1); return; }
+    if (key === "escape" || key === "left" || key === "enter" || key === "space") S.mode = "list";
+    return;
+  }
   if (S.mode === "list") {
     // Esc backs out of the marketplace action menu (it keeps S.mode === "list"
     // and tracks its own S.mkMode) instead of quitting the loader; only the
@@ -353,7 +396,7 @@ export function handlePluginKey(key) {
     if (key === "escape" && S.pluginSubPage === "marketplace" && S.mkMode === "actions") { S.mkMode = "browse"; return; }
     // Esc at Level 2 backs out to Level 1 (the marketplace list) instead of quitting.
     if (key === "escape" && S.pluginSubPage === "marketplace" && S.mkLevel === "plugins") {
-      S.mkLevel = "markets"; S.mkMarket = null; S.mkMarketKind = null; S.mkSelected = {}; S.inputBuf = "";
+      S.mkLevel = "markets"; S.mkMarket = null; S.mkMarketKind = null; S.mkMarketSourceId = null; S.mkSelected = {}; S.inputBuf = "";
       S.marketplaceItems = buildMarketplaceList(); S.mkCursor = 0; S.mkScrollOff = 0;
       return;
     }
@@ -393,8 +436,7 @@ export function handlePluginKey(key) {
         else if (key === "down" || key === "s") { S.mkAcursor = Math.min(mkActs.length - 1, S.mkAcursor + 1); }
         else if (key === "enter" || key === "space") {
           var action = mkActs[S.mkAcursor].key;
-          if (action === "install" || action === "install-git" || action === "install-npm") {
-            var forceMethod = action === "install-git" ? "git" : action === "install-npm" ? "npm" : undefined;
+          if (action === "install" || action === "install-git") {
             S.mkMode = "browse";
             S.busy = true;
             setBusyMessage("Installing " + (mitem.name || mitem.repoName) + "...");
@@ -406,7 +448,7 @@ export function handlePluginKey(key) {
               S.marketplaceItems = buildMarketplaceList();
               if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
               render();
-            }, forceMethod);
+            });
             return;
           } else if (action === "install-app") {
             S.mkMode = "browse";
@@ -457,6 +499,7 @@ export function handlePluginKey(key) {
           if (!curItem) return;
           S.mkMarket = curItem.name;
           S.mkMarketKind = curItem.builtin || (curItem.capability ? "capability" : (curItem.seed ? "seed" : null));
+          S.mkMarketSourceId = curItem.sourceId || null;
           S.mkLevel = "plugins";
           S.mkCursor = 0;
           S.mkScrollOff = 0;
@@ -485,24 +528,22 @@ export function handlePluginKey(key) {
       else if (key === "r") {
         invalidateCatalogCache();
         invalidateSeedCache();
+        invalidateCapabilityCatalog(homePaths(CONFIG_DIR));
         S.catalogFetched = false;
         S.seedFetched = false;
+        S.sourceFetched = false;
         fetchCatalogsAsync();
         fetchSeedMarketplacesAsync();
+        fetchSourceCatalogAsync();
         S.marketplaceItems = buildMarketplaceList();
         flash("Refreshing catalog...");
       }
       else if (key === "i") {
         if (S.mkLevel !== "plugins") { flash("Open a marketplace first."); return; }
-        // Source from S.marketplaceItems (not the raw catalog) so the synthetic
-        // isUpdater entry buildMarketplaceList() injects is visible to the batch;
-        // it never appears in S.MARKETPLACE_CATALOG.
         var batch = selectedInstallables(S.marketplaceItems, loadPlugins().map(function(p) { return p.name; }), S.mkSelected);
         if (batch.length > 0) {
-          // Install the selection SEQUENTIALLY off-thread: each callback kicks the
-          // next, so only one clone runs at a time and the progress count is coherent.
-          // marketplaceInstall() routes isUpdater to installUpdater and everything
-          // else through selectInstallMethod, same as the single-item install path.
+          // Install the selection SEQUENTIALLY off-thread: each callback kicks the next, so only one
+          // clone runs at a time and the progress count is coherent.
           S.busy = true;
           var failed = [];
           var installNext = function(k) {
@@ -520,7 +561,7 @@ export function handlePluginKey(key) {
               return;
             }
             var batchItem = batch[k];
-            var batchMethod = batchItem.isUpdater ? "updater" : selectInstallMethod(batchItem, S.hasUpdater);
+            var batchMethod = "git";
             setBusyMessage("Installing " + (k + 1) + "/" + batch.length + " (" + batchMethod + ")...");
             render();
             marketplaceInstall(batchItem, function(berr) {
@@ -568,30 +609,12 @@ export function handlePluginKey(key) {
       else if (key === "down" || key === "s") { S.pcursor = Math.min(S.pluginItems.length - 1, S.pcursor + 1); }
       else if (key === "enter" || key === "space") {
         if (S.pluginItems.length > 0) {
-          var selp = S.pluginItems[S.pcursor];
-          // detect a core-plugin once (so getPluginActions can offer "Configure")
-          if (selp && selp._cfgProbed !== true) { selp._cfg = probeConfigSchema(selp); selp._cfgProbed = true; }
           S.mode = "pactions"; S.pacursor = 0;
         }
       }
       else if (key === "r") {
         S.pluginItems = buildCombinedPluginList();
         flash("Refreshed.");
-      }
-      else if (key === "e") {
-        S.busy = true;
-        setBusyMessage("Updating the updater engine...");
-        render();
-        updateUpdater(function (ue) {
-          // self-update cleared the cached engine module; re-import the (new) one so
-          // the TUI doesn't drop to "Updater Plugin Missing" after updating.
-          preloadUpdater().catch(function () {}).then(function () {
-            S.busy = false;
-            S.pluginItems = buildCombinedPluginList();
-            flash(ue ? ue : "Updater engine updated.");
-            render();
-          });
-        });
       }
       else if (key === "f") {
         S.busy = true;
@@ -694,6 +717,19 @@ export function handlePluginKey(key) {
         flash(pitem.name + ": auto-update " + (newVal ? "ON" : "OFF"));
         S.mode = "list";
       }
+      else if (action === "channel-experimental" || action === "channel-stable") {
+        var toExperimental = action === "channel-experimental";
+        // Explicit both ways: "inherit" here would no-op for a plugin riding a global yes.
+        pitem.onExperimental = toExperimental;
+        var cplugins = loadPlugins();
+        var cmatch = cplugins.find(function(r) { return r.name === pitem.name; });
+        if (cmatch) {
+          cmatch.channel = toExperimental ? "experimental" : "stable";
+          savePlugins(cplugins);
+        }
+        S.mode = "list";
+        runUpdateSequence([pitem], null);
+      }
       else if (action === "disable-plugin") {
         var updater = getUpdater();
         if (updater && updater.disable) {
@@ -729,7 +765,7 @@ export function handlePluginKey(key) {
       }
       else if (action === "uninstall-npm") {
         S.confirmAction = { type: "uninstall-npm", target: pitem };
-        S.confirmLabel = "Uninstall npm plugin " + pitem.name + "? It is removed from opencode.json.";
+        S.confirmLabel = "Uninstall npm plugin " + pitem.name + "? It is removed from the app's plugin list.";
         S.confirmCursor = 0;
         S.mode = "confirm";
       }
@@ -754,11 +790,16 @@ export function handlePluginKey(key) {
           render();
         });
       }
+      else if (action === "diagnostics") {
+        S.mode = "pdiag";
+      }
       else if (action === "configure") {
-        var cfg = pitem._cfg;
+        var cfg = declarationFor(hostPluginId(pitem));
         if (cfg && cfg.items && cfg.items.length) {
-          S.configTarget = cfg;
+          S.configTarget = { ...cfg, plugin: cfg.name, file: configFileFor(cfg) };
           S.configItems = cfg.items;
+          S.configConfirm = null;
+          S.cfgReveal = "";
           S.cfgcursor = 0; S.cfgScrollOff = 0;
           S.mode = "pconfig";
         } else {
@@ -808,9 +849,10 @@ export function handlePluginKey(key) {
     else if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; }
   } else if (S.mode === "pconfig") {
     var citem = S.configItems[S.cfgcursor];
-    if (key === "up" || key === "w") { S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
-    else if (key === "down" || key === "s") { S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
-    else if (key === "escape" || key === "q" || key === "left") { S.mode = "pactions"; }
+    if (key === "up" || key === "w") { S.configConfirm = null; stepCfgCursor(-1); }
+    else if (key === "down" || key === "s") { S.configConfirm = null; stepCfgCursor(1); }
+    else if (key === "escape" || key === "q" || key === "left") { S.configConfirm = null; S.cfgReveal = ""; S.mode = "pactions"; }
+    else if (key === "r" && citem && citem.type === "secret") { S.cfgReveal = S.cfgReveal === citem.key ? "" : citem.key; }
     else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
   } else if (S.mode === "confirm") {
     if (key === "y") {
@@ -997,7 +1039,7 @@ export function handleConfirmKey(key) {
       S.pluginItems = buildCombinedPluginList();
       if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
       if (!npmErr) reportPluginAction("uninstalled", npmName, { kind: "npm", message: "Uninstalled " + npmName });
-      flash(npmErr ? npmName + ": " + npmErr : npmName + " removed from opencode.json. Restart " + APP_NAME + " to unload.");
+      flash(npmErr ? npmName + ": " + npmErr : npmName + " removed from the app's plugin list. Restart " + APP_NAME + " to unload.");
     } else if (S.confirmAction && S.confirmAction.type === "uninstall-mcp") {
       uninstallMcpServer(S.confirmAction.target);
       S.mcpItems = buildMcpList("All");
@@ -1010,6 +1052,9 @@ export function handleConfirmKey(key) {
       S.pluginItems = buildCombinedPluginList();
       if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
       flash(ures && ures.ok ? (fpitem.name + " uninstalled.") : ("Failed: " + ((ures && ures.error) || "unknown error")));
+    } else if (S.confirmAction && S.confirmAction.type === "screen-action") {
+      var sa = S.confirmAction.target;
+      runContributedScreenAction(sa.entry, sa.row);
     }
     S.confirmAction = null;
     S.confirmLabel = "";
@@ -1024,126 +1069,39 @@ export function handleConfirmKey(key) {
   }
 }
 
-// Run a config-ledger action chosen from the git action menu (sgmenu) or, when the
-// repo isn't set up yet, the "press g to set up" shortcut in list mode. Always
-// leaves S.mode in a valid state (list, or sgdiff for the review screen) so a
-// caller never has to clean up after it.
-function runGitMenuAction(action) {
-  var m = getConfigLedger();
-  if (!m) { flash("config-ledger not installed."); S.mode = "list"; return; }
-  if (action === "commit") {
-    try { var made = m.autoCommit("manual"); flash(made ? "Committed." : "Nothing to commit."); }
-    catch (e) { flash("Commit failed: " + ((e && e.message) || e)); }
-    refreshVersioning(); S.mode = "list"; return;
-  }
-  if (action === "diff") {
-    try { S.clDiffRows = m.diffAgainstHead() || []; } catch { S.clDiffRows = []; }
-    S.mode = "sgdiff"; return;
-  }
-  if (action === "push") {
-    flash("Pushing...");
-    try { var pr = m.repo.push(); flash(pr && pr.message ? pr.message : (pr && pr.ok ? "Pushed." : "Push failed.")); }
-    catch (e) { flash("Push failed: " + ((e && e.message) || e)); }
-    S.mode = "list"; return;
-  }
-  if (action === "pull") {
-    flash("Pulling...");
-    try { var lr = m.repo.pull(); flash(lr && lr.message ? lr.message : (lr && lr.ok ? "Pulled." : "Pull failed.")); }
-    catch (e) { flash("Pull failed: " + ((e && e.message) || e)); }
-    refreshVersioning(); S.mode = "list"; return;
-  }
-  if (action === "history") { openHistoryPicker(); return; }
-  if (action === "profiles") { openProfiles(); return; }
-  if (action === "setup") { S.mode = "sgsetup"; S.sgSetupCursor = 0; return; }
-  flash("Unknown git action."); S.mode = "list";
-}
-
-// History flow (Versioning tab): pick a config file → pick a key → its value timeline.
-// Sections (file + keys) come from the same builders the Settings tab uses.
-function openHistoryPicker() {
-  var secs = [buildGlobalSection()];
-  var plugins = (S.pluginItems && S.pluginItems.length) ? S.pluginItems : [];
-  for (var s of buildPluginSections(plugins)) secs.push(s);
-  S.vgSections = secs; S.vgFileCursor = 0; S.mode = "vghfiles";
-}
-
-// Snapshot profiles.list()/current() into state and enter the picker (also used
-// by the "g" setup-not-ready shortcut and the "p" list-mode key below).
-function openProfiles() {
-  var m = getConfigLedger();
-  if (!m) { flash("config-ledger not installed."); return; }
-  try { S.clProfiles = m.profiles.list() || []; } catch { S.clProfiles = []; }
-  try { S.clProfileCurrent = m.profiles.current() || ""; } catch { S.clProfileCurrent = ""; }
-  S.clProfileCursor = Math.max(0, S.clProfiles.indexOf(S.clProfileCurrent));
-  S.mode = "sgprofiles";
-}
-
-// Repo-setup actions (S.mode === "sgsetup"): initialize+seed, open the remote-URL
-// input, or create a private GitHub repo via `gh` and set it as the remote.
-function runSetupAction(action) {
-  var m = getConfigLedger();
-  if (!m) { flash("config-ledger not installed."); S.mode = "list"; return; }
-  // Fresh-repo buttons (2): local-only, or initialize + connect a remote.
-  if (action === "init-local") {
-    try { m.setup.initAndSeed(); flash("Local repo initialized + seeded."); }
-    catch (e) { flash("Init failed: " + ((e && e.message) || e)); }
-    S.versioningCursor = 0; refreshVersioning(); S.mode = "list"; return;
-  }
-  if (action === "init-remote") {
-    try { m.setup.initAndSeed(); }
-    catch (e) { flash("Init failed: " + ((e && e.message) || e)); refreshVersioning(); S.mode = "list"; return; }
-    var gh = false; try { gh = m.setup.ghAvailable(); } catch {}
-    if (gh) {
-      try {
-        var gr = m.setup.ghCreatePrivate("config-ledger-" + (process.env.HUB_APP || "loader"));
-        flash(gr && gr.ok ? ("Created + connected: " + gr.url) : ("gh failed: " + (gr && gr.message)));
-      } catch (e) { flash("gh failed: " + ((e && e.message) || e)); }
-      S.versioningCursor = 0; refreshVersioning(); S.mode = "list";
-    } else {
-      S.inputBuf = ""; S.mode = "sgurlinput";   // no gh → paste a remote URL
-    }
-    return;
-  }
-  if (action === "init") {   // (still reachable from the managed "Repo setup" sub-menu as "Re-seed")
-    try { m.setup.initAndSeed(); flash("Repo re-seeded."); }
-    catch (e) { flash("Re-seed failed: " + ((e && e.message) || e)); }
-    S.versioningCursor = 0; refreshVersioning(); S.mode = "list"; return;
-  }
-  if (action === "remote") { S.inputBuf = ""; S.mode = "sgurlinput"; return; }
-  if (action === "gh") {
-    try {
-      var r = m.setup.ghCreatePrivate("config-ledger-" + (process.env.HUB_APP || "loader"));
-      flash(r && r.ok ? ("Created + set remote: " + r.url) : ("gh failed: " + (r && r.message)));
-    } catch (e) { flash("gh failed: " + ((e && e.message) || e)); }
-    refreshVersioning(); S.mode = "list"; return;
-  }
-  flash("Unknown setup action."); S.mode = "list";
-}
-
+// Every Settings sub-page's key handler: Tab cycles them all (Settings, then one per
+// contributed screen), from that sub-page's own top level; a drilled-in sub-mode
+// (pconfig, ...) owns Tab itself, never this branch.
 export function handleSettingsKey(key) {
-  // The Settings tab has two sub-tabs (Tab switches). Versioning owns all of its own keys.
-  if ((S.settingsSubPage || "settings") === "versioning") {
-    if (key === "tab" && S.mode === "list") { S.settingsSubPage = "settings"; S.mode = "list"; refreshSettings(); return; }
-    handleVersioningKey(key);
+  var sub = S.settingsSubPage || "settings";
+
+  if (key === "tab" && S.mode === "list") {
+    var pages = settingsSubPages();
+    var at = pages.findIndex(function (p) { return p.id === sub; });
+    var next = pages[(at + 1) % pages.length] || pages[0];
+    S.settingsSubPage = next.id;
+    S.mode = "list";
+    if (next.id === "settings") { refreshSettings(); }
+    else { S.screenCursor = 0; S.screenRows = []; refreshScreen(next.entry); }
     return;
   }
+
+  if (sub !== "settings") { handleScreenKey(key, sub); return; }
 
   if (S.mode === "pconfig" || S.mode === "pcfginput") {
     // Shared config editor: cursor nav + boolean toggle / open text input.
     // pcfginput text is captured by handleConfigInputData in the onData router.
     var citem = S.configItems[S.cfgcursor];
-    if (key === "up" || key === "w") { S.cfgcursor = Math.max(0, S.cfgcursor - 1); }
-    else if (key === "down" || key === "s") { S.cfgcursor = Math.min(S.configItems.length - 1, S.cfgcursor + 1); }
-    else if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; }
+    if (key === "up" || key === "w") { S.configConfirm = null; stepCfgCursor(-1); }
+    else if (key === "down" || key === "s") { S.configConfirm = null; stepCfgCursor(1); }
+    else if (key === "escape" || key === "q" || key === "left") { S.configConfirm = null; S.cfgReveal = ""; S.mode = "list"; }
+    else if (key === "r" && citem && citem.type === "secret") { S.cfgReveal = S.cfgReveal === citem.key ? "" : citem.key; }
     else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
     return;
   }
 
-  // Tab → Versioning sub-tab (and re-detect config-ledger, in case it was just installed).
-  if (key === "tab" && S.mode === "list") { S.settingsSubPage = "versioning"; S.mode = "list"; S.versioningCursor = 0; try { reconcileConfigLedger(); } catch (e) {} return; }
-
   // list mode: "Global"/"Plugins" grouped list (nav skips headers). Enter drills into a
-  // group's editor. Versioning/git lives in the Versioning sub-tab.
+  // group's editor.
   if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
   if (!S.settingsEntries || !S.settingsEntries.length) refreshSettings();
 
@@ -1165,8 +1123,10 @@ export function handleSettingsKey(key) {
     var sec = en.section;
     S.configTarget = (sec.kind === "global")
       ? { name: "settings", global: true, file: sec.file, items: sec.items }
-      : { name: sec.label, bundle: sec.bundle, file: sec.file, items: sec.items };
+      : { name: sec.label, plugin: sec.plugin, bundle: sec.bundle, file: sec.file, items: sec.items, addedBy: sec.addedBy, sectionId: sec.sectionId };
     S.configItems = sec.items;
+    S.configConfirm = null;
+    S.cfgReveal = "";
     S.cfgcursor = 0;
     S.cfgScrollOff = 0;
     S.mode = "pconfig";
@@ -1174,142 +1134,57 @@ export function handleSettingsKey(key) {
   }
 }
 
-// The Versioning tab (config-ledger git UI). Sub-screens are keyed by S.mode; the default
-// ("list") shows the install gate / setup menu / actions home depending on plugin state.
-export function handleVersioningKey(key) {
-  if (S.mode === "sgdiff") {
-    if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
-    if (key === "c") { runGitMenuAction("commit"); return; }
-    if (key === "i") {
-      var im = getConfigLedger();
-      if (!im) { flash("config-ledger not installed."); S.mode = "list"; return; }
-      try { var n = im.importFromHead(); flash("Imported " + n + " file(s) from repo (restart to apply)"); }
-      catch (e) { flash("Import failed: " + ((e && e.message) || e)); }
-      refreshVersioning(); S.mode = "list"; return;
-    }
-    return;
-  }
-  if (S.mode === "vghfiles") {
-    var fsecs = S.vgSections || [];
-    if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
-    if (key === "up" || key === "w") { S.vgFileCursor = Math.max(0, S.vgFileCursor - 1); return; }
-    if (key === "down" || key === "s") { S.vgFileCursor = Math.min((fsecs.length || 1) - 1, S.vgFileCursor + 1); return; }
-    if ((key === "enter" || key === "space") && fsecs[S.vgFileCursor]) {
-      var fsec = fsecs[S.vgFileCursor];
-      S.vgHistFile = fsec.file;
-      S.vgKeys = (fsec.items || []).map(function (it) { return it.key; });
-      S.vgKeyCursor = 0;
-      S.mode = "vghkeys";
-    }
-    return;
-  }
-  if (S.mode === "vghkeys") {
-    var vkeys = S.vgKeys || [];
-    if (key === "escape" || key === "q" || key === "left") { S.mode = "vghfiles"; return; }
-    if (key === "up" || key === "w") { S.vgKeyCursor = Math.max(0, S.vgKeyCursor - 1); return; }
-    if (key === "down" || key === "s") { S.vgKeyCursor = Math.min((vkeys.length || 1) - 1, S.vgKeyCursor + 1); return; }
-    if ((key === "enter" || key === "space") && vkeys[S.vgKeyCursor]) {
-      var khm = getConfigLedger();
-      S.clHistoryFile = S.vgHistFile;
-      S.clHistoryKey = vkeys[S.vgKeyCursor];
-      try { S.clHistory = khm.keyHistory(S.vgHistFile, vkeys[S.vgKeyCursor]) || []; } catch { S.clHistory = []; }
-      S.clHistoryCursor = 0;
-      S.mode = "sghistory";
-    }
-    return;
-  }
-  if (S.mode === "sghistory") {
-    if (key === "escape" || key === "q" || key === "left") { S.mode = "vghkeys"; return; }
-    if (key === "up" || key === "w") { S.clHistoryCursor = Math.max(0, S.clHistoryCursor - 1); return; }
-    if (key === "down" || key === "s") { S.clHistoryCursor = Math.min((S.clHistory.length || 1) - 1, S.clHistoryCursor + 1); return; }
-    if ((key === "enter" || key === "space") && S.clHistory[S.clHistoryCursor]) {
-      var hh = S.clHistory[S.clHistoryCursor];
-      var rm = getConfigLedger();
-      try { rm.rollbackKey(S.clHistoryFile, S.clHistoryKey, hh.hash); flash("Rolled back " + S.clHistoryKey + " to " + String(hh.hash).slice(0, 7)); }
-      catch (e) { flash("Rollback failed: " + ((e && e.message) || e)); }
-      refreshVersioning(); S.mode = "list"; return;
-    }
-    return;
-  }
-  if (S.mode === "sgprofiles") {
-    if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
-    if (key === "up" || key === "w") { S.clProfileCursor = Math.max(0, S.clProfileCursor - 1); return; }
-    if (key === "down" || key === "s") { S.clProfileCursor = Math.min((S.clProfiles.length || 1) - 1, S.clProfileCursor + 1); return; }
-    if (key === "n") { S.inputBuf = ""; S.mode = "sgprofinput"; return; }
-    if ((key === "enter" || key === "space") && S.clProfiles[S.clProfileCursor]) {
-      var pm = getConfigLedger();
-      try { pm.profiles.switchTo(S.clProfiles[S.clProfileCursor]); } catch (e) { flash("Switch failed: " + ((e && e.message) || e)); S.mode = "list"; return; }
-      try { S.clDiffRows = pm.diffAgainstHead() || []; } catch { S.clDiffRows = []; }
-      flash("Switched to " + S.clProfiles[S.clProfileCursor] + " -- review from the diff screen");
-      S.mode = "sgdiff"; return;
-    }
-    return;
-  }
-  if (S.mode === "sgsetup") {
-    var setupOpts = S._sgSetupOpts || [];
-    if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; return; }
-    if (key === "up" || key === "w") { S.sgSetupCursor = Math.max(0, S.sgSetupCursor - 1); return; }
-    if (key === "down" || key === "s") { S.sgSetupCursor = Math.min(setupOpts.length - 1, S.sgSetupCursor + 1); return; }
-    if (key === "enter" || key === "space") { runSetupAction(setupOpts[S.sgSetupCursor] && setupOpts[S.sgSetupCursor].key); return; }
-    return;
-  }
-
-  // default view (S.mode "list"): gate / setup / home, by config-ledger state
+// A contributed screen's own top level: rows only ever have a depth (indent) and,
+// optionally, an actionId. Cursor movement skips straight past non-actionable rows,
+// mirroring Settings' own stepEntry (which skips headers the same way).
+function handleScreenKey(key, sub) {
   if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
+  var page = settingsSubPages().find(function (p) { return p.id === sub; });
+  var entry = page && page.entry;
+  if (!entry) { S.settingsSubPage = "settings"; refreshSettings(); return; }
+  var rows = S.screenRows || [];
 
-  if (!configLedgerInstalled()) {
-    if (key === "enter" || key === "space") { installConfigLedger(); }   // one Enter installs (updater first if needed)
+  function stepRow(dir) {
+    var n = rows.length;
+    var i = S.screenCursor;
+    for (var step = 0; step < n; step++) {
+      i += dir;
+      if (i < 0 || i >= n) return;
+      if (rows[i] && rows[i].actionId) { S.screenCursor = i; return; }
+    }
+  }
+  if (key === "up" || key === "w") { stepRow(-1); return; }
+  if (key === "down" || key === "s") { stepRow(1); return; }
+
+  if (key === "enter" || key === "space") {
+    var row = rows[S.screenCursor];
+    if (!row || !row.actionId) return;
+    var action = resolveScreenAction(entry, row.actionId);
+    if (action.confirm) {
+      S.confirmAction = { type: "screen-action", target: { entry: entry, row: row } };
+      S.confirmLabel = action.confirm;
+      S.confirmCursor = 0;
+      S.mode = "confirm";
+      return;
+    }
+    runContributedScreenAction(entry, row);
     return;
   }
-  if (!configLedgerReady()) {
-    if (key === "up" || key === "w") { S.versioningCursor = Math.max(0, S.versioningCursor - 1); return; }
-    if (key === "down" || key === "s") { S.versioningCursor = Math.min(VG_INIT_OPTS.length - 1, S.versioningCursor + 1); return; }
-    if (key === "enter" || key === "space") { runSetupAction(VG_INIT_OPTS[S.versioningCursor] && VG_INIT_OPTS[S.versioningCursor].key); return; }
-    return;
-  }
-  // ready → actions home
-  var items = VG_MENU_ITEMS;
-  if (key === "up" || key === "w") { S.versioningCursor = Math.max(0, S.versioningCursor - 1); return; }
-  if (key === "down" || key === "s") { S.versioningCursor = Math.min(items.length - 1, S.versioningCursor + 1); return; }
-  if (key === "enter" || key === "space") { runGitMenuAction(items[S.versioningCursor].key); return; }
 }
 
-// Install config-ledger on demand from the Settings tab (non-blocking: the tab stays
-// usable without it). Uses the same marketplace install path as the Plugins tab, then
-// re-imports the freshly cloned lib so git features light up without a restart.
-function installConfigLedger() {
-  var entry = (OFFICIAL_PLUGINS || []).find(function (p) { return p.name === "config-ledger"; });
-  if (!entry) { flash("config-ledger not found in the official catalog."); return; }
-  // plugin-updater is the engine that installs & manages every git plugin; it is a
-  // prerequisite. Install it first (if not already) with the same step-checklist screen
-  // the Plugins tab uses, then continue to config-ledger. One Enter does both.
-  var upd = getUpdater();
-  if (upd && typeof upd.updatePluginPublic === "function") { doInstallConfigLedger(entry); return; }
-  S.updaterInstalling = true; S.updaterSteps = []; render();
-  var uerr = installUpdater(CONFIG_DIR, APP_NAME, function (label) { S.updaterSteps.push(label); render(); });
-  S.updaterInstalling = false;
-  clearUpdaterCache();   // installUpdater ran the engine; re-import it so getUpdater() sees it
-  if (uerr) { flash(uerr); render(); return; }
-  preloadUpdater().catch(function () {}).then(function () { S.hasUpdater = false; doInstallConfigLedger(entry); });
-}
-
-function doInstallConfigLedger(entry) {
+// S.busy is armed before the call, but released only inside the callback's finally: a throw
+// from within the callback body still releases it, a synchronous throw out of runScreenAction
+// itself does not, and leaves the gate armed.
+function runContributedScreenAction(entry, row) {
   S.busy = true;
-  S.clInstalling = true;               // Versioning shows a spinner progress screen while this runs
-  setBusyMessage("Installing config-ledger... (clone + build)");
-  render();
-  marketplaceInstall({ name: entry.name, repoName: entry.repoName, url: entry.url, install: "git" }, function (err) {
-    S.busy = false;
-    S.clInstalling = false;
-    if (err) { flash(err); render(); return; }
-    preloadConfigLedger().catch(function () {}).then(function () {
-      try { S.pluginItems = buildCombinedPluginList(); } catch (e) {}
-      refreshSettings();               // config-ledger now appears as a plugin in Settings
-      S.versioningCursor = 0; refreshVersioning();   // Versioning tab flips to the setup screen
-      flash(configLedgerInstalled() ? "config-ledger installed! Set up the repo below." : "Installed — restart to activate.");
+  runScreenAction(entry, row, function (answer) {
+    try {
+      if (answer && answer.message) flash(answer.message);
       render();
-    });
-  }, "git");
+    } finally {
+      S.busy = false;
+    }
+  });
 }
 
 export function handleMcpKey(key) {
@@ -1455,80 +1330,62 @@ export function handleSearchData(buf) {
   }
 }
 
-// Re-read a plugin's config schema after a change so the editor shows fresh values.
+// Re-read the edited target after a change so the editor shows fresh values. The global file is
+// read straight from disk; a plugin's declaration is re-read through its capability and its own
+// values channel, which is asynchronous, so the rows land on the next render.
 function refreshConfigItems() {
   if (!S.configTarget) return;
   if (S.configTarget.global) {
     S.configItems = buildConfigItems({ defaults: GLOBAL_SETTINGS_DEFAULTS, current: loadGlobalSettings() });
     S.configTarget.items = S.configItems;
-  } else {
-    try {
-      var out = execSync('node "' + S.configTarget.bundle + '" config schema', { encoding: "utf-8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] });
-      var data = JSON.parse(String(out).trim());
-      S.configItems = buildConfigItems(data);
-      S.configTarget.items = S.configItems;
-      // Keep the Settings tab's cached plugin section in sync so its rebuilt rows
-      // show the freshly saved value (buildPluginSections reuses the cached probe).
-      for (var pi = 0; pi < (S.pluginItems || []).length; pi++) {
-        var pit = S.pluginItems[pi];
-        if (pit && pit._cfg && pit._cfg.bundle === S.configTarget.bundle) { pit._cfg.items = S.configItems; break; }
-      }
-    } catch { /* keep stale view */ }
+    if (S.cfgcursor >= S.configItems.length) S.cfgcursor = Math.max(0, S.configItems.length - 1);
+    if (S.page === "settings") { try { refreshSettings(); } catch (e) {} }
+    return;
   }
-  if (S.cfgcursor >= S.configItems.length) S.cfgcursor = Math.max(0, S.configItems.length - 1);
-  // On the Settings tab, rebuild the unified rows so values + modified markers refresh.
-  if (S.page === "settings") { try { refreshSettings(); } catch (e) {} }
+  var pluginId = S.configTarget.plugin;
+  if (!pluginId) return;
+  invalidateDeclaration(pluginId);
+  readDeclaration(pluginId).then(function (declaration) {
+    if (!declaration || !S.configTarget || S.configTarget.plugin !== pluginId) return;
+    // A contributed section shows only the controls it claimed, so re-resolve it rather than
+    // replacing its rows with the plugin's whole flat list.
+    if (S.configTarget.sectionId) {
+      var mine = splitBySections(declaration).filter(function (s) { return s.sectionId === S.configTarget.sectionId; })[0];
+      S.configItems = mine ? mine.items : declaration.items;
+    } else {
+      S.configItems = declaration.items;
+    }
+    S.configTarget.items = S.configItems;
+    if (S.cfgcursor >= S.configItems.length) S.cfgcursor = Math.max(0, S.configItems.length - 1);
+    if (S.page === "settings") { try { refreshSettings(); } catch (e) {} }
+    render();
+  }).catch(function (error) {
+    tuiLog("re-reading " + pluginId + "'s declaration failed: " + String(error), true);
+  });
 }
 
 // Free-text entry for a non-boolean config value; Enter saves via `config set`.
 export function handleConfigInputData(buf) {
-  if (buf[0] === 27) { S.inputBuf = ""; S.mode = "pconfig"; return; }   // esc cancels
+  if (buf[0] === 27) { S.inputBuf = ""; S.cfgReveal = ""; S.mode = "pconfig"; return; }   // esc cancels
   if (buf[0] === 13 || buf[0] === 10) {
     var val = S.inputBuf;
     var key = S.configEditKey;
     S.inputBuf = "";
+    S.cfgReveal = "";
     S.mode = "pconfig";
     if (S.configTarget && key) {
       var serr = S.configTarget.global ? setGlobalSetting(key, val) : setPluginConfig(S.configTarget.bundle, key, val);
       if (serr) flash(key + ": " + serr);
-      else { refreshConfigItems(); flash(key + " saved (restart to apply)."); }
+      else {
+        markRowSaved((S.configItems || []).find(function (row) { return row.key === key; }), val);
+        refreshConfigItems();
+        flash(key + " saved (restart to apply).");
+      }
     }
     return;
   }
   if (buf[0] === 127 || buf[0] === 8) { S.inputBuf = S.inputBuf.slice(0, -1); return; }
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
-}
-
-// Free-text entry for the two config-ledger sub-modes in the Versioning tab:
-// "sgprofinput" (new profile/branch name) and "sgurlinput" (remote URL). Mirrors
-// handleConfigInputData's buf[0] byte-code convention (esc/enter/backspace/printable).
-export function handleSettingsGitInputData(buf) {
-  var m = getConfigLedger();
-  if (buf[0] === 27) {   // esc cancels
-    S.inputBuf = "";
-    S.mode = (S.mode === "sgurlinput") ? "sgsetup" : "list";
-    return;
-  }
-  if (buf[0] === 13 || buf[0] === 10) {   // enter commits
-    var val = (S.inputBuf || "").trim();
-    S.inputBuf = "";
-    if (S.mode === "sgprofinput") {
-      if (val && m) {
-        try { m.profiles.create(val); m.profiles.switchTo(val); flash("Created profile " + val); }
-        catch (e) { flash("Create failed: " + ((e && e.message) || e)); }
-      }
-      S.mode = "list"; refreshVersioning();
-    } else {   // sgurlinput
-      if (val && m) {
-        try { m.setup.setRemote(val); flash("Remote set: " + val); }
-        catch (e) { flash("Set remote failed: " + ((e && e.message) || e)); }
-      }
-      S.mode = "sgsetup";
-    }
-    return;
-  }
-  if (buf[0] === 127 || buf[0] === 8) { S.inputBuf = S.inputBuf.slice(0, -1); return; }   // backspace
-  if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);            // printable
 }
 
 export function handlePluginInputData(buf) {
@@ -1539,11 +1396,7 @@ export function handlePluginInputData(buf) {
     S.mode = "list";
     if (!url) return;
     var name = url.split("/").pop() || url;
-    var plugins = loadPlugins();
-    if (!plugins.some(function(r) { return r.name === name; })) {
-      plugins.push({ name: name, url: url, enabled: true, autoUpdate: true });
-      savePlugins(plugins);
-    }
+    registerPlugin(name, url);
     flash("Setting up " + name + "...");
     render();
     setupPlugin({ name: name, url: url }, function(err) {
@@ -1558,10 +1411,10 @@ export function handlePluginInputData(buf) {
 }
 
 // Text entry for the two universal marketplace "add" actions (S.mode === "mkinput",
-// S.mkAddAction picks which). "add_plugin_url" installs via the SAME updater path
-// every other marketplace install uses (installMarketplacePlugin -> `plugin-updater add
-// <url>`), so it works identically to the CLI's `plugins install <url>`. "add_marketplace"
-// is generic, it just calls the app-registered S.capabilities.addMarketplace(input).
+// S.mkAddAction picks which). "add_plugin_url" installs via the SAME path every other
+// marketplace install uses (installMarketplacePlugin, through the resolved manager), so
+// it works identically to the CLI's `plugins install <url>`. "add_marketplace" is
+// generic, it just calls the app-registered S.capabilities.addMarketplace(input).
 export function handleMarketplaceAddInputData(buf) {
   if (buf[0] === 27) { S.inputBuf = ""; S.mkAddAction = null; S.mode = "list"; return; }
   if (buf[0] === 3) { cleanup(); process.exit(1); }

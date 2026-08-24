@@ -2,29 +2,10 @@
 // Shared view helpers: status message, spinner, hint bar, and the confirm/help
 // overlays. flash/scheduleRender drive redraws via render().
 
-import { RST, BOLD, DIM, GRAY, WHITE, GREEN, YELLOW, OK, BG_SEL, stringWidth, trunc, pad, ACCENT, rule } from "../format.js";
+import { RST, BOLD, DIM, GRAY, WHITE, GREEN, YELLOW, BG_SEL, stringWidth, trunc, pad, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
 import { HELP_BINDINGS, SPINNER_FRAMES } from "../env.js";
 import { render } from "./render.js";
-
-// The updater-install step checklist, shown in the BODY while installUpdater runs
-// (its onStep callback re-renders between the synchronous steps). Shared by the Plugins
-// tab AND the Settings tab so the "installing the updater engine" screen is identical.
-export function updaterInstallProgress(pushBody, pushFoot, barW) {
-  pushBody("  " + BOLD + WHITE + "Installing the updater engine" + RST, false);
-  pushBody("", false);
-  var usteps = S.updaterSteps || [];
-  for (var ui = 0; ui < usteps.length; ui++) {
-    var last = ui === usteps.length - 1;
-    var mark = last ? (ACCENT + "•" + RST) : (OK + "✓" + RST);
-    pushBody("    " + mark + " " + (last ? WHITE : DIM) + usteps[ui] + RST, false);
-  }
-  if (usteps.length === 0) pushBody("    " + DIM + "starting…" + RST, false);
-  pushBody("", false);
-  pushBody("  " + DIM + "This can take up to a minute (clone + build)…" + RST, false);
-  pushFoot("  " + rule(barW));
-  pushFoot("  " + DIM + "Please wait…" + RST);
-}
 
 // One marketplace row, shared by the plugins AND MCP marketplaces, they differ only
 // in the badge (curated ✦ vs git/npm) and the selected sub-line, never the layout.

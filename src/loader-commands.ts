@@ -1,3 +1,4 @@
+import { CONFIG_SUBDIR } from "./env.js";
 // @ts-nocheck
 // Shared slash-command engine for BOTH loaders. Each loader deploys ONLY to its
 // own app's command dir (not cross-app), so its /plugins + /accounts don't collide
@@ -6,19 +7,21 @@
 //
 //   makeLoaderCommands({ plugin, commandDir, loaderEntry, runConfigCli, authHint, busDrain })
 //     plugin       - package name (also the /<plugin>-config command name)
-//     commandDir   - app command subdir ("commands" for Claude, "command" for opencode)
+//     commandDir   - app command subdir, supplied by the caller from its own
+//                    descriptor's commandsSubdir
 //     loaderEntry  - (configDir) => absolute path to the loader's runtime plugin.js
 //     runConfigCli - core's runConfigCli, bound to the caller's bundle
 //     authHint     - trailing sentence for the /accounts body when none are signed in
-//     busDrain     - optional; drains the event bus and prints a Claude systemMessage
-//                    (wired only by the loader whose app has the drain hook)
+//     busDrain     - optional; drains the event bus and surfaces each message through
+//                    the app's own notification channel (wired only by loaders whose
+//                    app supports it)
 
 import { join } from "path";
 import { readJson } from "./json.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 
 export function makeLoaderCommands(opts) {
-  const { plugin, commandDir, loaderEntry, runConfigCli, authHint, busDrain } = opts;
+  const { plugin, commandDir, loaderEntry, runConfigCli, runAllConfigCli, configTargets, authHint, busDrain } = opts;
 
   function commandDefs(entry) {
     const node = `node "${entry}"`;
@@ -29,6 +32,13 @@ export function makeLoaderCommands(opts) {
         argumentHint: "list | get <key> | set <key> <value>",
         shell: `${node} config $ARGUMENTS`,
         body: `Above is the ${plugin} config result. Report it; if the user changed a setting, confirm the new value.`,
+      },
+      {
+        name: "config",
+        description: "View/change any plugin's settings and the global settings",
+        argumentHint: "[global | <plugin>] [list | get <key> | set <key> <value>]",
+        shell: `${node} config-all $ARGUMENTS`,
+        body: "Above is the global settings block plus one block per installed plugin. Present it clearly. To change one, run `/config <target> set <key> <value>`, where the target is `global` or a plugin name, then confirm the new value.",
       },
       {
         name: "plugins",
@@ -68,7 +78,7 @@ export function makeLoaderCommands(opts) {
   }
 
   function listPlugins(configDir) {
-    for (const p of [join(configDir, "config", "plugins.json"), join(configDir, "plugins.json")]) {
+    for (const p of [join(configDir, CONFIG_SUBDIR, "plugins.json"), join(configDir, "plugins.json")]) {
       const arr = readJson(p);
       if (arr === null) continue;
       if (!Array.isArray(arr) || !arr.length) return console.log("No plugins configured.");
@@ -79,7 +89,7 @@ export function makeLoaderCommands(opts) {
   }
 
   function listAccounts(configDir) {
-    for (const p of [join(configDir, "config", "accounts.json"), join(configDir, "accounts.json"), join(configDir, "config", "core-auth-accounts.json"), join(configDir, "core-auth-accounts.json")]) {
+    for (const p of [join(configDir, CONFIG_SUBDIR, "accounts.json"), join(configDir, "accounts.json"), join(configDir, CONFIG_SUBDIR, "core-auth-accounts.json"), join(configDir, "core-auth-accounts.json")]) {
       const store = readJson(p);
       if (store === null || typeof store !== "object") continue;
       const lines = [];
@@ -96,6 +106,17 @@ export function makeLoaderCommands(opts) {
     const argv = process.argv.slice(2);
     if (argv[0] === "config") {
       runConfigCli(plugin, argv.slice(1));
+      return true;
+    }
+    // The app's settings command, which the LOADER owns: a plugin declares what its settings ARE
+    // and knows nothing about how they are edited, so one command serves every plugin here rather
+    // than each plugin shipping its own.
+    if (argv[0] === "config-all") {
+      if (typeof runAllConfigCli !== "function" || typeof configTargets !== "function") return true;
+      // Registering the installed plugins declarations is what makes them answerable HERE: this is
+      // a fresh process, so nothing has read a manifest yet.
+      const declared = configTargets(configDir);
+      runAllConfigCli(argv.slice(1), { plugins: declared });
       return true;
     }
     if (argv[0] === "plugins") {

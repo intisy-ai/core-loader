@@ -1,26 +1,34 @@
 // @ts-nocheck
 // Non-interactive loader CLI (`cc|oc <plugins|providers|proxy|doctor>`); runs under
-// node so the wrapper can dispatch here without bun. Mutations drive plugin-updater
-// via transient npx, never a persistent require.
+// node so the wrapper can dispatch here without bun. Mutations run through the
+// plugin manager this home resolved, never npx.
 
 import { existsSync, readFileSync } from "fs";
 import { readJson } from "./json.js";
 import { join } from "path";
-import { execFileSync } from "child_process";
 import {
-  IS_CLAUDE,
+  APP_ID,
+  APP_NAME,
+  CLI_CMD,
+  CONFIG_DIR,
   CONFIG_FOLDER,
   PLUGINS_JSON,
   REPOS_DIR,
   PLUGINS_DIR,
 } from "./env.js";
+import { appWrapperCommand } from "./app-descriptor.js";
 import { readDeployedProviders } from "./loader-runtime.js";
+import { getUpdater, managerBootstrapCommand, preloadUpdater, resolvedManager, setupPlugin } from "./updater.js";
+import { loaderConfigName, registerPlugin } from "./config.js";
 
 const PROXY_PORT = parseInt(process.env.HUB_PROXY_PORT || "34567", 10);
 const PROXY_URL = "http://127.0.0.1:" + PROXY_PORT;
-const UPDATER_APP = IS_CLAUDE ? "claude" : "opencode";
+const UPDATER_APP = APP_ID;
 const ACCOUNTS_JSON = join(CONFIG_FOLDER, "accounts.json");
-const LOADER_CONFIG = join(CONFIG_FOLDER, UPDATER_APP === "claude" ? "claude-code-loader.json" : "opencode-loader.json");
+const LOADER_CONFIG = join(CONFIG_FOLDER, loaderConfigName() + ".json");
+// The wrapper's own name is app-specific data (e.g. "cc"/"oc"), declared beside the app's other
+// traits; an app that declares none is launched by its own binary instead.
+const WRAPPER_CMD = appWrapperCommand() || CLI_CMD;
 
 const OK = "✓";
 const BAD = "✗";
@@ -58,21 +66,38 @@ function pluginsList() {
   }
 }
 
-function runUpdater(args) {
-  const full = ["-y", "plugin-updater@latest"].concat(args, ["--app", UPDATER_APP]);
-  console.log("$ npx " + full.join(" ") + "\n");
-  execFileSync("npx", full, { stdio: "inherit" });
+// Mutations run through the plugin manager this home resolved. npx is never used: it would fetch the
+// published package rather than run what this home installed.
+async function withManager() {
+  await preloadUpdater();
+  const manager = getUpdater();
+  if (manager) return manager;
+  console.error("No plugin in this home declares the plugin-management capability, so plugins cannot be installed or updated from here.");
+  const command = managerBootstrapCommand();
+  if (command) console.error("Install one yourself with: " + command);
+  process.exit(1);
 }
 
-function pluginsInstall(url) {
+async function pluginsInstall(url) {
   if (!url) { console.error("usage: plugins install <git-url>"); process.exit(1); }
-  runUpdater(["add", url]);
+  await withManager();
+  const name = String(url).replace(/\.git$/, "").split("/").pop() || url;
+  registerPlugin(name, url);
+  console.log("Installing " + name + " ...");
+  const failure = await new Promise((resolve) => setupPlugin({ name: name, url: url }, resolve));
+  if (failure) { console.error(name + ": " + failure); process.exit(1); }
+  console.log(name + " installed.");
 }
 
-function pluginsUpdate(name) {
-  // plugin-updater's `run` refreshes every plugin; there is no single-plugin verb.
-  if (name) console.log("(updating all plugins; per-plugin update is not a separate operation)\n");
-  runUpdater(["run"]);
+async function pluginsUpdate(name) {
+  const manager = await withManager();
+  const verb = name ? "updateOne" : "updateAll";
+  if (typeof manager[verb] !== "function") {
+    console.error("the installed plugin manager offers no " + verb);
+    process.exit(1);
+  }
+  await (name ? manager.updateOne(CONFIG_DIR, name) : manager.updateAll(CONFIG_DIR));
+  console.log(name ? (name + " updated.") : "All plugins updated.");
 }
 
 // ---- providers -----------------------------------------------------------
@@ -156,20 +181,19 @@ async function probeProxy(timeoutMs) {
 async function proxyStatus() {
   const up = await probeProxy(2000);
   console.log("Proxy (" + PROXY_URL + "): " + (up ? "UP " + OK : "DOWN " + BAD));
-  if (!up) console.log("  Start it by launching `" + (UPDATER_APP === "claude" ? "cc" : "oc") + "` (the wrapper starts the daemon).");
+  if (!up) console.log("  Start it by launching `" + WRAPPER_CMD + "` (the wrapper starts the daemon).");
 }
 
 // ---- doctor --------------------------------------------------------------
 
 function wrapperState() {
-  const bin = join(process.env.HOME || process.env.USERPROFILE || "", ".local", "bin", UPDATER_APP === "claude" ? "cc" : "oc");
+  // An empty WRAPPER_CMD would collapse the join to the bin DIRECTORY itself, and reading that
+  // throws EISDIR rather than answering "not installed".
+  if (!WRAPPER_CMD) return { installed: false };
+  const bin = join(process.env.HOME || process.env.USERPROFILE || "", ".local", "bin", WRAPPER_CMD);
   if (!existsSync(bin)) return { installed: false };
   const text = readFileSync(bin, "utf8");
   return { installed: true, routesViaToken: text.includes("ANTHROPIC_AUTH_TOKEN") };
-}
-
-function hasNpx() {
-  try { execFileSync("npx", ["--version"], { stdio: "ignore" }); return true; } catch { return false; }
 }
 
 async function doctor() {
@@ -198,7 +222,9 @@ async function doctor() {
   const deployed = entries.filter((entry) => existsSync(join(PLUGINS_DIR, (entry.pluginFile || entry.name + ".js"))));
   console.log("  " + pad("plugins.json", 26) + entries.length + " entries, " + deployed.length + " deployed");
 
-  console.log("  " + pad("plugin-updater (npx)", 26) + (hasNpx() ? "npx available " + OK : "npx MISSING " + BAD));
+  await preloadUpdater();
+  const manager = resolvedManager();
+  console.log("  " + pad("plugin manager", 26) + (manager ? manager.id + " (" + manager.source + ") " + OK : "none installed " + BAD));
 }
 
 // ---- dispatch ------------------------------------------------------------
@@ -209,8 +235,8 @@ async function main() {
     case "plugins": {
       const op = rest[0];
       if (op === "list" || op === undefined) return pluginsList();
-      if (op === "install") return pluginsInstall(rest[1]);
-      if (op === "update") return pluginsUpdate(rest[1]);
+      if (op === "install") return await pluginsInstall(rest[1]);
+      if (op === "update") return await pluginsUpdate(rest[1]);
       console.error("usage: plugins <list|install <url>|update [name]>");
       process.exit(1);
       break;
@@ -223,7 +249,7 @@ async function main() {
     case "doctor":
       return doctor();
     default:
-      console.log("usage: " + (UPDATER_APP === "claude" ? "cc" : "oc") + " <plugins|providers|proxy|doctor>");
+      console.log("usage: " + WRAPPER_CMD + " <plugins|providers|proxy|doctor>");
       console.log("  plugins list | install <git-url> | update [name]");
       console.log("  providers            list providers, accounts, and tier mapping");
       console.log("  proxy status         check the loader proxy daemon");

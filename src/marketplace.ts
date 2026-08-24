@@ -2,17 +2,19 @@
 // Plugin marketplace: async catalog fetches (GitHub topics, npm, awesome list),
 // on-disk catalog cache, list building, and one-shot plugin install via git.
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
-import { readJson, readJsonc } from "./json.js";
-import { join } from "path";
+import { existsSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
+import { readJson } from "./json.js";
 import { exec } from "child_process";
-import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, OFFICIAL_PLUGINS, FEATURED_PLUGINS, APP_NAME, CONFIG_DIR, IS_CLAUDE, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, tuiLog } from "./env.js";
+import { CATALOG_CACHE_PATH, CACHE_DIR, MCP_CATALOG, FEATURED_PLUGINS, APP_ID, DEFAULT_MARKETPLACES, SEED_CACHE_PATH, CONFIG_DIR, MARKETPLACE_MANIFEST_PATH, tuiLog } from "./env.js";
+import { appDiscovery } from "./app-descriptor.js";
 import { S } from "./state.js";
-import { loadPlugins, catalogCacheHours } from "./config.js";
+import { loadPlugins, catalogCacheHours, registerPlugin } from "./config.js";
 import { scheduleRender } from "./views/common.js";
 import { buildMcpList } from "./mcp.js";
-import { getUpdater } from "./updater.js";
-import { spawnEnv } from "./activity-seam.js";
+import { setupPlugin } from "./updater.js";
+import { homePaths } from "./home-paths.js";
+import { readMarketplaceSources } from "./catalog-sources.js";
+import { catalogFor, categoryOf } from "./capability-catalog.js";
 
 export function invalidateCatalogCache() {
   try { unlinkSync(CATALOG_CACHE_PATH); } catch {}
@@ -22,12 +24,25 @@ export function invalidateSeedCache() {
   try { unlinkSync(SEED_CACHE_PATH); } catch {}
 }
 
+/**
+ * A cached entry carrying a category nothing derives any more, brought onto the current vocabulary.
+ *
+ * @remarks
+ * A cache written before the category came from an entry's own capabilities can still hold
+ * "Official", and the renderer emits a heading on every category change, so a single stale value
+ * interleaves headings down the whole list. The cache is the one place such a value enters.
+ */
+function withCurrentCategory(entry) {
+  if (entry && entry.category === "Official") entry.category = "Community";
+  return entry;
+}
+
 export function loadCatalogCache() {
   try {
     var cached = readJson(CATALOG_CACHE_PATH);
     if (!cached || Date.now() - cached.time > catalogCacheHours() * 3600000) return false;
     if (!Array.isArray(cached.marketplace) || cached.marketplace.length === 0) return false;
-    for (var ce of cached.marketplace) S.MARKETPLACE_CATALOG.push(ce);
+    for (var ce of cached.marketplace) S.MARKETPLACE_CATALOG.push(withCurrentCategory(ce));
     for (var me of (cached.mcp || [])) {
       var existing = MCP_CATALOG.find(function(x) { return x.name === me.name; });
       // a pre-seeded curated entry stays in place but adopts the cached stars/repo
@@ -115,9 +130,9 @@ export function fetchSeedMarketplacesAsync() {
       seedSettled();
       return;
     }
-    var url = "https://raw.githubusercontent.com/" + seed.repo + "/" + branches[idx] + "/.claude-plugin/marketplace.json";
+    var url = "https://raw.githubusercontent.com/" + seed.repo + "/" + branches[idx] + "/" + MARKETPLACE_MANIFEST_PATH;
     S.catalogPending++;
-    exec(curlCmd + ' -sL -H "User-Agent: OpenCode" "' + url + '"', { timeout: 15000 }, function(err, stdout) {
+    exec(curlCmd + ' -sL -H "User-Agent: intisy-ai-loader" "' + url + '"', { timeout: 15000 }, function(err, stdout) {
       S.catalogPending = Math.max(0, S.catalogPending - 1);
       if (!err && stdout) {
         try {
@@ -137,69 +152,74 @@ export function fetchSeedMarketplacesAsync() {
   for (var si = 0; si < DEFAULT_MARKETPLACES.length; si++) tryBranch(DEFAULT_MARKETPLACES[si], 0);
 }
 
-// Ensure every official plugin is present in the catalog exactly once.
-// If a remote search already returned the repo (case-insensitive full_name or
-// name match), enrich that entry in place (mark official, fix category/desc/url)
-// WITHOUT overwriting an existing star count. If no match exists, push a shallow
-// copy. This is safe to call multiple times because the deduplication check is
-// always performed first.
-function seedOfficialPlugins() {
-  // Official status is AUTHORITATIVE from OFFICIAL_PLUGINS (by full_name): an entry
-  // is official iff its full_name is one of ours. First clear any stale official
-  // flag, e.g. a fork whose name-match got wrongly promoted and baked into the
-  // on-disk catalog cache (vibheksoni/opencode-antigravity-auth, whose stripped
-  // name collided with our "antigravity-auth"). This self-heals bad caches.
-  var officialKeys = {};
-  for (var ok = 0; ok < OFFICIAL_PLUGINS.length; ok++) {
-    officialKeys[OFFICIAL_PLUGINS[ok].full_name.toLowerCase()] = true;
-  }
-  for (var ei = 0; ei < S.MARKETPLACE_CATALOG.length; ei++) {
-    var ce = S.MARKETPLACE_CATALOG[ei];
-    if (ce.official && !officialKeys[(ce.full_name || "").toLowerCase()]) {
-      ce.official = false;
-      if (ce.category === "Official") ce.category = "Community";
-    }
-  }
-  for (var oi = 0; oi < OFFICIAL_PLUGINS.length; oi++) {
-    var official = OFFICIAL_PLUGINS[oi];
-    var officialKey = official.full_name.toLowerCase();
-    // Match by full_name ONLY. Matching by bare name wrongly marked third-party
-    // repos official when the GitHub search stripped their "opencode-"/"claude-"
-    // prefix into our name (e.g. vibheksoni/opencode-antigravity-auth -> "antigravity-auth").
-    var existing = S.MARKETPLACE_CATALOG.find(function(e) {
-      return (e.full_name || "").toLowerCase() === officialKey;
+/**
+ * Reads what this home's declared marketplace sources offer, once per cache window.
+ *
+ * @remarks
+ * Non-blocking and guarded by `S.sourceFetched`: Level 1 renders immediately with an unknown count
+ * and fills in when this resolves. It reads through the on-disk catalog cache, so a warm home costs
+ * no network at all, but that warm path resolves on the first microtask, before boot has picked the
+ * tab to show, so the rebuild must not be conditional on the marketplace tab being the visible one.
+ * `scheduleRender` is throttled, so rebuilding a list nobody is looking at costs nothing.
+ * The success and failure handlers are separate arguments rather than a trailing `catch`, so a throw
+ * from the rebuild cannot empty a catalog that was read successfully.
+ */
+export function fetchSourceCatalogAsync() {
+  if (S.sourceFetched) return;
+  S.sourceFetched = true;
+  var paths = homePaths(CONFIG_DIR);
+  catalogFor(readMarketplaceSources(paths), paths, catalogCacheHours() * 3600000, { log: tuiLog })
+    .then(function (entries) {
+      S.sourceCatalog = entries;
+      S.marketplaceItems = buildMarketplaceList();
+      scheduleRender();
+    }, function (error) {
+      S.sourceCatalog = [];
+      tuiLog("declared marketplace sources could not be read: " + error);
     });
-    if (existing) {
-      // enrich without overwriting stars that may have been fetched already
-      existing.official  = true;
-      existing.category  = "Official";
-      if (!existing.desc)     existing.desc     = official.desc;
-      if (!existing.url)      existing.url      = official.url;
-      if (!existing.author)   existing.author   = official.author;
-      if (!existing.repoName) existing.repoName = official.repoName;
-      if (!existing.full_name) existing.full_name = official.full_name;
-    } else {
-      // not yet in catalog, add a copy (stars left undefined until enrichment runs)
-      var copy = {};
-      for (var k in official) copy[k] = official[k];
-      S.MARKETPLACE_CATALOG.push(copy);
-    }
-  }
 }
 
-// Claude's community catalog gets a Curated section like opencode's (whose Curated
-// entries come from the awesome-opencode scrape): seed the VERIFIED FEATURED_PLUGINS
-// repos as category "Curated", one hand-checked source of truth, no new unverified
-// repos. full_name matching mirrors seedOfficialPlugins; stars ride in via the
-// existing enrichment passes.
+// Where a source reads from, which is what tells two rows apart when their labels are similar.
+function describeSource(source) {
+  if (source.type === "github-org") return "github: " + source.org;
+  if (source.type === "manifest") return source.url;
+  return source.path;
+}
+
+/**
+ * One Level-1 row per enabled declared source, counted from the entries it offered.
+ *
+ * @remarks
+ * `entries` is null until the read resolves, which is a different thing from a source that offered
+ * nothing: the first renders as an unknown count, the second as zero.
+ */
+export function sourceRowsFrom(sources, entries) {
+  var rows = [];
+  for (var i = 0; i < sources.length; i++) {
+    var source = sources[i];
+    if (source.enabled === false) continue;
+    var count = entries === null || entries === undefined
+      ? undefined
+      : entries.filter(function (entry) { return entry.sourceId === source.id; }).length;
+    rows.push({ name: source.label, source: describeSource(source), count: count, builtin: "source", sourceId: source.id });
+  }
+  return rows;
+}
+
+// The built-in verified list is seeded as the Curated section for any app that declares
+// no curated list of its own: seed the VERIFIED FEATURED_PLUGINS repos as category
+// "Curated", one hand-checked source of truth, no new unverified repos. full_name
+// matching mirrors the GitHub-search dedupe further down this file; stars ride in via
+// the existing enrichment passes.
 function seedCuratedPlugins() {
-  if (!IS_CLAUDE) return;   // opencode's Curated section is scraped, not seeded
+  // an app with its own curated list does not need the built-in one seeded
+  if (appDiscovery().awesomeList) return;
   for (var ci = 0; ci < FEATURED_PLUGINS.length; ci++) {
     var cur = FEATURED_PLUGINS[ci];
     var curKey = (cur.full_name || "").toLowerCase();
     var existingCur = S.MARKETPLACE_CATALOG.find(function(e) { return (e.full_name || "").toLowerCase() === curKey; });
     if (existingCur) {
-      if (!existingCur.official && existingCur.category !== "Official") existingCur.category = "Curated";
+      existingCur.category = "Curated";
       if (!existingCur.desc) existingCur.desc = cur.desc;
     } else {
       S.MARKETPLACE_CATALOG.push({ name: cur.name, desc: cur.desc, category: "Curated", author: cur.author, repoName: cur.repoName, full_name: cur.full_name, url: cur.url });
@@ -207,18 +227,25 @@ function seedCuratedPlugins() {
   }
 }
 
+// catalog rows read better without the app's own prefix repeated on every name
+function withoutAppPrefix(name) {
+  var text = String(name);
+  var prefix = APP_ID ? APP_ID + "-" : "";
+  return prefix && text.indexOf(prefix) === 0 ? text.slice(prefix.length) : text;
+}
+
 export function fetchCatalogsAsync() {
   if (S.catalogFetched) return;
   S.catalogFetched = true;
   var curlCmd = process.platform === "win32" ? "curl.exe" : "curl";
+  var discovery = appDiscovery();
   // even with a warm cache the curated MCP entries still need their stars derived
   // (the cache predates them); run that enrichment, then skip the cold registry search
-  if (loadCatalogCache()) { seedOfficialPlugins(); seedCuratedPlugins(); enrichCuratedMcpStars(); return; }
+  if (loadCatalogCache()) { seedCuratedPlugins(); enrichCuratedMcpStars(); return; }
 
   var enrichedOnce = false;
 
-  // seed official + curated entries immediately so they appear even before remote fetches finish
-  seedOfficialPlugins();
+  // seed curated entries immediately so they appear even before remote fetches finish
   seedCuratedPlugins();
 
   function saveCatalog() {
@@ -238,7 +265,7 @@ export function fetchCatalogsAsync() {
     for (var entry of missing) {
       (function(target) {
         S.catalogPending++;
-        exec(curlCmd + ' -sL -H "User-Agent: OpenCode" "https://api.github.com/repos/' + target.full_name + '"', function(err, stdout) {
+        exec(curlCmd + ' -sL -H "User-Agent: intisy-ai-loader" "https://api.github.com/repos/' + target.full_name + '"', function(err, stdout) {
           if (!err && stdout) {
             try {
               var repo = JSON.parse(stdout);
@@ -304,7 +331,7 @@ export function fetchCatalogsAsync() {
     }
     function fetchRepoStars(fullName) {
       S.catalogPending++;
-      exec(curlCmd + ' -sL -H "User-Agent: OpenCode" "https://api.github.com/repos/' + fullName + '"', function(err, stdout) {
+      exec(curlCmd + ' -sL -H "User-Agent: intisy-ai-loader" "https://api.github.com/repos/' + fullName + '"', function(err, stdout) {
         if (!err && stdout) {
           try {
             var repo = JSON.parse(stdout);
@@ -335,7 +362,7 @@ export function fetchCatalogsAsync() {
         var pkg = npmPkgFromArgs(target.args);
         if (!pkg) return;
         S.catalogPending++;
-        exec(curlCmd + ' -sL -H "User-Agent: OpenCode" "https://registry.npmjs.org/' + pkg + '"', function(err, stdout) {
+        exec(curlCmd + ' -sL -H "User-Agent: intisy-ai-loader" "https://registry.npmjs.org/' + pkg + '"', function(err, stdout) {
           fetchDone();
           if (err || !stdout) return;
           try {
@@ -357,7 +384,7 @@ export function fetchCatalogsAsync() {
 
   function searchGH(query, catalog, pageNum) {
     S.catalogPending++;
-    exec(curlCmd + ' -s -H "User-Agent: OpenCode" "https://api.github.com/search/repositories?q=' + query + '&sort=stars&order=desc&per_page=100&page=' + pageNum + '"', function(err, stdout) {
+    exec(curlCmd + ' -s -H "User-Agent: intisy-ai-loader" "https://api.github.com/search/repositories?q=' + query + '&sort=stars&order=desc&per_page=100&page=' + pageNum + '"', function(err, stdout) {
       fetchDone();
       if (!err && stdout) {
         try {
@@ -366,10 +393,10 @@ export function fetchCatalogsAsync() {
           if (json.items) {
             for (var i = 0; i < json.items.length; i++) {
               var it = json.items[i];
-              var cleanName = it.name.replace(/^claude-|^opencode-/, "");
+              var cleanName = withoutAppPrefix(it.name);
               // Match plugins by full_name (owner/repo), never by the stripped display
-              // name: two different repos can strip to the same name, and matching by
-              // name let a community repo overwrite an official entry's star count.
+              // name: two different repos can strip to the same name, so a name match
+              // writes one repo's star count onto the other.
               var exists = catalog.find(function(m) { return catalog === S.MARKETPLACE_CATALOG ? (!!m.full_name && m.full_name === it.full_name) : (m.name === it.name); });
               if (!exists) {
                 var newItem = {
@@ -446,7 +473,7 @@ export function fetchCatalogsAsync() {
     });
   }
 
-  // the awesome-opencode list is the curated membership oracle: the fuzzy
+  // the declared awesome list is the curated membership oracle: the fuzzy
   // starred search may only contribute repos that the community list contains,
   // which keeps popular plugins in and look-alike repos out
   var awesomeSet = null;
@@ -463,9 +490,9 @@ export function fetchCatalogsAsync() {
     return S.MARKETPLACE_CATALOG.find(function(e) { return (e.full_name || "").toLowerCase() === key; });
   }
 
-  function searchPopular(pageNum) {
+  function searchPopular(query, pageNum) {
     S.catalogPending++;
-    exec(curlCmd + ' -s -H "User-Agent: OpenCode" "https://api.github.com/search/repositories?q=opencode&sort=stars&order=desc&per_page=100&page=' + pageNum + '"', function(err, stdout) {
+    exec(curlCmd + ' -s -H "User-Agent: intisy-ai-loader" "https://api.github.com/search/repositories?q=' + query + '&sort=stars&order=desc&per_page=100&page=' + pageNum + '"', function(err, stdout) {
       fetchDone();
       if (err || !stdout) return;
       try {
@@ -490,9 +517,9 @@ export function fetchCatalogsAsync() {
     });
   }
 
-  function fetchAwesomeList() {
+  function fetchAwesomeList(url) {
     S.catalogPending++;
-    exec(curlCmd + ' -s "https://raw.githubusercontent.com/awesome-opencode/awesome-opencode/main/README.md"', { maxBuffer: 4 * 1024 * 1024 }, function(err, stdout) {
+    exec(curlCmd + ' -s "' + url + '"', { maxBuffer: 4 * 1024 * 1024 }, function(err, stdout) {
       fetchDone();
       if (!err && stdout) {
         try {
@@ -519,17 +546,22 @@ export function fetchCatalogsAsync() {
         } catch(e) {}
       }
       // the broad starred search supplies star counts for the curated entries,
-      // whose badge images carry no numbers; membership keeps it precise
-      searchPopular(1);
-      searchPopular(2);
+      // whose badge images carry no numbers; membership keeps it precise, and it
+      // only runs at all for an app that declares a search query to broaden with
+      if (discovery.searchQuery) {
+        searchPopular(discovery.searchQuery, 1);
+        searchPopular(discovery.searchQuery, 2);
+      }
     });
   }
 
-  var pluginTopic = APP_NAME === "Claude Code" ? "claude-code-plugin" : "opencode-plugin";
-  searchGH("topic:" + pluginTopic, S.MARKETPLACE_CATALOG, 1);
-  searchGH("topic:" + pluginTopic, S.MARKETPLACE_CATALOG, 2);
-  searchNpm(pluginTopic);
-  if (APP_NAME !== "Claude Code") fetchAwesomeList();
+  if (discovery.topic) {
+    searchGH("topic:" + discovery.topic, S.MARKETPLACE_CATALOG, 1);
+    searchGH("topic:" + discovery.topic, S.MARKETPLACE_CATALOG, 2);
+    searchNpm(discovery.topic);
+  }
+  // searchQuery only ever fires from inside fetchAwesomeList: without the list's membership filter, a broad search would widen the catalog with lookalike repos
+  if (discovery.awesomeList) fetchAwesomeList(discovery.awesomeList);
   searchGH("topic:mcp-server", MCP_CATALOG, 1);
   searchGH("topic:mcp-server", MCP_CATALOG, 2);
   enrichCuratedMcpStars();
@@ -551,20 +583,12 @@ function buildMarketplaceActionRows() {
   return rows;
 }
 
-// The loader's own two "marketplaces": the built-in catalog (fetched/curated by
-// this file) split into its official and community halves, each reported with a
-// live plugin count. They are marketplaces like any other at Level 1, just backed
-// by S.MARKETPLACE_CATALOG instead of a capabilities.marketplaces() entry.
+// The two Level-1 rows that are not a declared source: the catalog this file fetches by searching
+// GitHub, npm and the awesome list, and the curated standalone list. Both are backed by data this
+// file owns rather than by a marketplace anyone declared.
 function loaderOwnMarketplaces() {
-  var officialCount = 0, communityCount = 0;
-  for (var i = 0; i < S.MARKETPLACE_CATALOG.length; i++) {
-    var e = S.MARKETPLACE_CATALOG[i];
-    if (e.isUpdater) continue;   // the engine itself is never a browsable catalog entry
-    if (e.official) officialCount++; else communityCount++;
-  }
   return [
-    { name: "intisy-ai (official)", source: "built-in catalog", count: officialCount, builtin: "official" },
-    { name: "community", source: "built-in catalog", count: communityCount, builtin: "community" },
+    { name: "community", source: "built-in catalog", count: S.MARKETPLACE_CATALOG.length, builtin: "community" },
     { name: "Featured", source: "curated standalone plugins", count: FEATURED_PLUGINS.length, builtin: "featured" },
   ];
 }
@@ -595,19 +619,24 @@ function seedMarketplaceRows(seenNames, seenRepos) {
   return rows;
 }
 
-// Level 1: the marketplace-of-marketplaces list. Unified Add rows up top, then
-// the loader's own two marketplaces, then every marketplace the active app's
-// extension registers via capabilities.marketplaces(), deduped by name (the
-// loader's own entries always win a name collision), then the seeded defaults
-// not already covered by a real entry.
+// Level 1: the marketplace-of-marketplaces list. Unified Add rows up top, then every source this
+// home declares, then the loader's own built-in catalog and curated list, then every marketplace
+// the active app's extension registers via capabilities.marketplaces(), deduped by name (an
+// earlier entry always wins a name collision), then the seeded defaults not already covered by a
+// real entry.
 export function buildMarketplaceMarketsList() {
   fetchCatalogsAsync();
   fetchSeedMarketplacesAsync();
+  fetchSourceCatalogAsync();
   var seen = {};
   var seenRepos = {};
   var rows = buildMarketplaceActionRows();
+  // Declared sources first: they are what this home actually asked for, and the built-in catalog is a
+  // fallback rather than the headline.
+  var declared = sourceRowsFrom(readMarketplaceSources(homePaths(CONFIG_DIR)), S.sourceCatalog);
+  for (var di = 0; di < declared.length; di++) { rows.push(declared[di]); seen[declared[di].name] = true; }
   var own = loaderOwnMarketplaces();
-  for (var oi = 0; oi < own.length; oi++) { rows.push(own[oi]); seen[own[oi].name] = true; }
+  for (var oi = 0; oi < own.length; oi++) { if (seen[own[oi].name]) continue; rows.push(own[oi]); seen[own[oi].name] = true; }
   var mfn = S.capabilities && S.capabilities.marketplaces;
   if (typeof mfn === "function") {
     var caps = [];
@@ -631,27 +660,54 @@ export function buildMarketplaceMarketsList() {
   return rows;
 }
 
-// Level 2: a single marketplace's plugins. "intisy-ai (official)"/"community" are
-// served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG); "Featured"
-// is served from the static FEATURED_PLUGINS list (env.ts); every other name is
-// assumed to be an app-registered marketplace and is served through
-// capabilities.marketplacePlugins(name), which returns [] if the capability is
-// absent or the marketplace is unknown, so this degrades to an empty list rather
-// than throwing.
-export function buildMarketplacePluginsList(marketName, marketKind) {
+// Level 2: a single marketplace's plugins, routed by kind. A declared source's entries come from its
+// own manifests (S.sourceCatalog), grouped by the category each entry's capabilities imply. The
+// built-in community catalog is served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG,
+// which already carries a "Community"/"Curated" category on some entries). The curated Featured list
+// is served from the static FEATURED_PLUGINS list (env.ts). A seed is served from S.seedMarketplaces.
+// Anything else is assumed to be an app-registered capability marketplace, served through
+// capabilities.marketplacePlugins(name), which returns [] if the capability is absent or the
+// marketplace is unknown, so this degrades to an empty list rather than throwing.
+export function buildMarketplacePluginsList(marketName, marketKind, sourceId) {
   fetchCatalogsAsync();
-  // Route by the KIND captured off the Level-1 row (builtin "official"/"community"/
-  // "featured" tag, or "capability"), not by string-comparing marketName against the
-  // loader's own display names: a capability marketplace could itself be named
-  // "community" and would otherwise be misrouted/dedup-swallowed into the built-in
-  // catalog. marketKind is undefined for any caller that predates this param
-  // (defensive fallback to the old name comparison).
-  var kind = marketKind || (marketName === "intisy-ai (official)" ? "official" : marketName === "community" ? "community" : null);
-  if (kind === "official" || kind === "community") {
-    var wantOfficial = kind === "official";
+  // Route by the KIND captured off the Level-1 row (builtin "community"/"featured" tag, "source",
+  // or "capability"), not by string-comparing marketName against the loader's own display names: a
+  // capability marketplace could itself be named "community" and would otherwise be
+  // misrouted/dedup-swallowed into the built-in catalog. marketKind is undefined for any caller
+  // that predates this param (defensive fallback to the old name comparison).
+  var kind = marketKind || (marketName === "community" ? "community" : null);
+  // A declared source's own entries, from its manifests rather than from a search. Each row carries
+  // the same name/desc/url/repoName shape the built-in catalog rows do, so the install path and the
+  // action menu treat it identically.
+  if (kind === "source") {
+    var declaredEntries = S.sourceCatalog || [];
+    var installedHere = loadPlugins().map(function (p) { return p.name; });
+    var resSrc = declaredEntries
+      .filter(function (e) { return e.sourceId === sourceId; })
+      .map(function (e) {
+        return {
+          name: e.id,
+          desc: e.description,
+          url: e.url,
+          repoName: e.id,
+          full_name: (e.url || "").replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, ""),
+          category: categoryOf(e),
+          sourceId: e.sourceId,
+          installed: installedHere.indexOf(e.id) !== -1,
+        };
+      });
+    if (S.inputBuf) {
+      var qSrc = S.inputBuf.toLowerCase();
+      resSrc = resSrc.filter(function (m) { return (m.name || "").toLowerCase().indexOf(qSrc) !== -1 || (m.desc || "").toLowerCase().indexOf(qSrc) !== -1; });
+    }
+    // Sections must be CONTIGUOUS, because the renderer emits a heading on every category change.
+    resSrc.sort(function (a, b) { return (a.category || "").localeCompare(b.category || "") || (a.name || "").localeCompare(b.name || ""); });
+    return resSrc;
+  }
+  if (kind === "community") {
     var installed = loadPlugins();
     var installedNames = installed.map(function(p) { return p.name; });
-    var res = S.MARKETPLACE_CATALOG.filter(function(m) { return !m.isUpdater && !!m.official === wantOfficial; }).map(function(m) {
+    var res = S.MARKETPLACE_CATALOG.map(function(m) {
       var repoName = m.repoName || m.name;
       var isInstalled = installedNames.indexOf(m.name) !== -1 || installedNames.indexOf(repoName) !== -1;
       return Object.assign({}, m, { installed: isInstalled });
@@ -662,8 +718,8 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
     }
     res.sort(function(a, b) {
       // Sections must be CONTIGUOUS: the renderer emits a heading on every group
-      // change, so a pure star sort interleaves Curated/Community headings over
-      // and over. Curated first, then Community; stars order within each group.
+      // change, so a pure star sort interleaves headings over and over. Curated
+      // first, then everything else; stars order within each group.
       var rank = function(e) { return e.category === "Curated" ? 0 : 1; };
       if (rank(a) !== rank(b)) return rank(a) - rank(b);
       var aSt = a.stars != null ? a.stars : -1;
@@ -677,8 +733,7 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
   // repos, not a marketplace.json to fetch. Each row is a plain catalog-shaped
   // item (name/desc/url/category/repoName/full_name) so it falls through the
   // SAME default branch of getMarketplaceActions()/marketplaceInstall() that the
-  // official/community catalog uses: install-git via installMarketplacePlugin(url)
-  // when a git updater is present, else install-npm via installViaNpm(repoName).
+  // community catalog uses: installMarketplacePlugin(url) via the resolved manager.
   if (kind === "featured") {
     var installedFt = loadPlugins();
     var installedFtNames = installedFt.map(function(p) { return p.name; });
@@ -751,20 +806,12 @@ export function buildMarketplacePluginsList(marketName, marketKind) {
 // on S.mkLevel so re-running it after e.g. a catalog fetch always rebuilds
 // whichever level the user is currently looking at.
 export function buildMarketplaceList() {
-  if (S.mkLevel === "plugins" && S.mkMarket) return buildMarketplacePluginsList(S.mkMarket, S.mkMarketKind);
+  if (S.mkLevel === "plugins" && S.mkMarket) return buildMarketplacePluginsList(S.mkMarket, S.mkMarketKind, S.mkMarketSourceId);
   return buildMarketplaceMarketsList();
 }
 
-// Pure rule: prefer git via the updater unless the catalog entry explicitly
-// hints npm, or no updater is loadable, then npm is the only option.
-export function selectInstallMethod(entry, hasUpdater) {
-  if (hasUpdater && entry.install !== "npm") return "git";
-  return "npm";
-}
-
-// The action-menu entries for a marketplace item. Built once and shared by the
-// renderer and the input handler so their cursor indices always line up. Offers
-// both install methods (default first) so the user can choose git-via-updater or npm.
+// The action-menu entries for a marketplace item. Built once and shared by the renderer and the input
+// handler so their cursor indices always line up.
 export function getMarketplaceActions(item, hasUpdater) {
   var acts = [];
   if (item.seed) {
@@ -792,63 +839,26 @@ export function getMarketplaceActions(item, hasUpdater) {
     acts.push({ key: "cancel", label: "Cancel" });
     return acts;
   }
-  if (item.installed) {
-    // already installed, no install action
-  } else if (IS_CLAUDE) {
-    // Claude has no npm-plugin mechanism, every plugin installs git-via-updater.
+  if (!item.installed && hasUpdater) {
     acts.push({ key: "install-git", label: "Install" });
-  } else if (hasUpdater) {
-    var def = selectInstallMethod(item, hasUpdater);
-    var git = { key: "install-git", label: "Install via updater (git)" + (def === "git" ? "  · default" : "") };
-    var npm = { key: "install-npm", label: "Install as npm plugin" + (def === "npm" ? "  · default" : "") };
-    if (def === "git") { acts.push(git); acts.push(npm); } else { acts.push(npm); acts.push(git); }
-  } else {
-    acts.push({ key: "install-npm", label: "Install as npm plugin" });
   }
   if (item.url) acts.push({ key: "browser", label: "Open in browser" });
   acts.push({ key: "cancel", label: "Cancel" });
   return acts;
 }
 
-// Git install runs entirely in a CHILD PROCESS via plugin-updater's `add`, which
-// registers the plugin in plugins.json AND clones/builds/deploys it, so the loader
-// never writes plugins.json itself and the git clone + npm install + build (all
-// execSync inside the updater) block that child, not our main event loop (the TUI
-// keeps rendering and animating). Every caller passes a `done(err)` callback: err
-// is null on success, or an error string.
+// A git install registers the plugin in plugins.json and then hands it to the resolved manager in a
+// CHILD PROCESS, so the clone + npm install + build (all execSync inside the manager) block that
+// child and the TUI keeps rendering. npx is deliberately not used: it would fetch the published
+// package instead of running the manager this home actually installed. `done(err)` gets null on
+// success or an error string.
 export function installMarketplacePlugin(entry, done) {
   var url = entry.url;
-  var app = APP_NAME === "Claude Code" ? "claude" : "opencode";
-  exec("npx -y plugin-updater@latest add " + url + " --app " + app, { timeout: 180000, env: spawnEnv() }, function(err) {
-    done(err ? ("Install failed: " + ((err && err.message) || err)) : null);
-  });
-}
-
-// Secondary/fallback install method: npm instead of git. Uses the updater's
-// installNpmPlugin when loaded (keeps opencode.json/config in sync); otherwise
-// falls back to a plain global npm install.
-export function installViaNpm(entry, done) {
-  var name = entry.repoName || entry.name;
-  var updater = getUpdater();
-  if (updater && typeof updater.installNpmPlugin === "function") {
-    try { var e = updater.installNpmPlugin(name, CONFIG_DIR) || ""; done(e || null); }
-    catch (err) { done("npm install failed: " + ((err && err.message) || err)); }
-    return;
-  }
-  exec("npm install -g " + name, { timeout: 120000 }, function(err) {
-    if (err) { done("npm install failed: " + ((err && err.message) || err)); return; }
-    // OpenCode won't load an npm plugin unless it's listed in opencode.json, mirror
-    // the OpenCode branch of the tui.ts updater_install handler (best-effort).
-    if (APP_NAME !== "Claude Code") {
-      try {
-        var ocPath = join(CONFIG_DIR, "opencode.json");
-        var ocData = readJsonc(ocPath, {});
-        if (!Array.isArray(ocData.plugin)) ocData.plugin = [];
-        if (ocData.plugin.indexOf(name) === -1) ocData.plugin.push(name);
-        writeFileSync(ocPath, JSON.stringify(ocData, null, 2), "utf-8");
-      } catch {}
-    }
-    done(null);
+  var name = entry.repoName || entry.name || String(url || "").replace(/\.git$/, "").split("/").pop();
+  if (!name || !url) { done("Install failed: the catalog entry carries no name or url"); return; }
+  registerPlugin(name, url);
+  setupPlugin({ name: name, url: url }, function (err) {
+    done(err ? ("Install failed: " + err) : null);
   });
 }
 
