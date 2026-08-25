@@ -9,7 +9,7 @@ import { execSync } from "child_process";
 import { dirname, join } from "path";
 import { homedir } from "os";
 import { pathToFileURL } from "url";
-import { homePaths, subdirName } from "./home-paths.js";
+import { homePaths } from "./home-paths.js";
 import { managerEntries, resolveFromHome, PLUGIN_MANAGEMENT_CAPABILITY } from "./plugin-manager.js";
 import { PROVIDER_MANIFEST_KEY } from "./catalogs.js";
 
@@ -96,7 +96,7 @@ export function readDeployedProviders(reposDir: string, configDir: string = dirn
 // deployed plugin id, and every key is read; nothing here names a plugin.
 function homeDynamicProviders(reposDir, configDir) {
   const out = [];
-  const declared = readJson(join(configDir, subdirName("HUB_CACHE_SUBDIR", "cache"), "dynamic-providers.json"));
+  const declared = readJson(join(homePaths(configDir).cacheDir, "dynamic-providers.json"));
   if (!declared || typeof declared !== "object" || Array.isArray(declared)) return out;
   for (const pluginId of Object.keys(declared)) {
     const lanes = declared[pluginId];

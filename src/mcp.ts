@@ -10,7 +10,7 @@ import { loadMcpConfig, saveMcpConfig } from "./config.js";
 import { fetchCatalogsAsync } from "./marketplace.js";
 import { S } from "./state.js";
 import { appDescriptors, resolveHome } from "./app-descriptor.js";
-import { subdirName } from "./home-paths.js";
+import { homePaths } from "./home-paths.js";
 
 // Cached once per session: the scan does readdirSync + many reads across the repos
 // and plugin-cache dirs, which made every MCP render (buildMcpList) hit disk and lag
@@ -101,7 +101,7 @@ export function scanPluginEmbeddedMcps() {
   for (var desc of appDescriptors()) {
     var home = resolveHome(desc);
     if (!home) continue;
-    scanReposDir(join(home, subdirName("HUB_REPOS_SUBDIR", "repos")));
+    scanReposDir(homePaths(home).reposDir);
     scanPluginCache(join(home, "plugins", "cache"));
   }
 
