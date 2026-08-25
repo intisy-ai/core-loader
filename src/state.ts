@@ -75,6 +75,10 @@ export const S = {
   configEditKey: "",
   // the action row armed by a first enter, waiting for the confirming second one
   configConfirm: null,
+
+  // A declared action's args being collected, one at a time: { key, label, specs, values, at }.
+  // Null whenever no action is collecting, which is what the editor renders and the router keys on.
+  configActionArgs: null,
   // The one config row whose secret value is currently shown, by key. Cleared by moving the cursor
   // or leaving the editor, so a revealed secret never survives a navigation.
   cfgReveal: "",

@@ -3,12 +3,13 @@
 // and key handler both walk: a "Global" header + its group, then a "Plugins" header + one
 // group row per plugin. Headers are not selectable (nav skips them).
 import { byOrderThenLabel } from "@intisy-ai/core";
+import type { FieldSpec } from "@intisy-ai/core";
 import { buildConfigItems, declarationFor, settingsPluginIds } from "./plugins.js";
 import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "./config.js";
 import { S } from "./state.js";
 
 export type SettingsItem = { key: string; value: unknown; def: unknown; isSet: boolean; type: string };
-export type SettingsAction = { kind: "action"; key: string; label: string; description?: string; confirm?: string; danger?: boolean };
+export type SettingsAction = { kind: "action"; key: string; label: string; description?: string; confirm?: string; danger?: boolean; args?: FieldSpec[] };
 export type SettingsRow = SettingsItem | SettingsAction;
 export type SettingsSection = {
   label: string;
@@ -50,6 +51,9 @@ function actionRow(action: any): SettingsAction {
   if (typeof action.description === "string") row.description = action.description;
   if (typeof action.confirm === "string") row.confirm = action.confirm;
   if (action.danger === true) row.danger = true;
+  // What the action needs collected before it runs. Carried through so the editor can prompt: an
+  // action whose args never reach it runs on nothing, which is a plugin's action silently misfiring.
+  if (Array.isArray(action.args) && action.args.length) row.args = action.args;
   return row;
 }
 

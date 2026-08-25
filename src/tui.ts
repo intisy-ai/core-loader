@@ -20,7 +20,7 @@ import { buildMarketplaceList } from "./marketplace.js";
 import { buildCombinedPluginList, primeDeclarations } from "./plugins.js";
 import { buildList, outputDir } from "./projects.js";
 import { render } from "./views/render.js";
-import { parseKey, handleKey, handleInputData, handlePluginInputData, handleMarketplaceAddInputData, handleMcpAddInputData, handleSearchData, handleTabInputData, handleConfigInputData, switchPluginSubPage } from "./input.js";
+import { parseKey, handleKey, handleInputData, handlePluginInputData, handleMarketplaceAddInputData, handleMcpAddInputData, handleSearchData, handleTabInputData, handleConfigInputData, handleConfigActionArgsData, switchPluginSubPage } from "./input.js";
 import { setActivitySeam, withLoaderCause } from "./activity-seam.js";
 import { inputCause } from "./input-cause.js";
 
@@ -342,6 +342,7 @@ function dispatchInput(buf, key) {
   if (S.mode === "mkinput") { handleMarketplaceAddInputData(buf); render(); return; }
   if (S.mode === "mcpaddinput") { handleMcpAddInputData(buf); render(); return; }
   if (S.mode === "pcfginput") { handleConfigInputData(buf); render(); return; }
+  if (S.mode === "pcfgargs") { handleConfigActionArgsData(buf); render(); return; }
   if (S.mode === "search") { handleSearchData(buf); render(); return; }
   if (S.mode === "tabinput") { handleTabInputData(buf); render(); return; }
   if (key) {

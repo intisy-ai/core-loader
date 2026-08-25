@@ -36,19 +36,58 @@ function activateConfigAction(citem) {
   if (!pluginId) return;
   if (citem.confirm && S.configConfirm !== citem.key) { S.configConfirm = citem.key; return; }
   S.configConfirm = null;
+  // An action declaring args is prompted for before it runs, one arg at a time. Running it without
+  // them is how "create a profile" reached its plugin with no name to create.
+  if (Array.isArray(citem.args) && citem.args.length) {
+    S.configActionArgs = { key: citem.key, label: citem.label, specs: citem.args, values: {}, at: 0 };
+    S.inputBuf = "";
+    S.mode = "pcfgargs";
+    return;
+  }
+  runConfigAction(citem.key, citem.label, undefined);
+}
+
+// The run itself, shared by an action that needed nothing collected and one whose prompts are done.
+// Bounded and asynchronous, so the editor stays on screen and busy while it happens; the trailing
+// "..." is what animates the spinner.
+function runConfigAction(actionId, label, input) {
+  var pluginId = S.configTarget && S.configTarget.plugin;
+  if (!pluginId) return;
   S.busy = true;
-  setBusyMessage(citem.label + "...");
+  setBusyMessage(label + "...");
   render();
-  runSettingsAction(pluginId, citem.key).then(function (answer) {
+  runSettingsAction(pluginId, actionId, input).then(function (answer) {
     S.busy = false;
-    if (!answer || answer.ok !== true) { flash(citem.label + ": " + ((answer && answer.message) || "action failed")); render(); return; }
+    if (!answer || answer.ok !== true) { flash(label + ": " + ((answer && answer.message) || "action failed")); render(); return; }
     refreshConfigItems();
-    flash(answer.message || (citem.label + ": done."));
+    flash(answer.message || (label + ": done."));
     render();
   }).catch(function (error) {
     S.busy = false;
-    tuiLog("reporting " + citem.key + " failed: " + String(error), true);
+    tuiLog("reporting " + actionId + " failed: " + String(error), true);
   });
+}
+
+// Free-text entry for one of an action's declared args. Enter takes the value and moves to the next;
+// the last one runs the action with everything collected. Esc abandons the whole action rather than
+// one arg, since a half-collected action is not one the plugin declared.
+export function handleConfigActionArgsData(buf) {
+  var pending = S.configActionArgs;
+  if (!pending) { S.mode = "pconfig"; return; }
+  if (buf[0] === 27) { S.inputBuf = ""; S.configActionArgs = null; S.mode = "pconfig"; return; }
+  if (buf[0] === 13 || buf[0] === 10) {
+    var spec = pending.specs[pending.at];
+    if (spec) pending.values[spec.key] = S.inputBuf;
+    S.inputBuf = "";
+    pending.at += 1;
+    if (pending.at < pending.specs.length) return;
+    S.configActionArgs = null;
+    S.mode = "pconfig";
+    runConfigAction(pending.key, pending.label, pending.values);
+    return;
+  }
+  if (buf[0] === 127 || buf[0] === 8) { S.inputBuf = S.inputBuf.slice(0, -1); return; }
+  if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }
 
 // Repaint the written row from the value that was just saved, before the authoritative re-read
