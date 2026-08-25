@@ -1,11 +1,8 @@
-# core-loader
-
 The shared engine both app loaders are built from. It holds the generic loader
 logic (the TUI and its input handling, the plugins/providers/projects/MCP views,
 marketplace browsing, config editing, and the proxy runner) as one source of
 truth, so `opencode-loader` and `claude-code-loader` differ only in their
 app-specific paths and names.
-
 Published as `@intisy-ai/core-loader`, so a loader resolves it as a dependency
 instead of inlining a copy.
 
@@ -105,6 +102,3 @@ settings. The config dir it defaults to can be overridden with `HUB_CONFIG_DIR`.
 
 This library writes no logs of its own. The consuming loader owns logging, via
 core's `makeWriteLog(name)`, so lines appear under that loader's name.
-
-## License
-MIT
