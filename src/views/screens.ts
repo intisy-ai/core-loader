@@ -13,6 +13,7 @@ import { tuiLog } from "../env.js";
 import { invokeScreenAction, providerIds, readScreenData, readScreenSpecs, readSettingsSchema } from "../plugin-surface.js";
 import { RST, BOLD, DIM, GRAY, WHITE, BG_SEL, ACCENT, rule } from "../format.js";
 import { hints, messageLine, scheduleRender } from "./common.js";
+import { SCREENS } from "@intisy-ai/core";
 
 // Read once into S.screenSpecs: screens() may be async and the sub-page list is walked on every
 // render frame. A row's action metadata comes from the same plugin's settings declaration, which is
@@ -21,7 +22,7 @@ import { hints, messageLine, scheduleRender } from "./common.js";
 // plugin that answers slowly must not delay the ones that answer at once. Promise.all preserves
 // order, so the sub-page order is still the order the host activated the plugins in.
 export async function refreshScreenSpecs() {
-  const perPlugin = await Promise.all(providerIds("screens").map(async function (pluginId) {
+  const perPlugin = await Promise.all(providerIds(SCREENS).map(async function (pluginId) {
     const specs = await readScreenSpecs(pluginId);
     if (!specs.length) return [];
     const schema = await readSettingsSchema(pluginId);

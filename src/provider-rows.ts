@@ -6,15 +6,16 @@
 //
 // Nothing here names a plugin or an app. The plugin behind custom providers is found by
 // capability, installing it is delegated to the plugin manager the loader already has, and the
-// endpoint itself is validated and stored by that plugin. core's registry arrives through ctx:
-// this library sits inside a loader and does not carry core itself.
+// endpoint itself is validated and stored by that plugin. Every input arrives through ctx, so this
+// stays a pure function of what the calling view already holds.
 
 import { customProviderState, customProviderLabel, addCustomProviderAction } from "./custom-provider.js";
+import { CUSTOM_ENDPOINTS } from "@intisy-ai/core";
 
 // Rows the view appends after the discovered providers. Each carries a `run(tuiApi)` the view
 // calls on Enter; an empty list means there is nothing actionable to show.
 export function extraProviderRows(ctx) {
-  const engine = ctx.pluginByCapability("custom-endpoints");
+  const engine = ctx.pluginByCapability(CUSTOM_ENDPOINTS.id);
   const state = customProviderState(engine, ctx.reposDir, { exists: ctx.exists, hasManager: ctx.hasManager });
   const label = customProviderLabel(state);
   if (!label) return [];

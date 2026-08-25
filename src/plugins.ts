@@ -12,6 +12,7 @@ import { getFolderName, loadNpmPlugins, getUpdaterVersion, getUpdater, resolvedM
 import { S } from "./state.js";
 import { spawnEnv } from "./activity-seam.js";
 import { bundleFor, ledgerRowFor, providerIds, readSettingsSchema } from "./plugin-surface.js";
+import { SETTINGS } from "@intisy-ai/core";
 
 export function gitText(args, cwd) {
   try {
@@ -366,7 +367,7 @@ export function invalidateDeclaration(pluginId) {
 
 // Every plugin that provides the settings capability in this home.
 export function settingsPluginIds() {
-  return providerIds("settings");
+  return providerIds(SETTINGS);
 }
 
 // Read every settings declaration once at startup, so a menu opened later is not waiting on a
