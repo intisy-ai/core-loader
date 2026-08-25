@@ -9,6 +9,7 @@
 import { existsSync, mkdirSync, writeFileSync, appendFileSync } from "fs";
 import { join } from "path";
 import { readDeployedProviders } from "./loader-runtime.js";
+import type { ActivitySpec } from "@intisy-ai/core";
 
 export type ProxyHandlerEntry = { provider: string; handlerPath: string };
 
@@ -20,15 +21,6 @@ export type ProxyServerLike = {
 // Generic activity spec mirroring core's Activity convention, kept structurally
 // typed here (no import from core) so core-loader stays dependency-free; the
 // host loader injects an emitActivity backed by core's real emitEvent.
-export type ActivitySpec = {
-  topic: string;
-  action: string;
-  actor?: string;
-  impact?: string;
-  cause?: { kind: string; surface?: string; detail?: string };
-  subject?: unknown;
-  details?: unknown;
-};
 
 // TProfile is left generic (not imported from core-proxy) so this module never
 // depends on an app-proxy's RoutingProfile type; callers pass their own profile
