@@ -123,8 +123,8 @@ export function fetchPluginRemotes(pluginItems, done) {
       var ri = 0;
       var finish = function() {
         // The same test the manager's own update cache makes, deliberately repeated rather than
-        // shared: this library carries no core submodule, so sharing one boolean would mean adding
-        // one. Only reached when the cache has no answer for this plugin; a cached verdict wins above.
+        // shared: the manager is a plugin, and a plugin is terminal, so nothing may reference one.
+        // Only reached when the cache has no answer for this plugin; a cached verdict wins above.
         p.updateAvail = !!(p.localHead && p.remoteHead && p.localHead !== p.remoteHead);
         remaining--;
         if (remaining === 0 && done) done();
