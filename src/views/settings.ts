@@ -89,7 +89,7 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
   }
 
   // --- Settings sub-tab ---
-  if (S.mode === "pconfig" || S.mode === "pcfginput") {
+  if (S.mode === "pconfig" || S.mode === "pcfginput" || S.mode === "pcfgargs") {
     var ct = S.configTarget;
     var cname = (ct && ct.name) || "settings";
     var cfile = (ct && ct.file) || "settings.json";
@@ -107,7 +107,13 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
       var valStr;
       var mark = "";
       if (it.kind === "action") {
-        valStr = (S.configConfirm === it.key ? (ACCENT + (it.confirm || "Run this?") + " enter to confirm") : (GRAY + "↵ run")) + RST;
+        // While an action's declared args are being collected, its row IS the prompt: one arg at a
+        // time, in the value column the rest of the editor already types into.
+        var collecting = S.configActionArgs && S.configActionArgs.key === it.key ? S.configActionArgs : null;
+        if (collecting) {
+          var argSpec = collecting.specs[collecting.at] || {};
+          valStr = BG_SEL + " " + (argSpec.label || argSpec.key) + ": " + S.inputBuf + BOLD + "|" + RST;
+        } else valStr = (S.configConfirm === it.key ? (ACCENT + (it.confirm || "Run this?") + " enter to confirm") : (GRAY + "↵ run")) + RST;
       } else {
         if (editing) valStr = BG_SEL + " " + (it.type === "secret" ? entryMask(S.inputBuf) : S.inputBuf) + BOLD + "|" + RST;
         else if (it.type === "boolean") valStr = (isBooleanRowOn(it.value) ? OK + "true" : GRAY + "false") + RST;
@@ -124,7 +130,12 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     if (S.message) pushFoot(messageLine(cols));
     pushFoot("  " + rule(barW));
     var hasSecret = S.configItems.some(function (row) { return row.type === "secret"; });
-    if (S.mode === "pcfginput") pushFoot(hints([["enter", "save"], ["esc", "cancel"]]));
+    if (S.mode === "pcfgargs") {
+      var pending = S.configActionArgs;
+      var last = !pending || pending.at >= pending.specs.length - 1;
+      pushFoot(hints([["enter", last ? "run" : "next"], ["esc", "cancel"]]));
+    }
+    else if (S.mode === "pcfginput") pushFoot(hints([["enter", "save"], ["esc", "cancel"]]));
     else pushFoot(hints(hasSecret ? [["↑↓", "move"], ["enter", "edit/toggle/run"], ["r", "reveal"], ["esc", "back"]] : [["↑↓", "move"], ["enter", "edit/toggle/run"], ["esc", "back"]]));
     return;
   }

@@ -284,11 +284,19 @@ export async function readSettingsSchema(pluginId: string): Promise<CapabilitySc
   };
 }
 
-/** Runs one of a plugin's declared settings actions. */
-export async function runSettingsAction(pluginId: string, actionId: string): Promise<ActionResult> {
+/**
+ * Runs one of a plugin's declared settings actions.
+ *
+ * @remarks
+ * `input` carries what the action declared under `args` and a surface collected. Passed through the
+ * contract's second `run` overload only when there is something to pass, so an action taking none is
+ * still called the way it declares itself.
+ */
+export async function runSettingsAction(pluginId: string, actionId: string, input?: Record<string, unknown>): Promise<ActionResult> {
   const settings = capabilityOf(pluginId, SETTINGS);
   if (!settings) return { ok: false, message: "plugin not available" };
-  const answer = await callCapability(pluginId, "settings.run", DEFAULT_INVOKE_TIMEOUT_MS, async () => settings.run(actionId));
+  const answer = await callCapability(pluginId, "settings.run", DEFAULT_INVOKE_TIMEOUT_MS, async () =>
+    input ? settings.run(actionId, input) : settings.run(actionId));
   if (answer.ok === false) return { ok: false, message: answer.error.detail };
   return answer.value ?? { ok: true };
 }
