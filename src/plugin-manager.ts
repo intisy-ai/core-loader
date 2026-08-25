@@ -5,6 +5,7 @@ import { readDeployedManifests } from "@intisy-ai/api/host";
 import { appNpmPlugins, expandPath } from "./app-descriptor.js";
 import type { HomePaths } from "./home-paths.js";
 import type { CatalogEntry } from "./capability-catalog.js";
+import { PLUGIN_MANAGEMENT } from "@intisy-ai/core";
 
 // Where the app itself installs an npm plugin, when it has such a mechanism at all.
 function npmPackageCache(paths: HomePaths): string {
@@ -13,7 +14,7 @@ function npmPackageCache(paths: HomePaths): string {
 }
 
 /** The capability a plugin declares to be the one that manages plugins. */
-export const PLUGIN_MANAGEMENT_CAPABILITY = "plugin-management";
+export const PLUGIN_MANAGEMENT_CAPABILITY = PLUGIN_MANAGEMENT.id;
 
 /** The file this home keeps its derived answer in. */
 export const MANAGER_CACHE_FILE = "plugin-manager.json";

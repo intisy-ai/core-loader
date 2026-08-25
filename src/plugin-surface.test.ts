@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PluginManifest } from "@intisy-ai/api";
 import { CONFIG_DIR, PLUGINS_DIR } from "./env.js";
-import { getConfigDefaults } from "@intisy-ai/core";
+import { getConfigDefaults, SCREENS, SETTINGS } from "@intisy-ai/core";
 import { startPlugins } from "@intisy-ai/api/host";
 import {
   bundleFor,
@@ -71,9 +71,9 @@ describe("the home these tests write to", () => {
 
 describe("the surface's view of a running host", () => {
   it("answers with no providers, no bundle and no ledger row when no host started", async () => {
-    expect(providerIds("screens")).toEqual([]);
+    expect(providerIds(SCREENS)).toEqual([]);
     expect(capabilityProviders("screens")).toEqual([]);
-    expect(capabilityOf("demo", "screens")).toBeUndefined();
+    expect(capabilityOf("demo", SCREENS)).toBeUndefined();
     expect(bundleFor("demo")).toBeNull();
     expect(ledgerRowFor("demo")).toBeNull();
     expect(pluginHost()).toBeNull();
@@ -112,9 +112,9 @@ describe("the surface's view of a running host", () => {
       },
     );
 
-    expect(providerIds("screens")).toEqual(["alpha"]);
-    expect(providerIds("settings")).toEqual(["beta"]);
-    expect(capabilityOf("alpha", "settings")).toBeUndefined();
+    expect(providerIds(SCREENS)).toEqual(["alpha"]);
+    expect(providerIds(SETTINGS)).toEqual(["beta"]);
+    expect(capabilityOf("alpha", SETTINGS)).toBeUndefined();
     expect(bundleFor("beta")).toBe("/home/plugin/beta.js");
     expect(await readSettingsSchema("beta")).toEqual({ fields: [{ key: "token", type: "string" }], actions: [], sections: [] });
     expect(await readScreenData("alpha", "s")).toEqual({ rows: [] });

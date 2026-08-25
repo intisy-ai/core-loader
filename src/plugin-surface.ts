@@ -1,5 +1,5 @@
 import { setDiagnosticSink } from "@intisy-ai/api/engine";
-import type { ActionResult, CapabilitySchema, ScreensCapability, SectionSpec, SettingsCapability } from "./capability-shapes.js";
+import type { ActionResult, CapabilitySchema, SectionSpec } from "./capability-shapes.js";
 import type { ScreenNode, ScreenSpec } from "./screens.js";
 import { APP_ID, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
@@ -9,6 +9,7 @@ import {
 } from "@intisy-ai/core";
 import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, readDeployedManifests, startPlugins } from "@intisy-ai/api/host";
 import type { LoadedHost, PluginLedgerRow } from "@intisy-ai/api/host";
+import type { CapabilityType } from "@intisy-ai/api/contract";
 
 let HOST: LoadedHost | null = null;
 
@@ -136,13 +137,20 @@ export function capabilityProviders(id: string): Provider[] {
 }
 
 /** The plugin ids providing a capability, in activation order. */
-export function providerIds(id: string): string[] {
-  return capabilityProviders(id).map((provider) => provider.pluginId);
+export function providerIds(type: CapabilityType<unknown>): string[] {
+  return capabilityProviders(type.id).map((provider) => provider.pluginId);
 }
 
-/** One plugin's implementation of a capability, or `undefined` when it provides none. */
-export function capabilityOf(pluginId: string, id: string): unknown {
-  return capabilityProviders(id).find((provider) => provider.pluginId === pluginId)?.implementation;
+/**
+ * One plugin's implementation of a capability, or `undefined` when it provides none.
+ *
+ * @remarks
+ * Takes the minting library's typed key rather than a bare id, so the id and the shape it implies
+ * cannot be paired wrongly: the phantom on the key makes that a compile error, where a literal
+ * beside a cast made it a silent `undefined` at run time.
+ */
+export function capabilityOf<T>(pluginId: string, type: CapabilityType<T>): T | undefined {
+  return capabilityProviders(type.id).find((provider) => provider.pluginId === pluginId)?.implementation as T | undefined;
 }
 
 /** The deployed bundle of a plugin, or `null` when none is deployed beside its manifest. */
@@ -189,7 +197,7 @@ function listOf<T>(value: unknown, what: string, pluginId: string): T[] {
  * author whose screen never appears finds out why from the log rather than from an empty sub-page.
  */
 export async function readScreenSpecs(pluginId: string): Promise<ScreenSpec[]> {
-  const screens = capabilityOf(pluginId, "screens") as ScreensCapability | undefined;
+  const screens = capabilityOf(pluginId, SCREENS);
   if (!screens) return [];
   const answer = await callCapability(pluginId, "screens.screens", DEFAULT_CALL_TIMEOUT_MS, async () => screens.screens());
   if (answer.ok === false) {
@@ -208,7 +216,7 @@ export async function readScreenSpecs(pluginId: string): Promise<ScreenSpec[]> {
 
 /** The data behind one of a plugin's screens, or `null` when it could not be read. */
 export async function readScreenData(pluginId: string, screenId: string): Promise<Record<string, unknown> | null> {
-  const screens = capabilityOf(pluginId, "screens") as ScreensCapability | undefined;
+  const screens = capabilityOf(pluginId, SCREENS);
   if (!screens) return null;
   const answer = await callCapability(pluginId, "screens.read", DEFAULT_CALL_TIMEOUT_MS, async () =>
     screens.read({ screenId, home: CONFIG_DIR }));
@@ -232,7 +240,7 @@ export async function invokeScreenAction(
   actionId: string,
   input: Record<string, unknown>,
 ): Promise<ActionResult> {
-  const screens = capabilityOf(pluginId, "screens") as ScreensCapability | undefined;
+  const screens = capabilityOf(pluginId, SCREENS);
   if (!screens) return { ok: false, message: "plugin not available" };
   const answer = await callCapability(pluginId, "screens.invoke", DEFAULT_INVOKE_TIMEOUT_MS, async () =>
     screens.invoke({ screenId, actionId, home: CONFIG_DIR, input }));
@@ -252,7 +260,7 @@ export async function invokeScreenAction(
  * else there.
  */
 export async function readSettingsSchema(pluginId: string): Promise<CapabilitySchema | null> {
-  const settings = capabilityOf(pluginId, "settings") as SettingsCapability | undefined;
+  const settings = capabilityOf(pluginId, SETTINGS);
   if (!settings) return null;
   const answer = await callCapability(pluginId, "settings.schema", DEFAULT_CALL_TIMEOUT_MS, async () => settings.schema());
   if (answer.ok === false) {
@@ -278,7 +286,7 @@ export async function readSettingsSchema(pluginId: string): Promise<CapabilitySc
 
 /** Runs one of a plugin's declared settings actions. */
 export async function runSettingsAction(pluginId: string, actionId: string): Promise<ActionResult> {
-  const settings = capabilityOf(pluginId, "settings") as SettingsCapability | undefined;
+  const settings = capabilityOf(pluginId, SETTINGS);
   if (!settings) return { ok: false, message: "plugin not available" };
   const answer = await callCapability(pluginId, "settings.run", DEFAULT_INVOKE_TIMEOUT_MS, async () => settings.run(actionId));
   if (answer.ok === false) return { ok: false, message: answer.error.detail };

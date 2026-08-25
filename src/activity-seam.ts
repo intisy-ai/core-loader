@@ -1,7 +1,11 @@
-// The write side of Activity, injected. core-loader bundles no core, so the host
-// loader (which does) installs emit/scope/env once and everything here forwards to
-// it; unset, every helper is a no-op, so the TUI works with Activity absent. The
-// read side stays on S.capabilities.activity.read, where the views need it.
+// The write side of Activity, injected, and it must stay injected even though this library now
+// reads core directly: core keeps the activity context in MODULE state (an ambient context object
+// and an AsyncLocalStorage for cause scopes), and the host is what installs it. Taking core's
+// emitter here instead would bind these calls to whichever core copy this package resolves, which
+// in a tree where each package has its own is a different instance from the one the host set the
+// context on, so every record would carry an empty origin and no cause. Unset, every helper is a
+// no-op, so the TUI works with Activity absent. The read side stays on
+// S.capabilities.activity.read, where the views need it.
 
 export type LoaderCause = { kind: string; surface?: string; detail?: string };
 
