@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { subdirName } from "./home-paths.js";
+import { appPathNames } from "@intisy-ai/core";
 import { detectAppId, registryDescriptor, resolveHome } from "./app-descriptor.js";
 
 // A host that imports a plugin module for its API, rather than to activate it, says so here: a
@@ -26,10 +26,11 @@ export const CLI_CMD = process.env.HUB_CLI_CMD || DESCRIPTOR?.detect?.binary || 
 export const NPM_PKG = process.env.HUB_NPM_PKG || DESCRIPTOR?.detect?.pkg || "";
 export const CONFIG_DIR = process.env.HUB_CONFIG_DIR || (DESCRIPTOR ? resolveHome(DESCRIPTOR) : "");
 
-export const REPOS_SUBDIR = subdirName("HUB_REPOS_SUBDIR", "repos");
-export const PLUGIN_SUBDIR = subdirName("HUB_PLUGIN_SUBDIR", "plugin");
-export const CACHE_SUBDIR = subdirName("HUB_CACHE_SUBDIR", "cache");
-export const CONFIG_SUBDIR = subdirName("HUB_CONFIG_SUBDIR", "config");
+const SUBDIRS = appPathNames(DESCRIPTOR);
+export const REPOS_SUBDIR = SUBDIRS.repos;
+export const PLUGIN_SUBDIR = SUBDIRS.plugin;
+export const CACHE_SUBDIR = SUBDIRS.cache;
+export const CONFIG_SUBDIR = SUBDIRS.config;
 
 // Every home-relative path goes through here: `join("", "config")` yields the RELATIVE "config",
 // so an unknown app would read and write into whatever directory the process was launched from.

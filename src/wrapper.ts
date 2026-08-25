@@ -4,10 +4,9 @@
 
 const CLI_SUBCOMMANDS = ["plugins", "providers", "proxy", "doctor"];
 
-// The storage subdirectory names the TUI should use. This library reads them from
-// the environment because it carries no core submodule, so the loader (which does)
-// resolves them from the app's registry entry and writes them into the wrapper.
-// Only names that differ from the convention are emitted, so an app that never
+// The storage subdirectory names, written into the wrapper for the components that cannot read the
+// registry themselves: a shell script, and core-auth, which sits in this library's own layer and may
+// not reference core. Only names that differ from the convention are emitted, so an app that never
 // renamed anything gets no extra lines.
 export interface SubdirNames {
   repos?: string;
