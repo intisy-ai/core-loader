@@ -6,8 +6,8 @@ marketplace browsing, config editing, and the proxy runner) as one source of
 truth, so `opencode-loader` and `claude-code-loader` differ only in their
 app-specific paths and names.
 
-Compiled from the submodule, and published as `@intisy-ai/core-loader` so a
-loader installed from npm resolves it as a dependency instead of inlining a copy.
+Published as `@intisy-ai/core-loader`, so a loader resolves it as a dependency
+instead of inlining a copy.
 
 ## Requirements
 
@@ -30,9 +30,9 @@ flowchart TD
 
 This library is **generic**: it contains no per-app job. Anything app-specific
 (config filenames, home directories, labels) belongs to the loader that consumes
-it, never here. Note that core-loader deliberately carries no `core` submodule,
-which is why a few small facts (such as the storage subdirectory names in
-`src/home-paths.ts`) live here rather than being asked of core.
+it, never here. Note that core-loader deliberately depends on no library
+but the api, which is why a few small facts (such as the storage subdirectory names
+in `src/home-paths.ts`) live here rather than being asked of core.
 
 ## Structure
 
@@ -67,14 +67,6 @@ There is no barrel module: consumers import the module they need directly
 package builds to CommonJS.
 
 ## Installation
-
-As a submodule, for a loader built in this ecosystem:
-
-```bash
-git submodule add https://github.com/intisy-ai/core-loader core-loader
-```
-
-Or as an npm dependency:
 
 ```bash
 npm install @intisy-ai/core-loader
