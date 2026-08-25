@@ -2,6 +2,7 @@
 // section per plugin declaring something configurable, then the flat entry list the renderer
 // and key handler both walk: a "Global" header + its group, then a "Plugins" header + one
 // group row per plugin. Headers are not selectable (nav skips them).
+import { byOrderThenLabel } from "@intisy-ai/core";
 import { buildConfigItems, declarationFor, settingsPluginIds } from "./plugins.js";
 import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "./config.js";
 import { S } from "./state.js";
@@ -121,9 +122,7 @@ export function buildSettingsEntries(sections: SettingsSection[], loading: strin
     entries.push({ type: "header", label: "Plugins" });
     // A contributed section is a feature the user came looking for ("Sync"); a plugin's own
     // group is where they go to tune one plugin. The first kind leads.
-    const contributed = plugins.filter((s) => s.addedBy).sort(
-      (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.label.localeCompare(b.label),
-    );
+    const contributed = plugins.filter((s) => s.addedBy).sort(byOrderThenLabel);
     for (const s of contributed) entries.push({ type: "group", section: s });
     for (const s of plugins) if (!s.addedBy) entries.push({ type: "group", section: s });
     for (const l of loading) entries.push({ type: "loading", label: l });
