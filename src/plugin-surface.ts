@@ -3,8 +3,12 @@ import type { ActionResult, CapabilitySchema, ScreensCapability, SectionSpec, Se
 import type { ScreenNode, ScreenSpec } from "./screens.js";
 import { APP_ID, PLUGINS_DIR, CONFIG_DIR, tuiLog } from "./env.js";
 import { S } from "./state.js";
+import {
+  applyManifestDeclarations, createPluginRuntime,
+  ACCOUNTS, ACTIVITY, CUSTOM_ENDPOINTS, PLUGIN_MANAGEMENT, ROUTING, SCREENS, SETTINGS,
+} from "@intisy-ai/core";
 import { callCapability, DEFAULT_CALL_TIMEOUT_MS, DEFAULT_INVOKE_TIMEOUT_MS, ledgerRows, readDeployedManifests, startPlugins } from "@intisy-ai/api/host";
-import type { LoadedHost, PluginHostOptions, PluginLedgerRow, VocabularyEntry } from "@intisy-ai/api/host";
+import type { LoadedHost, PluginLedgerRow } from "@intisy-ai/api/host";
 
 let HOST: LoadedHost | null = null;
 
@@ -16,38 +20,33 @@ export interface Provider {
   implementation: unknown;
 }
 
-function entries(value: unknown): ReadonlyArray<VocabularyEntry> | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const kept = value.filter((entry) => entry && typeof (entry as VocabularyEntry).id === "string");
-  return kept.length ? (kept as VocabularyEntry[]) : undefined;
-}
-
 /**
- * The capability and service ids the loader registered, as the host verifies plugin declarations
- * against.
+ * The capabilities this host renders, which the engine verifies a plugin's declarations against.
  *
  * @remarks
- * Injected rather than imported, for the same reason `runtimeFor` is: this library carries no core
- * submodule, so the loader that does passes the ids core mints. An absent list leaves the host
- * unable to tell an unrecognised id from an unverifiable one, which is a diagnostic worth naming
- * rather than a failure.
+ * Deliberately narrower than everything core mints: the api holds a host to the ids it names, which
+ * is what turns the check into "does THIS host understand it". A capability minted elsewhere in the
+ * ecosystem but rendered by no surface here is unknown to this host, and saying so is the point.
  */
-export function hostVocabulary(capabilities: unknown): {
-  vocabulary?: ReadonlyArray<VocabularyEntry>;
-  wellKnownServices?: ReadonlyArray<VocabularyEntry>;
-} {
-  const bag = capabilities as Record<string, unknown> | undefined;
-  return { vocabulary: entries(bag?.vocabulary), wellKnownServices: entries(bag?.wellKnownServices) };
-}
+const RENDERED_CAPABILITIES = [SCREENS, SETTINGS, CUSTOM_ENDPOINTS, PLUGIN_MANAGEMENT];
+
+/**
+ * The bare service ids any plugin may register under.
+ *
+ * @remarks
+ * An absent list means an EMPTY one here, the opposite of the capability vocabulary above, so naming
+ * these is what lets a plugin claim the shared contract instead of being read as squatting on it.
+ */
+const WELL_KNOWN_SERVICES = [ACCOUNTS, ROUTING, ACTIVITY];
 
 /**
  * The services the loader implements on every plugin's behalf.
  *
  * @remarks
- * Injected for the third time and the same reason: a plugin reaching behaviour from a library it may
- * not link gets it from the host, and this library may not link that library either. An entry
- * missing an id or an implementation is dropped rather than passed on, since the host would
- * register a service nothing can call.
+ * Injected, because a plugin reaching behaviour from a library it may not link gets it from the
+ * host, and this library may not link that library either: `provider-support` belongs to core-auth,
+ * which sits in this library's own layer. An entry missing an id or an implementation is dropped
+ * rather than passed on, since the host would register a service nothing can call.
  */
 export function hostServices(capabilities: unknown): ReadonlyArray<{ id: string; implementation: unknown }> {
   const value = (capabilities as Record<string, unknown> | undefined)?.services;
@@ -62,10 +61,8 @@ export function hostServices(capabilities: unknown): ReadonlyArray<{ id: string;
  * Starts the in-process plugin host for this home.
  *
  * @remarks
- * The per-plugin runtime is injected, because this library carries no core submodule and cannot
- * build one; the loader that does registers `runtimeFor` alongside its other capabilities. With
- * nothing injected there is no host, and every surface below answers empty rather than failing,
- * which is the same degradation rule the rest of the plugin system follows.
+ * With no home resolved there is no host, and every surface below answers empty rather than
+ * failing, which is the same degradation rule the rest of the plugin system follows.
  *
  * The diagnostic sink is installed first: the engine's fallback for an ignored unknown id writes to
  * the console, and anything written to the terminal corrupts this TUI.
@@ -73,25 +70,22 @@ export function hostServices(capabilities: unknown): ReadonlyArray<{ id: string;
 export async function startPluginHost(): Promise<void> {
   if (HOST) return;
   setDiagnosticSink((message: string) => tuiLog("[plugin-api] " + message));
-  // Before the runtime guard: a slash command is a file the APP reads, so it must be written even
-  // in a home where nothing drives plugins in-process.
+  // Before the home guard: a slash command is a file the APP reads, so it must be written whatever
+  // becomes of the host.
   applyDeclarations();
-  const runtimeFor = (S.capabilities as Record<string, unknown> | undefined)?.runtimeFor;
-  if (typeof runtimeFor !== "function") {
-    tuiLog("no plugin runtime registered; plugin screens and settings stay empty");
+  if (!CONFIG_DIR) {
+    tuiLog("no app home resolved; plugin screens and settings stay empty");
     return;
   }
-  const declared = hostVocabulary(S.capabilities);
-  if (!declared.vocabulary) tuiLog("no capability vocabulary registered; a plugin's declarations cannot be verified");
   try {
     HOST = await startPlugins({
       app: APP_ID,
       pluginDir: PLUGINS_DIR,
       surfaces: ["tui"],
-      vocabulary: declared.vocabulary,
-      wellKnownServices: declared.wellKnownServices,
+      vocabulary: RENDERED_CAPABILITIES,
+      wellKnownServices: WELL_KNOWN_SERVICES,
       services: hostServices(S.capabilities),
-      runtimeFor: runtimeFor as PluginHostOptions["runtimeFor"],
+      runtimeFor: (manifest) => createPluginRuntime(manifest.id, CONFIG_DIR),
     });
     for (const error of HOST.quarantined) {
       tuiLog("plugin " + error.pluginId + " quarantined: " + error.detail + " (fix: " + error.fix + ")", true);
@@ -107,14 +101,12 @@ export async function startPluginHost(): Promise<void> {
  * @remarks
  * Before the host starts, and whatever the host then makes of a plugin: a settings row and a slash
  * command are things a plugin DECLARES, so they must exist for one that is broken, disabled, or has
- * simply never been activated. Injected for the same reason `runtimeFor` is, since carrying them out
- * is core's job and this library carries no core submodule.
+ * simply never been activated.
  */
 function applyDeclarations(): void {
-  const apply = (S.capabilities as Record<string, unknown> | undefined)?.applyDeclarations;
-  if (typeof apply !== "function") return;
   try {
-    (apply as (manifests: unknown[]) => unknown)(readDeployedManifests(PLUGINS_DIR).loaded.map((plugin) => plugin.manifest));
+    const scan = readDeployedManifests(PLUGINS_DIR, WELL_KNOWN_SERVICES);
+    applyManifestDeclarations(scan.loaded.map((plugin) => plugin.manifest), CONFIG_DIR);
   } catch (error) {
     tuiLog("could not register what the installed plugins declare: " + String(error), true);
   }

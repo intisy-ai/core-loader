@@ -1,15 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { PluginManifest } from "@intisy-ai/api";
-import { CONFIG_DIR } from "./env.js";
+import { CONFIG_DIR, PLUGINS_DIR } from "./env.js";
+import { getConfigDefaults } from "@intisy-ai/core";
 import { startPlugins } from "@intisy-ai/api/host";
-import { S } from "./state.js";
 import {
   bundleFor,
   capabilityOf,
   capabilityProviders,
   hostServices,
-  hostVocabulary,
   invokeScreenAction,
   ledgerRowFor,
   pluginHost,
@@ -314,62 +315,81 @@ describe("the surface's view of a running host", () => {
     });
   });
 
-  it("stays hostless when no runtime is injected via capabilities", async () => {
-    const previousCapabilities = S.capabilities;
-    S.capabilities = {};
+  // A deployed plugin is a manifest sidecar beside its bundle, which is what the host reads. Written
+  // for real here rather than stubbed, because the whole point of the seam is that nothing is handed
+  // in: the runtime, the declarations and the ids all come from core.
+  function deploy(id: string, manifest: Record<string, unknown>, module: string) {
+    mkdirSync(PLUGINS_DIR, { recursive: true });
+    // What deploy writes beside the bundles, so node reads them as ESM. The scan skips this name.
+    writeFileSync(join(PLUGINS_DIR, "package.json"), JSON.stringify({ type: "module" }));
+    writeFileSync(join(PLUGINS_DIR, id + ".json"), JSON.stringify({ id, api: 1, entry: "dist/index.js", ...manifest }));
+    writeFileSync(join(PLUGINS_DIR, id + ".js"), module);
+    return () => { for (const ext of [".json", ".js"]) rmSync(join(PLUGINS_DIR, id + ext), { force: true }); };
+  }
+
+  it("builds every plugin's context from core, on this home", async () => {
+    const probe = join(PLUGINS_DIR, "probe-context.json");
+    const undeploy = deploy("prober", {}, `
+import { writeFileSync } from "node:fs";
+export default {
+  activate: (ctx) => writeFileSync(${JSON.stringify(probe)}, JSON.stringify({
+    home: ctx.paths.home,
+    config: typeof ctx.config.all, log: typeof ctx.log.info, events: typeof ctx.events.publish,
+  })),
+  deactivate: () => {},
+};
+`);
     try {
-      await expect(startPluginHost()).resolves.toBeUndefined();
-      expect(pluginHost()).toBeNull();
+      await startPluginHost();
+      expect(pluginHost()).not.toBeNull();
+      expect(JSON.parse(readFileSync(probe, "utf-8")))
+        .toEqual({ home: CONFIG_DIR, config: "function", log: "function", events: "function" });
     } finally {
-      S.capabilities = previousCapabilities;
+      undeploy();
+      rmSync(probe, { force: true });
     }
   });
 
   // A slash command and a settings row are things a plugin DECLARES, so they must be registered for
   // one that is broken, disabled, or has simply never been activated.
   it("registers what the installed plugins declare even when nothing drives them", async () => {
-    const previousCapabilities = S.capabilities;
-    const handed: unknown[][] = [];
-    S.capabilities = { applyDeclarations: (manifests: unknown[]) => { handed.push(manifests); } };
+    const undeploy = deploy("declarer", { config: { defaults: { retries: 3 } } }, "not importable");
     try {
       await startPluginHost();
-      expect(handed).toHaveLength(1);
-      expect(pluginHost()).toBeNull();
+      expect(getConfigDefaults("declarer")).toEqual({ retries: 3 });
     } finally {
-      S.capabilities = previousCapabilities;
+      undeploy();
     }
   });
 
-  it("carries on when registering the declarations throws", async () => {
-    const previousCapabilities = S.capabilities;
-    S.capabilities = { applyDeclarations: () => { throw new Error("no command dir"); } };
+  it("carries on when a deployed sidecar is unreadable", async () => {
+    mkdirSync(PLUGINS_DIR, { recursive: true });
+    const sidecar = join(PLUGINS_DIR, "broken.json");
+    writeFileSync(sidecar, "{ not json");
     try {
       await expect(startPluginHost()).resolves.toBeUndefined();
+      expect(pluginHost()).not.toBeNull();
     } finally {
-      S.capabilities = previousCapabilities;
+      rmSync(sidecar, { force: true });
     }
   });
-});
 
-describe("hostVocabulary", () => {
-  it("takes the ids the loader registered", () => {
-    expect(hostVocabulary({ vocabulary: [{ id: "screens" }], wellKnownServices: [{ id: "accounts" }] })).toEqual({
-      vocabulary: [{ id: "screens" }],
-      wellKnownServices: [{ id: "accounts" }],
-    });
-  });
-
-  it("reports nothing registered as absent rather than empty", () => {
-    expect(hostVocabulary({})).toEqual({ vocabulary: undefined, wellKnownServices: undefined });
-    expect(hostVocabulary(undefined)).toEqual({ vocabulary: undefined, wellKnownServices: undefined });
-  });
-
-  // An absent list and an all-malformed one mean the same thing to the host: it cannot verify a
-  // declaration. Keeping the malformed entries would have it reject ids on a list nobody meant.
-  it("drops an entry carrying no id, and a list left with none", () => {
-    expect(hostVocabulary({ vocabulary: [{ id: "screens" }, {}, "settings"] }).vocabulary).toEqual([{ id: "screens" }]);
-    expect(hostVocabulary({ vocabulary: ["screens"] }).vocabulary).toBeUndefined();
-    expect(hostVocabulary({ vocabulary: "screens" }).vocabulary).toBeUndefined();
+  // The home is what the runtime is built from, so an unresolved one is where the host stops: the
+  // same degradation rule as ever, reached now by the home rather than by an absent injection.
+  // Re-imported without the suite's pinned home, since env.ts resolves it once at import.
+  it("stays hostless when no app home resolves", async () => {
+    const pinned = process.env.HUB_CONFIG_DIR;
+    delete process.env.HUB_CONFIG_DIR;
+    vi.resetModules();
+    try {
+      const fresh = await import("./plugin-surface.js");
+      await expect(fresh.startPluginHost()).resolves.toBeUndefined();
+      expect(fresh.pluginHost()).toBeNull();
+    } finally {
+      if (pinned === undefined) delete process.env.HUB_CONFIG_DIR;
+      else process.env.HUB_CONFIG_DIR = pinned;
+      vi.resetModules();
+    }
   });
 });
 
