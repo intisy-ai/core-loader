@@ -3,6 +3,7 @@
 // All three prefer the config/ subdir and fall back to legacy top-level files.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, unlinkSync } from "fs";
+import { loadConfig as coreLoadConfig } from "@intisy-ai/core";
 import { readJson } from "./json.js";
 import { join, dirname } from "path";
 import { CONFIG_PATH, CONFIG_FOLDER, CONFIG_DIR, APP_ID, REPOS_DIR, PLUGINS_JSON, MCP_CONFIG_PATH } from "./env.js";
@@ -30,11 +31,7 @@ export function loaderConfigName() {
 export function loadLoaderConfig() {
   if (LOADER_CONFIG !== null) return LOADER_CONFIG;
   var name = loaderConfigName();
-  if (!name || !CONFIG_DIR) return (LOADER_CONFIG = {});
-  var preferred = join(CONFIG_FOLDER, name + ".json");
-  var fallback = join(CONFIG_DIR, name + ".json");
-  var p = existsSync(preferred) ? preferred : existsSync(fallback) ? fallback : null;
-  LOADER_CONFIG = p ? readJson(p, {}) : {};
+  LOADER_CONFIG = name && CONFIG_DIR ? coreLoadConfig(name, CONFIG_DIR) : {};
   return LOADER_CONFIG;
 }
 
