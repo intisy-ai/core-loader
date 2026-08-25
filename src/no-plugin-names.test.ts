@@ -58,6 +58,9 @@ const PROSE_ALLOWED: Record<string, string[]> = {
   "src/format.ts": ["claude-code-loader"],
   "src/loader-runtime.ts": ["claude-code-loader", "opencode-loader"],
   "src/proxy-runner.ts": ["claude-code-loader", "opencode-loader"],
+  // CONTENT.md is the README's source, generated into README.md on the default branch, so the two
+  // carry the same prose and earn the same allowance.
+  "CONTENT.md": ["claude-code-loader", "opencode-loader"],
   "README.md": ["claude-code-loader", "opencode-loader"],
   "SPEC.md": ["opencode-loader"],
 };

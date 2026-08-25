@@ -1,6 +1,6 @@
 {
   "name": "core-loader",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Shared app-loader engine library for the intisy-ai AI-proxy ecosystem.",
   "main": "dist/loader-runtime.js",
   "types": "dist/loader-runtime.d.ts",
@@ -32,7 +32,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@intisy-ai/api": "^1.0.1"
+    "@intisy-ai/api": "^1.0.1",
+    "@intisy-ai/core": "^2.2.0"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",

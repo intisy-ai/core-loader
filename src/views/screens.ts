@@ -7,6 +7,7 @@
 // that, and it is the cost the in-process contract accepts.
 
 import { S } from "../state.js";
+import { byOrderThenLabel } from "@intisy-ai/core";
 import { screenRows } from "../screens.js";
 import { tuiLog } from "../env.js";
 import { invokeScreenAction, providerIds, readScreenData, readScreenSpecs, readSettingsSchema } from "../plugin-surface.js";
@@ -51,9 +52,7 @@ export function entryId(entry) {
 }
 
 export function subPages(entries) {
-  const sorted = entries.slice().sort(
-    (a, b) => (a.spec.order ?? Number.MAX_SAFE_INTEGER) - (b.spec.order ?? Number.MAX_SAFE_INTEGER) || a.spec.label.localeCompare(b.spec.label),
-  );
+  const sorted = entries.slice().sort((a, b) => byOrderThenLabel(a.spec, b.spec));
   return [{ id: "settings", label: "Settings" }].concat(sorted.map((entry) => ({ id: entryId(entry), label: entry.spec.label, entry })));
 }
 

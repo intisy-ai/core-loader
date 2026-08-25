@@ -115,7 +115,7 @@ export function createAccountMenu() {
 
   function openAction(action, tuiApi, title) {
     if (!action) return false;
-    if (!tuiApi.setTextInput) { try { tuiApi.flash("Loader too old — update to manage providers"); } catch (e) {} return false; }
+    if (!tuiApi.setTextInput) { try { tuiApi.flash("Loader too old - update to manage providers"); } catch (e) {} return false; }
     nav.stack = [function () { return { title: title || "", items: [] }; }];
     nav.cur = 0;
     nav.active = true;
@@ -130,7 +130,7 @@ export function createAccountMenu() {
   function open(handlerPath, tuiApi, providerId) {
     const label = providerId || "provider";
     if (!handlerPath || !existsSync(handlerPath)) { try { tuiApi.flash("No menu for " + label); } catch (e) {} return false; }
-    if (!tuiApi.runBlocking || !tuiApi.setTextInput) { try { tuiApi.flash("Loader too old — update to manage providers"); } catch (e) {} return false; }
+    if (!tuiApi.runBlocking || !tuiApi.setTextInput) { try { tuiApi.flash("Loader too old - update to manage providers"); } catch (e) {} return false; }
     tuiApi.runBlocking(async function () {
       try {
         // pathToFileURL: a raw Windows path (C:\...) is not a valid import specifier

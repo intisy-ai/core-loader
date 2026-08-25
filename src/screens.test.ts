@@ -5,8 +5,8 @@ import { flattenScreen, screenRows } from "./screens.js";
 
 const fixture = JSON.parse(readFileSync(join(__dirname, "__fixtures__", "screen-fixture.json"), "utf8"));
 
-describe("core-loader flatten", () => {
-  it("agrees with core on kinds, labels and depths", () => {
+describe("screen flatten", () => {
+  it("collapses the fixture to its leaves, with their labels and depths", () => {
     const rows = flattenScreen(fixture.layout);
     expect(rows.map((r) => r.kind)).toEqual(["stats", "table", "chips", "text", "text"]);
     expect(rows.map((r) => r.label)).toEqual([undefined, "Changes / Pending", "Profiles", undefined, undefined]);

@@ -51,7 +51,7 @@ function pluginsList() {
     console.log("No plugins registered (config/plugins.json is empty).");
     return;
   }
-  console.log("Plugins (" + entries.length + ") — " + UPDATER_APP + ":\n");
+  console.log("Plugins (" + entries.length + ") - " + UPDATER_APP + ":\n");
   console.log("  " + pad("NAME", 22) + pad("STATE", 12) + pad("DEPLOYED", 10) + "AUTO-UPDATE");
   for (const entry of entries) {
     const name = entry.name || "?";
@@ -142,7 +142,7 @@ function providers() {
   const tiers = tiersByProvider();
   const handlers = deployedHandlers();
 
-  console.log("Providers — " + UPDATER_APP + ":\n");
+  console.log("Providers - " + UPDATER_APP + ":\n");
   const names = new Set([...Object.keys(accounts), ...Object.keys(tiers)]);
   if (!names.size) {
     console.log("  (no accounts and no model mapping configured)");
@@ -197,7 +197,7 @@ function wrapperState() {
 }
 
 async function doctor() {
-  console.log("doctor — " + APP_NAME + "\n");
+  console.log("doctor - " + APP_NAME + "\n");
 
   const up = await probeProxy(2000);
   console.log("  " + pad("proxy (:" + PROXY_PORT + ")", 26) + (up ? "UP " + OK : "DOWN " + BAD));

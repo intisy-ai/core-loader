@@ -1,83 +1,10 @@
-// Re-implements core's screen-layout.ts flatten rule (libs/core/src/screen-layout.ts) so a
-// contributed screen renders the same way in this TUI as it does in the graphical dashboard.
-// core-loader carries no core submodule by design, so the walk lives here too and the two
-// implementations are kept honest by asserting against the same fixture file. This one bounds its
-// nesting (MAX_LAYOUT_DEPTH), because it walks a plugin's live object rather than a serialized tree.
+// Rendering a plugin's contributed screen as terminal rows. The flatten walk itself comes from
+// core, so this surface and the graphical dashboard collapse the same tree the same way.
+import { flattenScreen, screenLayoutFor } from "@intisy-ai/core";
+import type { FlatRow, ScreenSpec } from "@intisy-ai/core";
 
-export interface ScreenNode {
-  kind: string;
-  children?: ScreenNode[];
-  [prop: string]: unknown;
-}
-
-export interface ScreenSpec {
-  id: string;
-  label: string;
-  layout: ScreenNode;
-  surfaces?: Record<string, ScreenNode>;
-  /** Sort order among screens. Lower sorts first. */
-  order?: number;
-}
-
-export interface FlatRow {
-  kind: string;
-  label?: string;
-  node: ScreenNode;
-  depth: number;
-}
-
-export const CONTAINER_KINDS = new Set(["stack", "row", "grid", "card", "group", "tabs"]);
-
-// How deep a layout is walked. A plugin's tree is a live in-process object, so it may nest into
-// itself or nest absurdly; without a bound either one exhausts the stack and takes the loader down.
-export const MAX_LAYOUT_DEPTH = 12;
-
-interface Tab {
-  id?: string;
-  label?: string;
-  child?: ScreenNode;
-}
-
-function titleOf(node: ScreenNode): string | undefined {
-  const title = node.title ?? node.label;
-  return typeof title === "string" && title ? title : undefined;
-}
-
-function join(outer: string | undefined, inner: string | undefined): string | undefined {
-  if (outer && inner) return `${outer} / ${inner}`;
-  return outer ?? inner;
-}
-
-// A surface with no nesting still wants to know what a leaf sat under, so a container
-// contributes its title to the rows below it rather than a row of its own.
-function walk(node: ScreenNode, depth: number, label: string | undefined, rows: FlatRow[]): void {
-  if (depth >= MAX_LAYOUT_DEPTH) return;
-  if (!CONTAINER_KINDS.has(node.kind)) {
-    rows.push(label === undefined ? { kind: node.kind, node, depth } : { kind: node.kind, label, node, depth });
-    return;
-  }
-  const own = join(label, titleOf(node));
-  if (node.kind === "tabs") {
-    const tabs = Array.isArray(node.tabs) ? (node.tabs as Tab[]) : [];
-    for (const tab of tabs) {
-      if (tab && tab.child) walk(tab.child, depth + 1, join(own, tab.label), rows);
-    }
-    return;
-  }
-  for (const child of node.children ?? []) walk(child, depth + 1, own, rows);
-}
-
-// The root container is the screen itself, so its direct children sit at depth 0 and a
-// surface indents only what the plugin actually nested.
-export function flattenScreen(node: ScreenNode): FlatRow[] {
-  const rows: FlatRow[] = [];
-  walk(node, CONTAINER_KINDS.has(node.kind) ? -1 : 0, undefined, rows);
-  return rows;
-}
-
-function screenLayoutFor(spec: ScreenSpec, surface: string): ScreenNode {
-  return spec.surfaces?.[surface] ?? spec.layout;
-}
+export { flattenScreen, CONTAINER_KINDS, MAX_LAYOUT_DEPTH } from "@intisy-ai/core";
+export type { FlatRow, ScreenNode, ScreenSpec } from "@intisy-ai/core";
 
 export interface ScreenRow {
   text: string;

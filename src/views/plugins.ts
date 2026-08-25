@@ -501,7 +501,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
   if (!hadNpm && appNpmPlugins()) {
     pushBody("", false);
     pushBody("  " + BOLD + WHITE + "npm plugins" + RST, false);
-    pushBody("  " + DIM + "none installed — add from the Marketplace" + RST, false);
+    pushBody("  " + DIM + "none installed - add from the Marketplace" + RST, false);
   }
 
   pushBody("", false);
