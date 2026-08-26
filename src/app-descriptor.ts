@@ -6,12 +6,12 @@ import {
   appPaths,
   expandPath as coreExpandPath,
   currentAppId,
-  getApps,
   getAppDescriptor,
+  getApps,
+  readCloneManifest,
   resolveHome as coreResolveHome,
 } from "@intisy-ai/core";
 import type { AppDescriptor } from "@intisy-ai/core";
-import { readJson } from "./json.js";
 
 export type { AppDescriptor };
 
@@ -63,7 +63,7 @@ function activeId(): string {
   return trimmed(process.env.CORE_APP) || trimmed(process.env.HUB_APP_ID) || detectAppId();
 }
 
-// The clone's own cairn.json is the app project's declaration and is therefore fresher than the
+// The clone's own manifest is the app project's declaration and is therefore fresher than the
 // registry, which a dashboard rewrites only when it runs. Cached per process: a home gains or
 // loses a clone between launches, not during one.
 let ACTIVE: AppDescriptor | null | undefined;
@@ -78,8 +78,7 @@ function cloneAppBlocks(): { loaderId: string; app: AppDescriptor }[] {
   try { names = readdirSync(reposDir); } catch { return []; }
   const found: { loaderId: string; app: AppDescriptor }[] = [];
   for (const name of names) {
-    const manifest = readJson(join(reposDir, name, "cairn.json")) as { app?: AppDescriptor } | null;
-    const app = manifest?.app;
+    const app = readCloneManifest(join(reposDir, name))?.app;
     if (app && typeof app.id === "string" && app.id) found.push({ loaderId: name, app });
   }
   return found;
@@ -101,7 +100,7 @@ export function activeDescriptor(): AppDescriptor | null {
  * The id of the loader this home's own app is loaded by.
  *
  * @remarks
- * A home holds exactly one clone whose `cairn.json` declares an app, and that clone IS this app's
+ * A home holds exactly one clone whose manifest declares an app, and that clone IS this app's
  * loader, so the answer needs no injected value and no name. The registry's declared loader is the
  * fallback for a home whose loader is deployed without a clone beside it.
  */
