@@ -24,7 +24,9 @@ function home(withClone) {
   mkdirSync(join(dir, "config"), { recursive: true });
   if (withClone) {
     mkdirSync(join(dir, "repos", "zeta-loader"), { recursive: true });
-    writeFileSync(join(dir, "repos", "zeta-loader", "cairn.json"), JSON.stringify({
+    writeFileSync(join(dir, "repos", "zeta-loader", "plugin.json"), JSON.stringify({
+      id: "zeta-loader-id",
+      api: 1,
       app: { id: "zeta", label: "Zeta", home: { candidates: [dir] }, loader: { id: "zeta-loader", url: "u" } },
     }));
   }

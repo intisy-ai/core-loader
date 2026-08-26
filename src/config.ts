@@ -20,7 +20,7 @@ var LOADER_CONFIG = null;
  * The id of the loader whose config this home holds.
  *
  * @remarks
- * Discovered rather than injected or named: a home holds exactly one clone whose `cairn.json`
+ * Discovered rather than injected or named: a home holds exactly one clone whose manifest
  * declares an app, and that clone is this app's loader. An injected id defaulting to nothing would
  * make a real home read its loader's knobs as defaults until every loader injects it.
  */

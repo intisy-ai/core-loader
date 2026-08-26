@@ -40,7 +40,9 @@ describe("the active descriptor", () => {
   });
 
   it("is overlaid by the installed loader clone, which is fresher than the registry", async () => {
-    writeFileSync(join(dir, "repos", "zeta-loader", "cairn.json"), JSON.stringify({
+    writeFileSync(join(dir, "repos", "zeta-loader", "plugin.json"), JSON.stringify({
+      id: "zeta-loader-id",
+      api: 1,
       displayName: "Zeta Loader",
       app: { id: "zeta", label: "Zeta", home: { candidates: [dir] }, accent: "#abcdef", discovery: { topic: "zeta-plugin" } },
     }));
@@ -58,7 +60,9 @@ describe("the active descriptor", () => {
 
 describe("the loader whose config this home holds", () => {
   it("is the clone that declares an app", async () => {
-    writeFileSync(join(dir, "repos", "zeta-loader", "cairn.json"), JSON.stringify({
+    writeFileSync(join(dir, "repos", "zeta-loader", "plugin.json"), JSON.stringify({
+      id: "zeta-loader-id",
+      api: 1,
       app: { id: "zeta", label: "Zeta", home: { candidates: [dir] }, loader: { id: "zeta-loader", url: "u" } },
     }));
     const { loaderIdOfHome } = await import("../dist/app-descriptor.js");
