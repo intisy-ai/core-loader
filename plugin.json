@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/@intisy-ai/api/schema/plugin.schema.json",
+  "id": "core-loader",
+  "api": 1,
+  "publish": {
+    "scopedOnly": true
+  },
+  "repo": {
+    "role": "Shared app-loader engine library",
+    "category": "core-library",
+    "tech": [
+      "typescript"
+    ]
+  }
+}
