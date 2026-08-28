@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { readJson } from "./json.js";
+import { MARKETPLACE_MANIFEST_PATH } from "./catalogs.js";
 import type { HomePaths } from "./home-paths.js";
 import type { MarketplaceSource } from "./catalog-sources.js";
 
@@ -18,6 +19,15 @@ export interface CatalogEntry {
   description: string;
   /** The name a surface shows instead of the id. */
   displayName?: string;
+  /**
+   * The display category its source declared, which nothing derives.
+   *
+   * @remarks
+   * A curated category ("memory", "statusline", "browser") is editorial: no scan of a repository
+   * produces it, and no third-party marketplace file carries one. A source that has an opinion says
+   * so per entry; everything else falls back to what the entry itself declares.
+   */
+  category?: string;
   /** The declared source that offered it. */
   sourceId: string;
 }
@@ -38,8 +48,16 @@ export interface CatalogDeps {
 export const CATALOG_CACHE_FILE = "capability-catalog.json";
 
 const FETCH_TIMEOUT_MS = 15000;
-const ORG_PAGE_LIMIT = 5;
+const OWNER_PAGE_LIMIT = 5;
 const REFS = ["HEAD", "main", "master"];
+
+/** Which GitHub listing an owner login is asked for, in the order they are tried. */
+type OwnerScope = "orgs" | "users";
+
+const OWNER_SCOPES: OwnerScope[] = ["orgs", "users"];
+
+/** What a third-party marketplace file offers, since its own schema calls every item a plugin. */
+const THIRD_PARTY_CATEGORY = "Plugin";
 
 /**
  * The category topics repo-meta assigns, exactly one per repository.
@@ -98,6 +116,7 @@ interface Candidate {
   description: string;
   topics: string[];
   archived: boolean;
+  category?: string;
 }
 
 /** Whether a candidate's topics leave it a possible plugin repository. */
@@ -112,20 +131,51 @@ function ownerRepoOf(url: unknown): { owner: string; repo: string } | null {
   return match ? { owner: match[1], repo: match[2] } : null;
 }
 
-async function orgCandidates(source: MarketplaceSource, deps: CatalogDeps): Promise<Candidate[]> {
+function repoPage(scope: OwnerScope, owner: string, page: number): string {
+  return `https://api.github.com/${scope}/${owner}/repos?per_page=100&page=${page}`;
+}
+
+/**
+ * The listing scope a GitHub owner answers under, resolved from the first page that returns
+ * repositories.
+ *
+ * @remarks
+ * `/orgs/<login>` answers 404 for a personal account, so an owner-scoped source that only ever asked
+ * for an organisation returned nothing at all for a user, silently. The scope is resolved once and
+ * reused for every later page, so a personal account costs one extra request in total and an
+ * organisation costs none.
+ */
+async function resolveOwnerScope(
+  fetchJson: (url: string) => Promise<unknown>,
+  owner: string,
+): Promise<{ scope: OwnerScope; first: unknown[] } | null> {
+  for (const scope of OWNER_SCOPES) {
+    const listed = await fetchJson(repoPage(scope, owner, 1));
+    if (Array.isArray(listed) && listed.length > 0) return { scope, first: listed };
+  }
+  return null;
+}
+
+async function ownerCandidates(source: MarketplaceSource, deps: CatalogDeps): Promise<Candidate[]> {
   const fetchJson = resolveFetchJson(deps);
-  const org = String(source.org);
+  const owner = String(source.org);
+  const resolved = await resolveOwnerScope(fetchJson, owner);
+  if (!resolved) return [];
   const found: Candidate[] = [];
-  for (let page = 1; page <= ORG_PAGE_LIMIT; page++) {
-    const listed = await fetchJson(`https://api.github.com/orgs/${org}/repos?per_page=100&page=${page}`);
-    if (!Array.isArray(listed) || listed.length === 0) break;
+  let listed: unknown[] = resolved.first;
+  for (let page = 1; page <= OWNER_PAGE_LIMIT; page++) {
+    if (page > 1) {
+      const next = await fetchJson(repoPage(resolved.scope, owner, page));
+      if (!Array.isArray(next) || next.length === 0) break;
+      listed = next;
+    }
     for (const raw of listed) {
       const repo = raw as { name?: string; html_url?: string; description?: string; topics?: string[]; archived?: boolean };
       if (!repo.name) continue;
       found.push({
-        owner: org,
+        owner,
         repo: repo.name,
-        url: repo.html_url ? `${repo.html_url}.git` : `https://github.com/${org}/${repo.name}.git`,
+        url: repo.html_url ? `${repo.html_url}.git` : `https://github.com/${owner}/${repo.name}.git`,
         description: repo.description || "",
         topics: Array.isArray(repo.topics) ? repo.topics : [],
         archived: repo.archived === true,
@@ -141,23 +191,25 @@ function listedCandidates(raw: unknown): Candidate[] {
   if (!Array.isArray(listed)) return [];
   const found: Candidate[] = [];
   for (const item of listed) {
-    const entry = item as { url?: unknown; description?: unknown; topics?: unknown };
+    const entry = item as { url?: unknown; description?: unknown; topics?: unknown; category?: unknown };
     const parsed = ownerRepoOf(entry?.url);
     if (!parsed) continue;
-    found.push({
+    const candidate: Candidate = {
       owner: parsed.owner,
       repo: parsed.repo,
       url: String(entry.url),
       description: typeof entry.description === "string" ? entry.description : "",
       topics: Array.isArray(entry.topics) ? (entry.topics as unknown[]).filter((topic): topic is string => typeof topic === "string") : [],
       archived: false,
-    });
+    };
+    if (typeof entry.category === "string" && entry.category) candidate.category = entry.category;
+    found.push(candidate);
   }
   return found;
 }
 
 async function candidatesOf(source: MarketplaceSource, deps: CatalogDeps): Promise<Candidate[]> {
-  if (source.type === "github-org") return orgCandidates(source, deps);
+  if (source.type === "github-org") return ownerCandidates(source, deps);
   if (source.type === "manifest") {
     const fetchJson = resolveFetchJson(deps);
     return listedCandidates(await fetchJson(String(source.url)));
@@ -178,7 +230,7 @@ async function candidatesOf(source: MarketplaceSource, deps: CatalogDeps): Promi
 export function entryFrom(
   manifest: unknown,
   packageName: unknown,
-  candidate: { url: string; description: string },
+  candidate: { url: string; description: string; category?: string },
   sourceId: string,
 ): CatalogEntry | null {
   if (!manifest || typeof manifest !== "object") return null;
@@ -195,7 +247,57 @@ export function entryFrom(
     sourceId,
   };
   if (typeof declared.displayName === "string" && declared.displayName) entry.displayName = declared.displayName;
+  if (candidate.category) entry.category = candidate.category;
   return entry;
+}
+
+/**
+ * The clone url one item of a third-party marketplace file installs from.
+ *
+ * @remarks
+ * Its `source` is measured in three shapes: a relative path within the marketplace repository, an
+ * object naming a url, and an object naming an `owner/repo`. A relative path is not a separate
+ * repository, so the marketplace repository's own url is what a subdirectory plugin is cloned from.
+ */
+function marketplaceItemUrl(source: unknown, repoUrl: string): string {
+  if (!source || typeof source !== "object") return repoUrl;
+  const declared = source as { url?: unknown; repo?: unknown };
+  if (typeof declared.url === "string" && declared.url) return declared.url;
+  if (typeof declared.repo === "string" && declared.repo) return `https://github.com/${declared.repo}.git`;
+  return repoUrl;
+}
+
+/**
+ * Every plugin a third-party marketplace file offers, as catalog entries.
+ *
+ * @remarks
+ * One repository can offer several plugins, which is what this file shape exists to say, so a
+ * candidate yields a list rather than a single entry. None of them declares a capability: a
+ * capability query never matches a third-party plugin, and a marketplace row is the whole point of
+ * reading it.
+ */
+export function entriesFromMarketplaceManifest(
+  manifest: unknown,
+  candidate: { url: string; description: string; category?: string },
+  sourceId: string,
+): CatalogEntry[] {
+  const listed = (manifest as { plugins?: unknown } | null)?.plugins;
+  if (!Array.isArray(listed)) return [];
+  const found: CatalogEntry[] = [];
+  for (const item of listed) {
+    const declared = item as { name?: unknown; description?: unknown; source?: unknown };
+    if (typeof declared?.name !== "string" || !declared.name) continue;
+    found.push({
+      id: declared.name,
+      npmName: declared.name,
+      url: marketplaceItemUrl(declared.source, candidate.url),
+      capabilities: [],
+      description: typeof declared.description === "string" && declared.description ? declared.description : candidate.description,
+      category: candidate.category || THIRD_PARTY_CATEGORY,
+      sourceId,
+    });
+  }
+  return found;
 }
 
 /**
@@ -237,12 +339,24 @@ async function inBatches<T, R>(items: T[], size: number, map: (item: T) => Promi
   return results;
 }
 
-async function readCandidate(candidate: Candidate, sourceId: string, deps: CatalogDeps): Promise<CatalogEntry | null> {
+/**
+ * Everything one candidate repository offers, by its own manifest.
+ *
+ * @remarks
+ * `plugin.json` is asked for first because it is the richer shape: an id, the capabilities and a
+ * display name. Only a repository that carries none is read as a third-party marketplace, so a
+ * repository carrying both is described by its own manifest.
+ */
+async function readCandidate(candidate: Candidate, sourceId: string, deps: CatalogDeps): Promise<CatalogEntry[]> {
   const fetchJson = resolveFetchJson(deps);
   const manifest = await firstRef(fetchJson, candidate.owner, candidate.repo, "plugin.json");
-  if (!manifest) return null;
-  const pkg = await firstRef(fetchJson, candidate.owner, candidate.repo, "package.json");
-  return entryFrom(manifest, (pkg as { name?: unknown } | null)?.name, candidate, sourceId);
+  if (manifest) {
+    const pkg = await firstRef(fetchJson, candidate.owner, candidate.repo, "package.json");
+    const entry = entryFrom(manifest, (pkg as { name?: unknown } | null)?.name, candidate, sourceId);
+    return entry ? [entry] : [];
+  }
+  const offered = await firstRef(fetchJson, candidate.owner, candidate.repo, MARKETPLACE_MANIFEST_PATH);
+  return offered ? entriesFromMarketplaceManifest(offered, candidate, sourceId) : [];
 }
 
 /**
@@ -262,7 +376,7 @@ export async function readCatalog(sources: MarketplaceSource[], deps: CatalogDep
         try {
           const candidates = (await candidatesOf(source, deps)).filter(isPluginCandidate);
           const read = await inBatches(candidates, CANDIDATE_BATCH, (candidate) => readCandidate(candidate, source.id, deps));
-          return read.filter((entry): entry is CatalogEntry => entry !== null);
+          return read.flat();
         } catch (error) {
           log(`marketplace source ${source.id} could not be read: ${String(error)}`);
           return [] as CatalogEntry[];
@@ -342,12 +456,15 @@ export async function queryCapability(
  * The display category of an entry, derived from what it declares.
  *
  * @remarks
- * Its first capability, title cased, because a marketplace groups by what a thing IS and the first
- * declared capability is the plugin author's own answer to that. A repository that declares none is a
- * library. Nothing here enumerates the capability vocabulary, so a capability minted after this host
- * shipped still groups under its own name rather than falling into an "other" bucket.
+ * A category its source declared wins, because a curated one carries editorial judgement nothing
+ * derives. Otherwise its first capability, title cased, because a marketplace groups by what a thing
+ * IS and the first declared capability is the plugin author's own answer to that. A repository that
+ * declares none is a library. Nothing here enumerates the capability vocabulary, so a capability
+ * minted after this host shipped still groups under its own name rather than falling into an "other"
+ * bucket.
  */
 export function categoryOf(entry: CatalogEntry): string {
+  if (typeof entry.category === "string" && entry.category) return entry.category;
   const first = Array.isArray(entry.capabilities) ? entry.capabilities.find((id) => typeof id === "string" && id) : undefined;
   if (!first) return "Library";
   return first.charAt(0).toUpperCase() + first.slice(1);

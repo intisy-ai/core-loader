@@ -3,7 +3,7 @@ import { join } from "path";
 import { readJson } from "./json.js";
 import type { HomePaths } from "./home-paths.js";
 
-/** How a source is read: an organisation's repositories, a published manifest, or a local file. */
+/** How a source is read: a GitHub owner's repositories, a published manifest, or a local file. */
 export type MarketplaceSourceType = "github-org" | "manifest" | "local";
 
 /** One marketplace a home declares. */
@@ -16,7 +16,10 @@ export interface MarketplaceSource {
   type: MarketplaceSourceType;
   /** Whether it takes part in a query. Only an explicit `false` disables it. */
   enabled?: boolean;
-  /** The organisation, for a `github-org` source. */
+  /**
+   * The GitHub owner login, for a `github-org` source. An organisation or a personal account: the
+   * type name predates the distinction, and both are listed.
+   */
   org?: string;
   /** The manifest URL, for a `manifest` source. */
   url?: string;
@@ -25,10 +28,10 @@ export interface MarketplaceSource {
 }
 
 /**
- * The organisation every home starts with.
+ * The GitHub owner every home starts with.
  *
  * @remarks
- * An ORG is a source, not a plugin name, which is what makes this constant legitimate where a
+ * An OWNER is a source, not a plugin name, which is what makes this constant legitimate where a
  * plugin's name would not be: it says where to look, never what to find. A home overrides it by
  * declaring its own sources.
  */
