@@ -125,7 +125,12 @@ export interface LoaderCapabilities {
   /** The Activity read side, and the write seam this library emits through. */
   activity?: ActivityCapability;
   /** Behaviour a plugin may not link for itself, offered to plugins by the host that started them. */
-  services?: ReadonlyArray<{ id: string; implementation: unknown }>;
+  services?: ReadonlyArray<{
+    /** The service's key, which is what a plugin asks for. */
+    id: string;
+    /** What answers for it. */
+    implementation: unknown;
+  }>;
   /** Core's own declaration of the shared settings, injected so this library links no core to get it. */
   globalSettings?: GlobalSettingsDeclaration;
 }

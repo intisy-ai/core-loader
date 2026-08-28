@@ -12,11 +12,18 @@ import { readDeployedProviders } from "./loader-runtime.js";
 import type { ActivitySpec } from "@intisy-ai/core";
 
 /** One provider the proxy can route to, and the handler file that answers for it. */
-export type ProxyHandlerEntry = { provider: string; handlerPath: string };
+export type ProxyHandlerEntry = {
+  /** The provider's name, which is what the router matches. */
+  provider: string;
+  /** Its handler file's absolute path. */
+  handlerPath: string;
+};
 
 /** The little this runner needs of a proxy server, so it never names one implementation. */
 export type ProxyServerLike = {
+  /** Starts listening, answering with the port it took. */
   listen: () => Promise<number>;
+  /** Stops it again, where the implementation offers that. */
   close?: () => Promise<void>;
 };
 
@@ -30,37 +37,59 @@ export type ProxyServerLike = {
  * value and its shape is opaque here.
  */
 export type StartLoaderProxyOptions<TProfile = unknown> = {
+  /** Builds the server itself, from the caller's own app-proxy. */
   createProxyServer: (opts: {
+    /** The home the proxy serves. */
     configDir: string;
+    /** The routing profile it serves it with. */
     profile: TProfile;
+    /** The port to take. */
     port: number;
+    /** Where to write its log. */
     log: (message: string) => void;
+    /** Finds the handler module for one provider. */
     resolveHandler: (providerName: string) => Promise<unknown>;
+    /** Delivers a user-facing message through the host's own channel. */
     notify?: (message: string, level?: string) => void;
+    /** Records one activity through the host's own pipeline. */
     emitActivity?: (spec: ActivitySpec) => void;
   }) => ProxyServerLike;
+  /** Builds the handler resolver, from the same app-proxy. */
   makeDynamicResolver: (listProviders: () => ProxyHandlerEntry[]) => (providerName: string) => Promise<unknown>;
+  /** The routing profile, whose shape is the caller's business and opaque here. */
   profile: TProfile;
+  /** The home to serve. */
   configDir: string;
+  /** The port to listen on. */
   port: number;
   // Optional overrides: the real daemon entry points let these default; tests
   // (and future callers with their own logging setup) can inject their own.
+  /** Where to write the log, defaulting to a dated file under the home. */
   log?: (message: string) => void;
+  /** Where to scan for providers, defaulting to the home's own clones directory. */
   reposDir?: string;
-  // Routes the proxy's user-notifications to a delivery mechanism the host owns
-  // (the core event bus). Left undefined by default, so core-proxy falls back to
-  // its own notification append.
+  /**
+   * Routes the proxy's user-notifications to a channel the host owns.
+   *
+   * @remarks
+   * Left undefined by default, so the proxy falls back to its own notification append.
+   */
   notify?: (message: string, level?: string) => void;
-  // Routes proxy activity (lifecycle + whatever core-proxy emits) to the host's
-  // Activity pipeline. Left undefined by default; core-loader never requires it.
+  /** Routes the proxy's activity to the host's own pipeline. Never required. */
   emitActivity?: (spec: ActivitySpec) => void;
 };
 
+
+
 /** A proxy that is up: what it is listening on, and how to stop it. */
 export type StartedLoaderProxy = {
+  /** The running server. */
   server: ProxyServerLike;
+  /** The home it is serving. */
   configDir: string;
+  /** Where it scans for providers. */
   reposDir: string;
+  /** Where it is writing its log. */
   log: (message: string) => void;
 };
 

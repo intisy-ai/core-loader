@@ -8,12 +8,28 @@
 // S.capabilities.activity.read, where the views need it.
 
 /** Why something happened, carried down a scope so every record inside it inherits the same reason. */
-export type LoaderCause = { kind: string; surface?: string; detail?: string };
+export type LoaderCause = {
+  /** What set the work in motion. */
+  kind: string;
+  /** Where it was set in motion, for a cause a person triggered. */
+  surface?: string;
+  /** Anything more the cause is worth qualifying by. */
+  detail?: string;
+};
 
 /** The write side of Activity, as the host injects it. Every member absent means Activity is simply off. */
 export type LoaderActivitySeam = {
+  /** Records one activity. */
   emit?: (spec: Record<string, unknown>) => void;
+  /**
+   * Runs something inside a cause, so every record it makes inherits that reason.
+   *
+   * @remarks
+   * The contract is synchronous: invoke `fn` inline, exactly once. A scope that defers it would
+   * have the action run twice, because a scope that never invokes it has the action run unscoped.
+   */
   scope?: <T>(cause: LoaderCause, fn: () => T) => T;
+  /** The environment a child process needs to join the current chain. */
   env?: () => Record<string, string>;
 };
 

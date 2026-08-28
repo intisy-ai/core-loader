@@ -18,7 +18,10 @@ import type { DeployedProvider } from "./loader-runtime.js";
 /** One provider's cached catalog, as the account library writes it. */
 export interface ProviderCatalogEntry {
   /** The models it serves, by id. */
-  models?: Record<string, { name?: string }>;
+  models?: Record<string, {
+    /** What the model is shown as, when the catalog carries a name for it. */
+    name?: string;
+  }>;
   /** A score per model, when whoever wrote the catalog had one. */
   scores?: Record<string, number>;
   /** Where those scores came from. */

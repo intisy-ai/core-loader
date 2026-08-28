@@ -11,9 +11,13 @@ const CLI_SUBCOMMANDS = ["plugins", "providers", "proxy", "doctor"];
  * renamed anything gets no extra lines.
  */
 export interface SubdirNames {
+  /** What this app calls its clones directory. */
   repos?: string;
+  /** What it calls its deployed-bundle directory. */
   plugin?: string;
+  /** What it calls its cache directory. */
   cache?: string;
+  /** What it calls its config directory. */
   config?: string;
 }
 

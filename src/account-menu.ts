@@ -300,5 +300,18 @@ export function createAccountMenu() {
     return true;   // swallow other keys while the menu owns the tab
   }
 
-  return { isActive: () => nav.active, open, openAction, render, handleKey, exit };
+  return {
+    /** Whether the menu currently owns the tab. */
+    isActive: () => nav.active,
+    /** Loads a provider handler and opens the menu it builds. */
+    open,
+    /** Opens one chained prompt with no provider behind it. */
+    openAction,
+    /** Draws the active menu, answering whether it drew anything at all. */
+    render,
+    /** Handles one key, answering whether the menu consumed it. */
+    handleKey,
+    /** Closes the menu and hands the tab back. */
+    exit,
+  };
 }

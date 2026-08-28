@@ -42,7 +42,14 @@ export interface PluginEntry {
 /** The MCP server config file, keyed by server name. */
 export interface McpConfig {
   /** Each configured server, by name. */
-  mcpServers: Record<string, { command?: string; args?: string[]; env?: Record<string, string> }>;
+  mcpServers: Record<string, {
+    /** The command that starts it. */
+    command?: string;
+    /** That command's arguments. */
+    args?: string[];
+    /** The environment it needs, usually the API keys. */
+    env?: Record<string, string>;
+  }>;
 }
 
 // ── The active loader's own plugin config (config/<loader id>.json) ─────────
@@ -127,7 +134,12 @@ export function saveConfig(cfg: LoaderConfig): void {
 // which is authoritative and carries field types.
 var GLOBAL_SETTINGS_FILE = CONFIG_FOLDER ? join(CONFIG_FOLDER, "settings.json") : "";
 /** The shared settings' fallback defaults, used only where the host injects no declaration of its own. */
-export var GLOBAL_SETTINGS_DEFAULTS = { logConsole: false, logColor: true };
+export var GLOBAL_SETTINGS_DEFAULTS = {
+  /** Whether every plugin's log lines are mirrored to the terminal. */
+  logConsole: false,
+  /** Whether those lines are coloured per plugin. */
+  logColor: true,
+};
 
 // Cached parsed settings so a navigation render (buildSettings reads these every
 // frame) never re-reads settings.json from disk. Invalidated when setGlobalSetting writes.

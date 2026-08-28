@@ -34,24 +34,56 @@ export type SettingsItem = {
   options?: FieldOption[];
 };
 /** One action a plugin declared, as a row the editor can arm and run. */
-export type SettingsAction = { kind: "action"; key: string; label: string; description?: string; confirm?: string; danger?: boolean; args?: FieldSpec[] };
+export type SettingsAction = {
+  /** Always `action`, which is what tells this row apart from a setting. */
+  kind: "action";
+  /** The action's id, which is what the plugin is asked to run. */
+  key: string;
+  /** What the row says. */
+  label: string;
+  /** The line under it. */
+  description?: string;
+  /** The question a first Enter asks, when the action wants confirming. */
+  confirm?: string;
+  /** Whether it is destructive. */
+  danger?: boolean;
+  /** What must be collected before it runs. */
+  args?: FieldSpec[];
+};
 /** One row of a settings section: a setting to edit, or an action to run. */
 export type SettingsRow = SettingsItem | SettingsAction;
 /** One group of rows: the global settings, a plugin's own, or a section a plugin contributed. */
 export type SettingsSection = {
+  /** The heading it is shown under. */
   label: string;
+  /** Whether it is the shared settings or one plugin's. */
   kind: "global" | "plugin";
-  // The plugin this section belongs to, which is how a surface routes an action run or a re-read
-  // back to its owner.
+  /**
+   * The plugin this section belongs to.
+   *
+   * @remarks
+   * How a surface routes an action run, or a re-read, back to its owner.
+   */
   plugin?: string;
+  /** The config file it edits. */
   file: string;
+  /** The bundle an action is run through, `null` where there is none. */
   bundle: string | null;
+  /** Its rows. */
   items: SettingsRow[];
-  // Set on a section a plugin CONTRIBUTED (as opposed to its own flat config), so every
-  // surface can say who added it and re-resolve it after a write.
+  /**
+   * The plugin that CONTRIBUTED this section, as opposed to owning the file.
+   *
+   * @remarks
+   * Set only on a contributed section, so every surface can say who added it and re-resolve it
+   * after a write.
+   */
   addedBy?: string;
+  /** That section's own id. */
   sectionId?: string;
+  /** The line under its heading. */
   description?: string;
+  /** Where it sorts among the others. */
   order?: number;
 };
 
@@ -170,9 +202,24 @@ export function buildPluginSections(): SettingsSection[] {
 
 /** One line of the Settings page: a heading, a group to open, or a plugin still being read. */
 export type SettingsEntry =
-  | { type: "header"; label: string }
-  | { type: "group"; section: SettingsSection }
-  | { type: "loading"; label: string };   // a plugin whose declaration has not landed yet
+  | {
+      /** A heading, which the cursor skips. */
+      type: "header";
+      /** What it says. */
+      label: string;
+    }
+  | {
+      /** A group the cursor can open. */
+      type: "group";
+      /** The section behind it. */
+      section: SettingsSection;
+    }
+  | {
+      /** A plugin whose declaration has not landed yet, drawn with a spinner. */
+      type: "loading";
+      /** What it says meanwhile. */
+      label: string;
+    };
 
 /**
  * `sections` holds only resolved groups (Global + plugins with settings); `loading` holds the

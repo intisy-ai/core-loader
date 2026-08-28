@@ -44,9 +44,29 @@ export interface ConfigActionArgs {
 
 /** What a confirm dialog is about to do, and to what. */
 export type ConfirmAction =
-  | { type: "uninstall-npm" | "uninstall-plugin" | "uninstall-foreign"; target: PluginRow }
-  | { type: "uninstall-mcp"; target: string }
-  | { type: "screen-action"; target: { entry: ScreenEntry; row: ScreenRow } };
+  | {
+      /** Which kind of plugin is being removed. */
+      type: "uninstall-npm" | "uninstall-plugin" | "uninstall-foreign";
+      /** The plugin row it will act on. */
+      target: PluginRow;
+    }
+  | {
+      /** An MCP server is being removed. */
+      type: "uninstall-mcp";
+      /** Its name. */
+      target: string;
+    }
+  | {
+      /** A contributed screen's action is being run. */
+      type: "screen-action";
+      /** The screen, and the row that armed it. */
+      target: {
+        /** The screen the action belongs to. */
+        entry: ScreenEntry;
+        /** The row that armed it. */
+        row: ScreenRow;
+      };
+    };
 
 /**
  * Every mutable value the terminal UI shares between its modules.

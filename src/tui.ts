@@ -24,7 +24,7 @@ import { setActivitySeam, withLoaderCause } from "./activity-seam.js";
 import { inputCause } from "./input-cause.js";
 import type { CustomTab } from "./custom-tab.js";
 import type { LoaderCapabilities } from "./app-capabilities.js";
-import type { LoaderConfig } from "./config.js";
+import type { LoaderConfig, PluginEntry } from "./config.js";
 import type { MenuAction } from "./provider-menu.js";
 
 /** What one self-check reports. */
@@ -138,10 +138,35 @@ if (autoUpdateCheck()) setTimeout(checkForUpdates, updateCheckDelayMs());
 
 
 /**
- * Registry Pattern: plugins extend the TUI by exporting a function from tui-extension.js
- * The function receives a tuiApi object with registerTab() to add custom tabs
+ * What a plugin's `tui-extension.js` is handed to extend this terminal.
+ *
+ * @remarks
+ * The extension exports a function; the loader calls it with this object. Everything a tab can do
+ * to the loader it does through here, so a tab links nothing of the loader itself.
  */
-export var tuiApi = {
+export interface TuiApi {
+  /** Adds a tab to the Plugins page, ignoring a second registration of the same id. */
+  registerTab: (tab: CustomTab) => void;
+  /** This home's pinned and hidden projects. */
+  loadConfig: () => LoaderConfig;
+  /** Writes them back. */
+  saveConfig: (cfg: LoaderConfig) => void;
+  /** The plugin list. */
+  loadPlugins: () => PluginEntry[];
+  /** Shows a message in the status line. */
+  flash: (msg: string) => void;
+  /** Routes raw text to the active tab instead of the loader's own key table, for a search box. */
+  setTextInput: (on: boolean) => void;
+  /** Redraws now, for work that finished off the keypress path. */
+  refresh: () => void;
+  /** Suspends the TUI, runs something that owns the terminal, then re-attaches input and redraws. */
+  runBlocking: (fn: () => unknown) => unknown;
+  /** Registers what the active loader can do, which is what gates every optional feature. */
+  registerCapabilities: (caps: LoaderCapabilities) => void;
+}
+
+/** The handle every contributed tab reaches this loader through. */
+export var tuiApi: TuiApi = {
   registerTab: function(tab: CustomTab) {
     if (tab && tab.id && tab.label && !S.customTabs.some(function(t) { return t.id === tab.id; })) {
       S.customTabs.push(tab);   // dedup by id so a double-load can't add the tab twice

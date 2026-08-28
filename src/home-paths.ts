@@ -22,8 +22,8 @@ export interface HomePaths {
  * for the library half: `runEarlyLaunchHooks` is called with the home it must act on. This takes the
  * home as an argument so both halves share one derivation.
  *
- * @implNote the names come from the app that OWNS this home rather than from the process
- * environment, so driving another app's home resolves that app's declared names.
+ * The names come from the app that OWNS this home rather than from the process environment, so
+ * driving another app's home resolves that app's declared names.
  */
 export function homePaths(configDir: string): HomePaths {
   const paths = appPaths(configDir, getAppDescriptor(appIdForHome(configDir)) ?? null);

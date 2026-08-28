@@ -51,8 +51,9 @@ export function resolveHome(desc: AppDescriptor): string {
 /**
  * Which app this process runs under when nothing injected an id.
  *
- * @implNote the injected id wins over detection here, and `CORE_APP` is stripped so it cannot
- * outrank `HUB_APP_ID`, which `env.ts` has always read first.
+ * @remarks
+ * The injected id wins over detection here, and `CORE_APP` is stripped so it cannot outrank
+ * `HUB_APP_ID`, which `env.ts` has always read first.
  */
 export function detectAppId(): string {
   const { CORE_APP: _injected, ...detected } = process.env;

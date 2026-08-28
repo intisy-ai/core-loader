@@ -25,9 +25,24 @@ export interface CustomProviderEngine {
 
 /** Whether a custom provider can be added right now, and what stands in the way when it cannot. */
 export type CustomProviderState =
-  | { kind: "add"; engine: CustomProviderEngine }
-  | { kind: "install"; engine: CustomProviderEngine }
-  | { kind: "unavailable"; reason: string };
+  | {
+      /** The plugin is deployed, so an endpoint can be added right now. */
+      kind: "add";
+      /** The plugin that will serve it. */
+      engine: CustomProviderEngine;
+    }
+  | {
+      /** The plugin is absent, but the manager here could fetch it. */
+      kind: "install";
+      /** The plugin to fetch. */
+      engine: CustomProviderEngine;
+    }
+  | {
+      /** Nothing here could serve a custom endpoint, so no row is offered. */
+      kind: "unavailable";
+      /** Why not. */
+      reason: string;
+    };
 
 /** What `customProviderState` may have answered for it, so a test needs no real home. */
 export interface CustomProviderDeps {

@@ -89,7 +89,12 @@ export interface PluginManagerModule {
   /** Moves one clone back to an earlier commit, answering with an error message or an empty string. */
   downgrade?: (plugin: unknown, commit: string) => string;
   /** Whether one clone follows the prerelease channel, and whether that channel has something newer. */
-  pluginChannelState?: (configDir: string, name: string) => { onExperimental: boolean; experimentalAvailable: boolean | null };
+  pluginChannelState?: (configDir: string, name: string) => {
+    /** Whether this clone follows the prerelease channel. */
+    onExperimental: boolean;
+    /** Whether that channel has something newer, or `null` when it was not asked. */
+    experimentalAvailable: boolean | null;
+  };
   /** The shared libraries this home installed, and which clones use each. */
   homeLibraries?: (configDir: string) => HomeLibraries;
 }

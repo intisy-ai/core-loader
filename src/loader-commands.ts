@@ -188,5 +188,10 @@ export function makeLoaderCommands(opts: LoaderCommandsOptions) {
     return false;
   }
 
-  return { deployLoaderCommands, maybeRunCli };
+  return {
+    /** Writes this loader's command files into the app's command directory. */
+    deployLoaderCommands,
+    /** Answers one of those commands, saying whether it was one of them. */
+    maybeRunCli,
+  };
 }
