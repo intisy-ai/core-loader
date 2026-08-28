@@ -21,6 +21,8 @@ import type { MenuAction, MenuInput } from "./provider-menu.js";
 export interface CustomProviderEngine {
   /** Its plugin id, which is also its clone directory. */
   id: string;
+  /** Where it is cloned from, when this home's plugin list or a marketplace named one. */
+  url?: string;
 }
 
 /** Whether a custom provider can be added right now, and what stands in the way when it cannot. */

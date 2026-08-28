@@ -11,6 +11,7 @@
 import { customProviderState, customProviderLabel, addCustomProviderAction } from "./custom-provider.js";
 import type { CustomEndpointDraft, CustomProviderEngine } from "./custom-provider.js";
 import type { MenuAction } from "./provider-menu.js";
+import type { AccountMenuApi } from "./account-menu.js";
 import { CUSTOM_ENDPOINTS } from "@intisy-ai/core";
 
 /** What the calling view already holds, handed over whole so this stays a pure function of it. */
@@ -26,9 +27,9 @@ export interface ExtraProviderRowsContext {
   /** The wire format a new endpoint starts on. */
   defaultFormat?: string;
   /** Installs the plugin behind these rows, through the manager the loader already has. */
-  install: (engine: CustomProviderEngine, tuiApi: unknown) => void;
+  install: (engine: CustomProviderEngine, tuiApi: AccountMenuApi) => void;
   /** Opens a chained prompt in the loader's own menu. */
-  openAction: (action: MenuAction, tuiApi: unknown, label: string) => void;
+  openAction: (action: MenuAction, tuiApi: AccountMenuApi, label: string) => void;
   /** Asks the plugin whether an endpoint would work. */
   validate: (engine: CustomProviderEngine, endpoint: CustomEndpointDraft) => string | Promise<string | undefined> | undefined;
   /** Asks the plugin to store an endpoint and its key. */
@@ -44,7 +45,7 @@ export interface ExtraProviderRow {
   /** The line under it. */
   hint: string;
   /** What Enter does. */
-  run: (tuiApi: unknown) => void;
+  run: (tuiApi: AccountMenuApi) => void;
 }
 
 /**
@@ -62,7 +63,7 @@ export function extraProviderRows(ctx: ExtraProviderRowsContext): ExtraProviderR
       id: "install-custom-providers",
       label,
       hint: "adds the plugin that serves your own endpoints",
-      run: (tuiApi: unknown) => ctx.install(state.engine, tuiApi),
+      run: (tuiApi: AccountMenuApi) => ctx.install(state.engine, tuiApi),
     }];
   }
 
@@ -72,7 +73,7 @@ export function extraProviderRows(ctx: ExtraProviderRowsContext): ExtraProviderR
     hint: "an endpoint of your own, served as its own provider",
     // The plugin decides what a valid endpoint is, stores it, and makes it routable. The
     // loader only says which plugin to ask and passes the answers along.
-    run: (tuiApi: unknown) => ctx.openAction(addCustomProviderAction(state.engine, {
+    run: (tuiApi: AccountMenuApi) => ctx.openAction(addCustomProviderAction(state.engine, {
       defaultFormat: ctx.defaultFormat,
       validate: (endpoint: CustomEndpointDraft) => ctx.validate(state.engine, endpoint),
       addEndpoint: (endpoint: CustomEndpointDraft, key: string) => ctx.addEndpoint(state.engine, endpoint, key),

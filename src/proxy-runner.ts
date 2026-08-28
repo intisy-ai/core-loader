@@ -36,7 +36,7 @@ export type ProxyServerLike = {
  * depends on an app-proxy's RoutingProfile type; callers pass their own profile
  * value and its shape is opaque here.
  */
-export type StartLoaderProxyOptions<TProfile = unknown> = {
+export type StartLoaderProxyOptions<TProfile = unknown, THandler = unknown> = {
   /** Builds the server itself, from the caller's own app-proxy. */
   createProxyServer: (opts: {
     /** The home the proxy serves. */
@@ -48,14 +48,14 @@ export type StartLoaderProxyOptions<TProfile = unknown> = {
     /** Where to write its log. */
     log: (message: string) => void;
     /** Finds the handler module for one provider. */
-    resolveHandler: (providerName: string) => Promise<unknown>;
+    resolveHandler: (providerName: string) => Promise<THandler>;
     /** Delivers a user-facing message through the host's own channel. */
     notify?: (message: string, level?: string) => void;
     /** Records one activity through the host's own pipeline. */
     emitActivity?: (spec: ActivitySpec) => void;
   }) => ProxyServerLike;
   /** Builds the handler resolver, from the same app-proxy. */
-  makeDynamicResolver: (listProviders: () => ProxyHandlerEntry[]) => (providerName: string) => Promise<unknown>;
+  makeDynamicResolver: (listProviders: () => ProxyHandlerEntry[]) => (providerName: string) => Promise<THandler>;
   /** The routing profile, whose shape is the caller's business and opaque here. */
   profile: TProfile;
   /** The home to serve. */
@@ -130,8 +130,8 @@ function stampStartMarker(configDir: string) {
  * thin entry point that just supplies createProxyServer/makeDynamicResolver
  * (from its own app-proxy) + profile + port.
  */
-export function startLoaderProxy<TProfile = unknown>(
-  options: StartLoaderProxyOptions<TProfile>,
+export function startLoaderProxy<TProfile = unknown, THandler = unknown>(
+  options: StartLoaderProxyOptions<TProfile, THandler>,
 ): Promise<StartedLoaderProxy> {
   const { createProxyServer, makeDynamicResolver, profile, configDir, port } = options;
   const log = options.log || makeDefaultLog(configDir);
