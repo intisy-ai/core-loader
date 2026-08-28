@@ -13,6 +13,79 @@ import { S } from "./state.js";
 import { spawnEnv } from "./activity-seam.js";
 import { bundleFor, ledgerRowFor, providerIds, readSettingsSchema } from "./plugin-surface.js";
 import { SETTINGS } from "@intisy-ai/core";
+import type { PluginEntry } from "./config.js";
+
+/**
+ * One row of the Plugins list, whatever kind of plugin it describes.
+ *
+ * @remarks
+ * Git clones, npm packages and the host app's own plugins land in ONE array so the cursor indexes
+ * straight into it, so the fields only one kind fills are optional here rather than split across
+ * three types the renderer would have to discriminate on every line.
+ */
+export interface PluginRow {
+  /** The plugin's name. */
+  name: string;
+  /** Which kind of plugin this is: absent for a git clone, `npm` or `foreign` otherwise. */
+  type?: string;
+  /** Whether this row is the plugin manager itself. */
+  engine?: boolean;
+  /** Whether the host app manages this plugin rather than the loader. */
+  foreign?: boolean;
+  /** The marketplace or registry a host-managed plugin came from. */
+  source?: string;
+  /** A host-managed plugin's identifier, `name@source`. */
+  key?: string;
+  /** The clone directory under the repos dir. */
+  folderName: string;
+  /** Where it is cloned from. */
+  url: string;
+  /** Whether the manager updates it without being asked. */
+  autoUpdate: boolean;
+  /** Whether the loader deploys it. */
+  enabled: boolean;
+  /** Whether it is present locally. */
+  installed: boolean;
+  /** Whether its bundle is deployed into the app's plugin directory. */
+  deployed: boolean;
+  /** The local commit, for a git clone. */
+  localHead: string;
+  /** The remote commit, for a git clone whose remote has been read. */
+  remoteHead: string;
+  /** The version the row shows: a tag, a package version, or a short sha. */
+  latestTag: string;
+  /** The last commit's subject, or what kind of plugin this is when it has no commits. */
+  subject: string;
+  /** Whether an update is waiting. */
+  updateAvail: boolean;
+  /** When it was last updated, in epoch milliseconds. */
+  updatedAt?: number | null;
+  /** Whether a prerelease channel has something newer, or `null` when that was not asked. */
+  experimentalAvailable?: boolean | null;
+  /** Whether this clone is following the prerelease channel. */
+  onExperimental?: boolean;
+  /** Whether it must be built after a clone. */
+  hasBuild: boolean;
+  /** The deployed bundle's filename. */
+  pluginFile?: string;
+  /** An npm plugin's version. */
+  version?: string;
+  /** An npm plugin's entry exactly as the app's own list holds it. */
+  raw?: unknown;
+  /** The `plugins.json` entry this row was built from. */
+  _raw?: PluginEntry;
+}
+
+/** One commit of a plugin's clone, as the commit log sub-view shows it. */
+export interface CommitRow {
+  /** The short sha. */
+  hash: string;
+  /** The commit subject. */
+  subject: string;
+  /** How long ago it landed, already rendered. */
+  time: string;
+}
+
 
 export function gitText(args, cwd) {
   try {
@@ -443,4 +516,3 @@ export function setPluginConfig(bundle, key, valueStr) {
     return "";
   } catch (e) { return (e && e.message) || "set failed"; }
 }
-

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Terminal output: buffered writes to stderr and cursor visibility.
 
 import { E } from "./format.js";

@@ -354,4 +354,3 @@ function dispatchInput(buf, key) {
   }
 }
 process.stdin.on("data", onData);
-// @ts-nocheck

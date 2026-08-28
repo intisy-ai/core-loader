@@ -1,16 +1,37 @@
 // Rendering a plugin's contributed screen as terminal rows. The flatten walk itself comes from
 // core, so this surface and the graphical dashboard collapse the same tree the same way.
 import { flattenScreen, screenLayoutFor } from "@intisy-ai/core";
-import type { FlatRow, ScreenSpec } from "@intisy-ai/core";
+import type { ActionSpec, FlatRow, ScreenSpec } from "@intisy-ai/core";
 
 export { flattenScreen, CONTAINER_KINDS, MAX_LAYOUT_DEPTH } from "@intisy-ai/core";
 export type { FlatRow, ScreenNode, ScreenSpec } from "@intisy-ai/core";
 
+/** One flattened row of a contributed screen, as the terminal draws it. */
 export interface ScreenRow {
+  /** The line to print, label included. */
   text: string;
+  /** How deeply nested the node was, which is what the row is indented by. */
   depth: number;
+  /** The action this row runs when it is chosen. */
   actionId?: string;
+  /** The entry id that action is run against. */
   argId?: string;
+}
+
+/** One contributed screen, together with the plugin that declared it and that plugin's actions. */
+export interface ScreenEntry {
+  /** The plugin that declared the screen. */
+  plugin: string;
+  /** What it declared. */
+  spec: ScreenSpec;
+  /**
+   * The action metadata for the rows the screen produces.
+   *
+   * @remarks
+   * It comes from the plugin's SETTINGS declaration, which is where the api keeps `ActionSpec`, so
+   * a screen-only action id simply resolves to nothing here and still runs, without its label.
+   */
+  actions: ActionSpec[];
 }
 
 function label(row: FlatRow): string {

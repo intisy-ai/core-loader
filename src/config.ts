@@ -10,6 +10,42 @@ import { CONFIG_PATH, CONFIG_FOLDER, CONFIG_DIR, APP_ID, REPOS_DIR, PLUGINS_JSON
 import { appOfClone } from "./clone-app.js";
 import { loaderIdOfHome } from "./app-descriptor.js";
 
+/** The loader's own project preferences: which project rows are pinned to the top, and which are hidden. */
+export interface LoaderConfig {
+  /** Project directories shown first, in their own block. */
+  pinned: string[];
+  /** Project directories left out of the list entirely. */
+  hidden: string[];
+}
+
+/** One entry of `plugins.json`, the list the plugin manager and this loader both read. */
+export interface PluginEntry {
+  /** The plugin's name, which is also its config name and its row label. */
+  name: string;
+  /** Where it is cloned from. */
+  url?: string;
+  /** Whether the loader deploys it. Only an explicit `false` disables it. */
+  enabled?: boolean;
+  /** Whether the manager updates it without being asked. */
+  autoUpdate?: boolean;
+  /** Mirrors this entry into the other app's list on the manager's next run. */
+  sync?: boolean;
+  /** The deployed bundle's filename, when it is not `<name>.js`. */
+  pluginFile?: string;
+  /** The build command the manager runs after a clone. */
+  build?: string;
+  /** The bundle step the manager runs after a build. */
+  bundle?: string;
+  /** The clone directory, when it is not derived from the URL. */
+  folderName?: string;
+}
+
+/** The MCP server config file, keyed by server name. */
+export interface McpConfig {
+  /** Each configured server, by name. */
+  mcpServers: Record<string, { command?: string; args?: string[]; env?: Record<string, string> }>;
+}
+
 // ── The active loader's own plugin config (config/<loader id>.json) ─────────
 // The same file the loader's plugin.ts registers via defineConfig; the TUI reads it for the
 // runtime knobs below. Returns {} when no file exists, so every getter falls back to the default

@@ -28,6 +28,32 @@ export type SettingsSection = {
   order?: number;
 };
 
+/**
+ * What the config editor is currently editing: one section, plus how to write it back.
+ *
+ * @remarks
+ * Built from a settings section or from a plugin's own declaration, which is why `plugin` and
+ * `global` are alternatives rather than both required.
+ */
+export type ConfigTarget = {
+  /** The heading the editor shows. */
+  name: string;
+  /** The plugin this section belongs to, absent on the global one. */
+  plugin?: string;
+  /** Set on the global section, which is written directly rather than through a plugin. */
+  global?: boolean;
+  /** The bundle an action is run through, when there is one. */
+  bundle?: string | null;
+  /** The config file being edited, which the editor header names. */
+  file: string;
+  /** The rows being edited. */
+  items: SettingsRow[];
+  /** The plugin that CONTRIBUTED this section, when it is not the plugin that owns the file. */
+  addedBy?: string;
+  /** The contributed section's id, which is how it is re-resolved after a write. */
+  sectionId?: string;
+};
+
 // The host loader injects core's own declaration of the shared settings (defaults plus
 // field types), so a key core adds shows up here with no change. The local constant is
 // only the fallback for a host that injects nothing.

@@ -16,6 +16,60 @@ import { homePaths } from "./home-paths.js";
 import { readMarketplaceSources } from "./catalog-sources.js";
 import { catalogFor, categoryOf } from "./capability-catalog.js";
 
+/**
+ * One row of the marketplace browser, at either of its two levels.
+ *
+ * @remarks
+ * Level 1 lists marketplaces, level 2 lists one marketplace's plugins, and the two synthetic "add"
+ * rows sit at the top of level 1. All three land in the SAME array so `mkCursor` indexes straight
+ * into it with no offset arithmetic anywhere, which is why the fields only one kind fills are
+ * optional here.
+ */
+export interface MarketplaceRow {
+  /** What the row is shown as. */
+  name: string;
+  /** Where the entry came from: a repo, a registry, or the phrase describing a built-in list. */
+  source?: string;
+  /** How many plugins a level-1 row offers, or `undefined` while that is still being fetched. */
+  count?: number;
+  /** Which built-in list this level-1 row is, when it is one. */
+  builtin?: string;
+  /** Whether the host app registered this marketplace rather than this home declaring it. */
+  capability?: boolean;
+  /** Whether this is a seeded default the home has not adopted. */
+  seed?: boolean;
+  /** The `owner/repo` a seed row installs from. */
+  repo?: string;
+  /** The declared source this row belongs to, which is how a level-2 list is narrowed. */
+  sourceId?: string;
+  /** Whether this row runs an action instead of opening something. */
+  isAction?: boolean;
+  /** Which action it runs. */
+  actionKey?: string;
+  /** One line about what the plugin does. */
+  desc?: string;
+  /** Where the plugin is cloned from. */
+  url?: string;
+  /** The plugin's repository name. */
+  repoName?: string;
+  /** The repository's `owner/name`. */
+  full_name?: string;
+  /** The GitHub account that owns it. */
+  author?: string;
+  /** The heading it is grouped under. */
+  category?: string;
+  /** Whether this home already has it. */
+  installed?: boolean;
+  /** Its GitHub star count, which is what the catalog is ranked by. */
+  stars?: number;
+  /** Whether it came from the curated standalone list rather than a search. */
+  featured?: boolean;
+  /** Whether it is a curated entry awaiting star enrichment. */
+  curated?: boolean;
+  /** The id the host app installs it by, for a capability marketplace's entry. */
+  id?: string;
+}
+
 export function invalidateCatalogCache() {
   try { unlinkSync(CATALOG_CACHE_PATH); } catch {}
 }

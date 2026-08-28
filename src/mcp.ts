@@ -12,6 +12,50 @@ import { S } from "./state.js";
 import { appDescriptors, resolveHome } from "./app-descriptor.js";
 import { homePaths } from "./home-paths.js";
 
+/**
+ * One row of the MCP list, whether it is catalogued, embedded in a plugin, or already configured.
+ *
+ * @remarks
+ * Like the marketplace list, the synthetic "add" row shares this array so the cursor indexes
+ * straight into it.
+ */
+export interface McpRow {
+  /** The server's name. */
+  name: string;
+  /** One line about what it does. */
+  desc?: string;
+  /** The command that starts it. */
+  command?: string;
+  /** That command's arguments. */
+  args?: string[];
+  /** The environment it needs, usually the API keys. */
+  env?: Record<string, string>;
+  /** The heading it is grouped under. */
+  category?: string;
+  /** Whether this home already has it. */
+  installed?: boolean;
+  /** Its GitHub star count, which is what the list is ranked by. */
+  stars?: number;
+  /** Whether it is a curated entry awaiting star enrichment. */
+  curated?: boolean;
+  /** The repository's `owner/name`. */
+  full_name?: string;
+  /** Whether it ships inside a plugin rather than being configured here. */
+  embedded?: boolean;
+  /** The plugin it ships inside. */
+  pluginSource?: string;
+  /** How it is reached, for a server the host app reported. */
+  transport?: string;
+  /** The URL or command shown beside the name, for a server the host app reported. */
+  detail?: string;
+  /** Whether the host app reported it rather than this loader reading the config file. */
+  fromCapability?: boolean;
+  /** Whether this row runs an action instead of opening something. */
+  isAction?: boolean;
+  /** Which action it runs. */
+  actionKey?: string;
+}
+
 // Cached once per session: the scan does readdirSync + many reads across the repos
 // and plugin-cache dirs, which made every MCP render (buildMcpList) hit disk and lag
 // navigation. Embedded MCPs change only when plugins are added/removed (restart re-scans).

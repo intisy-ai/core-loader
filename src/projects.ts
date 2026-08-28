@@ -13,6 +13,32 @@ import { loadConfig, saveConfig } from "./config.js";
 import { cleanup } from "./out.js";
 import { flash } from "./views/common.js";
 
+/** One row of the Projects list. */
+export interface ProjectItem {
+  /** The project's directory. */
+  dir: string;
+  /** Its last path segment, which is what the row shows. */
+  name: string;
+  /** How many sessions the app recorded there. */
+  sessions: number;
+  /** When the last of them ran, in epoch milliseconds. */
+  lastUsed: number;
+  /** Whether the user pinned it to the top of the list. */
+  pinned: boolean;
+  /** A description, matched by the search filter alongside the name. */
+  desc?: string;
+}
+
+/** One project as the app's own history file or session database records it. */
+export interface ProjectRecord {
+  /** The project's directory. */
+  directory: string;
+  /** When it was last active, in epoch milliseconds. */
+  last_used: number;
+  /** How many sessions it holds. */
+  sessions: number;
+}
+
 // Lazy sqlite: node's built-in (node 22+) first, bun:sqlite fallback. Loaded lazily
 // (NOT a top-level import) so the loader TUI runs under plain `node`, no bun required.
 // Returns { query(sql) -> stmt with .all(), close() } or null if neither is available.
