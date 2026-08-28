@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Plugin marketplace: async catalog fetches (GitHub topics, npm, awesome list),
 // on-disk catalog cache, list building, and one-shot plugin install via git.
 
@@ -15,6 +14,44 @@ import { setupPlugin } from "./updater.js";
 import { homePaths } from "./home-paths.js";
 import { readMarketplaceSources } from "./catalog-sources.js";
 import { catalogFor, categoryOf } from "./capability-catalog.js";
+import type { MarketplaceSource } from "./catalog-sources.js";
+import type { CatalogEntry } from "./capability-catalog.js";
+import type { McpCatalogEntry } from "./catalogs.js";
+import type { ActionRow } from "./action-row.js";
+import type { CapabilityMarketplace, CapabilityMarketplacePlugin } from "./app-capabilities.js";
+import type { SeedMarketplace } from "./state.js";
+
+/** The on-disk catalog cache: both lists, and when they were written. */
+interface CatalogCacheFile {
+  /** When it was written, in epoch milliseconds. */
+  time: number;
+  /** The plugin catalog. */
+  marketplace: MarketplaceRow[];
+  /** The MCP catalog. */
+  mcp?: McpCatalogEntry[];
+}
+
+/** The on-disk seed cache: every seeded marketplace's fetched state, and when it was written. */
+interface SeedCacheFile {
+  /** When it was written, in epoch milliseconds. */
+  time: number;
+  /** Each seed's state, by name. */
+  data: Record<string, SeedMarketplace>;
+}
+
+/** One repository as the GitHub search API describes it. */
+interface GithubRepo {
+  /** Its own name. */
+  name: string;
+  /** Its `owner/name`. */
+  full_name: string;
+  /** Its one-line description. */
+  description?: string;
+  /** Its star count. */
+  stargazers_count?: number;
+  /** Who owns it. */
+  owner?: { login: string };
+}
 
 /**
  * One row of the marketplace browser, at either of its two levels.
@@ -48,6 +85,8 @@ export interface MarketplaceRow {
   actionKey?: string;
   /** One line about what the plugin does. */
   desc?: string;
+  /** The same, under the key a fetched manifest uses. */
+  description?: string;
   /** Where the plugin is cloned from. */
   url?: string;
   /** The plugin's repository name. */
@@ -86,14 +125,14 @@ export function invalidateSeedCache() {
  * "Official", and the renderer emits a heading on every category change, so a single stale value
  * interleaves headings down the whole list. The cache is the one place such a value enters.
  */
-function withCurrentCategory(entry) {
+function withCurrentCategory(entry: MarketplaceRow): MarketplaceRow {
   if (entry && entry.category === "Official") entry.category = "Community";
   return entry;
 }
 
-export function loadCatalogCache() {
+export function loadCatalogCache(): boolean {
   try {
-    var cached = readJson(CATALOG_CACHE_PATH);
+    var cached = readJson<CatalogCacheFile>(CATALOG_CACHE_PATH);
     if (!cached || Date.now() - cached.time > catalogCacheHours() * 3600000) return false;
     if (!Array.isArray(cached.marketplace) || cached.marketplace.length === 0) return false;
     for (var ce of cached.marketplace) S.MARKETPLACE_CATALOG.push(withCurrentCategory(ce));
@@ -121,9 +160,9 @@ export function loadCatalogCache() {
 // shows the seed immediately with count "…" until the fetch (kicked off at
 // startup, see fetchSeedMarketplacesAsync below) resolves.
 
-function loadSeedCache() {
+function loadSeedCache(): boolean {
   try {
-    var cached = readJson(SEED_CACHE_PATH);
+    var cached = readJson<SeedCacheFile>(SEED_CACHE_PATH);
     if (!cached || Date.now() - cached.time > catalogCacheHours() * 3600000) return false;
     if (!cached.data || typeof cached.data !== "object") return false;
     for (var name in cached.data) S.seedMarketplaces[name] = cached.data[name];
@@ -142,10 +181,10 @@ function saveSeedCache() {
 
 // A fetched marketplace.json's `plugins` array -> the drill-in shape used by
 // buildMarketplacePluginsList. [] on anything malformed (never throws).
-export function parseSeedPlugins(json, seedName) {
+export function parseSeedPlugins(json: { plugins?: unknown } | null | undefined, seedName: string): MarketplaceRow[] {
   var plugins = json && json.plugins;
   if (!Array.isArray(plugins)) return [];
-  return plugins.map(function(e) {
+  return plugins.map(function(e: { name?: string; description?: string }): MarketplaceRow {
     return { id: (e && e.name) || "", name: (e && e.name) || "", description: (e && e.description) || "", source: seedName };
   });
 }
@@ -178,7 +217,7 @@ export function fetchSeedMarketplacesAsync() {
     if (remaining <= 0) saveSeedCache();
   }
 
-  function tryBranch(seed, idx) {
+  function tryBranch(seed: { name: string; repo: string }, idx: number): void {
     if (idx >= branches.length) {
       S.seedMarketplaces[seed.name] = { plugins: [], count: 0, repo: seed.repo, error: "fetch failed" };
       seedSettled();
@@ -234,10 +273,10 @@ export function fetchSourceCatalogAsync() {
 }
 
 // Where a source reads from, which is what tells two rows apart when their labels are similar.
-function describeSource(source) {
+function describeSource(source: MarketplaceSource): string {
   if (source.type === "github-org") return "github: " + source.org;
-  if (source.type === "manifest") return source.url;
-  return source.path;
+  if (source.type === "manifest") return source.url || "";
+  return source.path || "";
 }
 
 /**
@@ -247,14 +286,14 @@ function describeSource(source) {
  * `entries` is null until the read resolves, which is a different thing from a source that offered
  * nothing: the first renders as an unknown count, the second as zero.
  */
-export function sourceRowsFrom(sources, entries) {
-  var rows = [];
+export function sourceRowsFrom(sources: MarketplaceSource[], entries: CatalogEntry[] | null | undefined): MarketplaceRow[] {
+  var rows: MarketplaceRow[] = [];
   for (var i = 0; i < sources.length; i++) {
     var source = sources[i];
     if (source.enabled === false) continue;
     var count = entries === null || entries === undefined
       ? undefined
-      : entries.filter(function (entry) { return entry.sourceId === source.id; }).length;
+      : entries.filter(function (entry: CatalogEntry) { return entry.sourceId === source.id; }).length;
     rows.push({ name: source.label, source: describeSource(source), count: count, builtin: "source", sourceId: source.id });
   }
   return rows;
@@ -282,7 +321,7 @@ function seedCuratedPlugins() {
 }
 
 // catalog rows read better without the app's own prefix repeated on every name
-function withoutAppPrefix(name) {
+function withoutAppPrefix(name: string): string {
   var text = String(name);
   var prefix = APP_ID ? APP_ID + "-" : "";
   return prefix && text.indexOf(prefix) === 0 ? text.slice(prefix.length) : text;
@@ -352,9 +391,9 @@ export function fetchCatalogsAsync() {
   // the curated MCP entries have no full_name/stars; derive a repo from their
   // npm package (registry .repository.url), fetch stars once per unique repo,
   // and apply to every entry sharing it. uvx entries are python, no npm -> skip.
-  function npmPkgFromArgs(args) {
+  function npmPkgFromArgs(args: string[] | undefined): string | null {
     for (var i = 0; i < (args || []).length; i++) {
-      var a = args[i];
+      var a = (args || [])[i];
       if (a.charAt(0) === "-") continue;                 // flags like -y, --db-path
       if (a.indexOf("/") !== -1 && a.charAt(0) !== "@") continue; // urls / paths
       if (a.indexOf("://") !== -1) continue;
@@ -365,7 +404,7 @@ export function fetchCatalogsAsync() {
     }
     return null;
   }
-  function repoFromNpmUrl(url) {
+  function repoFromNpmUrl(url: string | undefined): string | null {
     if (!url) return null;
     var clean = url.replace(/^git\+/, "").replace(/^git:\/\//, "https://");
     var m = clean.match(/github\.com[\/:]([^\/]+)\/([^\/]+?)(\.git)?$/);
@@ -375,15 +414,15 @@ export function fetchCatalogsAsync() {
     var pending = MCP_CATALOG.filter(function(e) {
       return e.curated && e.stars == null && e.command !== "uvx";
     });
-    var repoToEntries = {};   // unique repo -> entries waiting on its stars
-    function applyStars(fullName, stars) {
+    var repoToEntries: Record<string, McpCatalogEntry[]> = {};   // unique repo -> entries waiting on its stars
+    function applyStars(fullName: string, stars: number): void {
       var list = repoToEntries[fullName] || [];
       for (var k = 0; k < list.length; k++) {
         list[k].full_name = fullName;
         if (typeof stars === "number") list[k].stars = stars;
       }
     }
-    function fetchRepoStars(fullName) {
+    function fetchRepoStars(fullName: string): void {
       S.catalogPending++;
       exec(curlCmd + ' -sL -H "User-Agent: intisy-ai-loader" "https://api.github.com/repos/' + fullName + '"', function(err, stdout) {
         if (!err && stdout) {
@@ -397,7 +436,7 @@ export function fetchCatalogsAsync() {
         fetchDone();
       });
     }
-    function queueRepo(target, fullName) {
+    function queueRepo(target: McpCatalogEntry, fullName: string): void {
       var first = !repoToEntries[fullName];
       if (first) repoToEntries[fullName] = [];
       repoToEntries[fullName].push(target);
@@ -436,7 +475,7 @@ export function fetchCatalogsAsync() {
     }
   }
 
-  function searchGH(query, catalog, pageNum) {
+  function searchGH(query: string, catalog: MarketplaceRow[] | McpCatalogEntry[], pageNum: number): void {
     S.catalogPending++;
     exec(curlCmd + ' -s -H "User-Agent: intisy-ai-loader" "https://api.github.com/search/repositories?q=' + query + '&sort=stars&order=desc&per_page=100&page=' + pageNum + '"', function(err, stdout) {
       fetchDone();
@@ -451,30 +490,35 @@ export function fetchCatalogsAsync() {
               // Match plugins by full_name (owner/repo), never by the stripped display
               // name: two different repos can strip to the same name, so a name match
               // writes one repo's star count onto the other.
-              var exists = catalog.find(function(m) { return catalog === S.MARKETPLACE_CATALOG ? (!!m.full_name && m.full_name === it.full_name) : (m.name === it.name); });
+              var exists = (catalog as Array<MarketplaceRow | McpCatalogEntry>).find(function(m) { return catalog === S.MARKETPLACE_CATALOG ? (!!(m as MarketplaceRow).full_name && (m as MarketplaceRow).full_name === it.full_name) : (m.name === it.name); });
               if (!exists) {
-                var newItem = {
-                  name: catalog === S.MARKETPLACE_CATALOG ? cleanName : it.name,
-                  desc: it.description || "",
-                  category: "Community",
-                  stars: it.stargazers_count
-                };
                 if (catalog === S.MARKETPLACE_CATALOG) {
-                  newItem.author = it.owner.login;
-                  newItem.repoName = it.name;
-                  newItem.full_name = it.full_name;
-                  newItem.url = "https://github.com/" + it.full_name + ".git";
+                  (catalog as MarketplaceRow[]).push({
+                    name: cleanName,
+                    desc: it.description || "",
+                    category: "Community",
+                    stars: it.stargazers_count,
+                    author: it.owner ? it.owner.login : "",
+                    repoName: it.name,
+                    full_name: it.full_name,
+                    url: "https://github.com/" + it.full_name + ".git",
+                  });
                 } else {
-                  newItem.command = "npx";
-                  newItem.args = ["-y", it.full_name];
-                  newItem.env = {};
+                  (catalog as McpCatalogEntry[]).push({
+                    name: it.name,
+                    desc: it.description || "",
+                    category: "Community",
+                    stars: it.stargazers_count,
+                    command: "npx",
+                    args: ["-y", it.full_name],
+                    env: {},
+                  });
                 }
-                catalog.push(newItem);
               } else {
                 exists.stars = it.stargazers_count;
               }
             }
-            catalog.sort(function(a, b) { return (b.stars || 0) - (a.stars || 0); });
+            (catalog as Array<MarketplaceRow | McpCatalogEntry>).sort(function(a, b) { return (b.stars || 0) - (a.stars || 0); });
             if (catalog === S.MARKETPLACE_CATALOG && S.pluginSubPage === "marketplace") {
                S.marketplaceItems = buildMarketplaceList();
                scheduleRender();
@@ -488,7 +532,7 @@ export function fetchCatalogsAsync() {
     });
   }
 
-  function searchNpm(keyword) {
+  function searchNpm(keyword: string): void {
     S.catalogPending++;
     exec(curlCmd + ' -s "https://registry.npmjs.org/-/v1/search?text=keywords:' + keyword + '&size=100"', function(err, stdout) {
       fetchDone();
@@ -530,7 +574,7 @@ export function fetchCatalogsAsync() {
   // the declared awesome list is the curated membership oracle: the fuzzy
   // starred search may only contribute repos that the community list contains,
   // which keeps popular plugins in and look-alike repos out
-  var awesomeSet = null;
+  var awesomeSet: Record<string, boolean> | null = null;
   function refreshMarketplace() {
     S.MARKETPLACE_CATALOG.sort(function(a, b) { return (b.stars || 0) - (a.stars || 0); });
     if (S.pluginSubPage === "marketplace") {
@@ -539,12 +583,12 @@ export function fetchCatalogsAsync() {
     }
   }
 
-  function catalogHas(fullName) {
+  function catalogHas(fullName: string): MarketplaceRow | undefined {
     var key = fullName.toLowerCase();
     return S.MARKETPLACE_CATALOG.find(function(e) { return (e.full_name || "").toLowerCase() === key; });
   }
 
-  function searchPopular(query, pageNum) {
+  function searchPopular(query: string, pageNum: number): void {
     S.catalogPending++;
     exec(curlCmd + ' -s -H "User-Agent: intisy-ai-loader" "https://api.github.com/search/repositories?q=' + query + '&sort=stars&order=desc&per_page=100&page=' + pageNum + '"', function(err, stdout) {
       fetchDone();
@@ -571,7 +615,7 @@ export function fetchCatalogsAsync() {
     });
   }
 
-  function fetchAwesomeList(url) {
+  function fetchAwesomeList(url: string): void {
     S.catalogPending++;
     exec(curlCmd + ' -s "' + url + '"', { maxBuffer: 4 * 1024 * 1024 }, function(err, stdout) {
       fetchDone();
@@ -628,8 +672,8 @@ export function fetchCatalogsAsync() {
 // only appears once the active loader's extension registers S.capabilities.addMarketplace.
 // Both are LEVEL-1-ONLY (they add a marketplace/plugin globally, not "into" a
 // drilled-in marketplace), so only buildMarketplaceMarketsList() calls this.
-function buildMarketplaceActionRows() {
-  var rows = [{ isAction: true, actionKey: "add_plugin_url", name: "＋ Add plugin (git URL)" }];
+function buildMarketplaceActionRows(): MarketplaceRow[] {
+  var rows: MarketplaceRow[] = [{ isAction: true, actionKey: "add_plugin_url", name: "＋ Add plugin (git URL)" }];
   var addMk = S.capabilities && S.capabilities.addMarketplace;
   if (typeof addMk === "function") {
     rows.push({ isAction: true, actionKey: "add_marketplace", name: "＋ Add marketplace" });
@@ -640,7 +684,7 @@ function buildMarketplaceActionRows() {
 // The two Level-1 rows that are not a declared source: the catalog this file fetches by searching
 // GitHub, npm and the awesome list, and the curated standalone list. Both are backed by data this
 // file owns rather than by a marketplace anyone declared.
-function loaderOwnMarketplaces() {
+function loaderOwnMarketplaces(): MarketplaceRow[] {
   return [
     { name: "community", source: "built-in catalog", count: S.MARKETPLACE_CATALOG.length, builtin: "community" },
     { name: "Featured", source: "curated standalone plugins", count: FEATURED_PLUGINS.length, builtin: "featured" },
@@ -652,8 +696,8 @@ function loaderOwnMarketplaces() {
 // a capability marketplace's `source` (git URL or "owner/repo"; seenRepos holds
 // those sources lowercased). A seed the user already has wins, so it's never
 // shown twice. Count is "…" (undefined) until fetchSeedMarketplacesAsync resolves.
-function seedMarketplaceRows(seenNames, seenRepos) {
-  var rows = [];
+function seedMarketplaceRows(seenNames: Record<string, boolean>, seenRepos: Record<string, boolean>): MarketplaceRow[] {
+  var rows: MarketplaceRow[] = [];
   for (var i = 0; i < DEFAULT_MARKETPLACES.length; i++) {
     var seed = DEFAULT_MARKETPLACES[i];
     if (seenNames[seed.name]) continue;
@@ -678,12 +722,12 @@ function seedMarketplaceRows(seenNames, seenRepos) {
 // the active app's extension registers via capabilities.marketplaces(), deduped by name (an
 // earlier entry always wins a name collision), then the seeded defaults not already covered by a
 // real entry.
-export function buildMarketplaceMarketsList() {
+export function buildMarketplaceMarketsList(): MarketplaceRow[] {
   fetchCatalogsAsync();
   fetchSeedMarketplacesAsync();
   fetchSourceCatalogAsync();
-  var seen = {};
-  var seenRepos = {};
+  var seen: Record<string, boolean> = {};
+  var seenRepos: Record<string, boolean> = {};
   var rows = buildMarketplaceActionRows();
   // Declared sources first: they are what this home actually asked for, and the built-in catalog is a
   // fallback rather than the headline.
@@ -693,7 +737,7 @@ export function buildMarketplaceMarketsList() {
   for (var oi = 0; oi < own.length; oi++) { if (seen[own[oi].name]) continue; rows.push(own[oi]); seen[own[oi].name] = true; }
   var mfn = S.capabilities && S.capabilities.marketplaces;
   if (typeof mfn === "function") {
-    var caps = [];
+    var caps: CapabilityMarketplace[] = [];
     try { caps = mfn() || []; } catch (e) {}
     for (var ci = 0; ci < caps.length; ci++) {
       var c = caps[ci];
@@ -722,7 +766,7 @@ export function buildMarketplaceMarketsList() {
 // Anything else is assumed to be an app-registered capability marketplace, served through
 // capabilities.marketplacePlugins(name), which returns [] if the capability is absent or the
 // marketplace is unknown, so this degrades to an empty list rather than throwing.
-export function buildMarketplacePluginsList(marketName, marketKind, sourceId) {
+export function buildMarketplacePluginsList(marketName: string, marketKind?: string | null, sourceId?: string | null): MarketplaceRow[] {
   fetchCatalogsAsync();
   // Route by the KIND captured off the Level-1 row (builtin "community"/"featured" tag, "source",
   // or "capability"), not by string-comparing marketName against the loader's own display names: a
@@ -738,7 +782,7 @@ export function buildMarketplacePluginsList(marketName, marketKind, sourceId) {
     var installedHere = loadPlugins().map(function (p) { return p.name; });
     var resSrc = declaredEntries
       .filter(function (e) { return e.sourceId === sourceId; })
-      .map(function (e) {
+      .map(function (e: CatalogEntry): MarketplaceRow {
         return {
           name: e.id,
           desc: e.description,
@@ -774,7 +818,7 @@ export function buildMarketplacePluginsList(marketName, marketKind, sourceId) {
       // Sections must be CONTIGUOUS: the renderer emits a heading on every group
       // change, so a pure star sort interleaves headings over and over. Curated
       // first, then everything else; stars order within each group.
-      var rank = function(e) { return e.category === "Curated" ? 0 : 1; };
+      var rank = function(e: MarketplaceRow) { return e.category === "Curated" ? 0 : 1; };
       if (rank(a) !== rank(b)) return rank(a) - rank(b);
       var aSt = a.stars != null ? a.stars : -1;
       var bSt = b.stars != null ? b.stars : -1;
@@ -813,7 +857,7 @@ export function buildMarketplacePluginsList(marketName, marketKind, sourceId) {
     var seedDef = DEFAULT_MARKETPLACES.find(function(d) { return d.name === marketName; });
     var seedCache = S.seedMarketplaces[marketName];
     var seedPlugins = (seedCache && seedCache.plugins) || [];
-    var res3 = seedPlugins.map(function(p) {
+    var res3 = seedPlugins.map(function(p: MarketplaceRow): MarketplaceRow {
       return { name: p.name, desc: p.description, source: p.source || marketName, seed: true, id: p.id, repo: (seedDef && seedDef.repo) || (seedCache && seedCache.repo), installed: false };
     });
     if (S.inputBuf) {
@@ -830,10 +874,10 @@ export function buildMarketplacePluginsList(marketName, marketKind, sourceId) {
   // rows carry `capability: true` and getMarketplaceActions() only offers Cancel.
   // foreignPlugins() is cross-referenced purely for the installed/○ dot.
   var mpfn = S.capabilities && S.capabilities.marketplacePlugins;
-  var raw = [];
+  var raw: CapabilityMarketplacePlugin[] = [];
   if (typeof mpfn === "function") { try { raw = mpfn(marketName) || []; } catch (e) {} }
   var fpfn = S.capabilities && S.capabilities.foreignPlugins;
-  var foreignKeys = {};
+  var foreignKeys: Record<string, boolean> = {};
   if (typeof fpfn === "function") {
     try {
       var foreign = fpfn() || [];
@@ -843,7 +887,7 @@ export function buildMarketplacePluginsList(marketName, marketKind, sourceId) {
       }
     } catch (e) {}
   }
-  var res2 = raw.map(function(p) {
+  var res2 = raw.map(function(p: CapabilityMarketplacePlugin): MarketplaceRow {
     var key = (p.id || p.name || "") + "@" + marketName;
     return { name: p.name, desc: p.description, source: p.source || marketName, capability: true, id: p.id, installed: !!foreignKeys[key] };
   });
@@ -859,15 +903,15 @@ export function buildMarketplacePluginsList(marketName, marketKind, sourceId) {
 // input.ts/views/plugins.ts never need to know which level is active). Dispatches
 // on S.mkLevel so re-running it after e.g. a catalog fetch always rebuilds
 // whichever level the user is currently looking at.
-export function buildMarketplaceList() {
+export function buildMarketplaceList(): MarketplaceRow[] {
   if (S.mkLevel === "plugins" && S.mkMarket) return buildMarketplacePluginsList(S.mkMarket, S.mkMarketKind, S.mkMarketSourceId);
   return buildMarketplaceMarketsList();
 }
 
 // The action-menu entries for a marketplace item. Built once and shared by the renderer and the input
 // handler so their cursor indices always line up.
-export function getMarketplaceActions(item, hasUpdater) {
-  var acts = [];
+export function getMarketplaceActions(item: MarketplaceRow, hasUpdater: boolean): ActionRow[] {
+  var acts: ActionRow[] = [];
   if (item.seed) {
     // Not yet added to the host app: one action does both steps. addMarketplace(repo)
     // registers it, then installAppPlugin(id, name) installs the plugin, so the user
@@ -906,7 +950,7 @@ export function getMarketplaceActions(item, hasUpdater) {
 // child and the TUI keeps rendering. npx is deliberately not used: it would fetch the published
 // package instead of running the manager this home actually installed. `done(err)` gets null on
 // success or an error string.
-export function installMarketplacePlugin(entry, done) {
+export function installMarketplacePlugin(entry: MarketplaceRow, done: (error: string | null) => void): void {
   var url = entry.url;
   var name = entry.repoName || entry.name || String(url || "").replace(/\.git$/, "").split("/").pop();
   if (!name || !url) { done("Install failed: the catalog entry carries no name or url"); return; }

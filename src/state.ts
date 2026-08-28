@@ -24,7 +24,7 @@ export interface SeedMarketplace {
   /** The `owner/repo` it was read from. */
   repo?: string;
   /** Why the read failed, when it did. */
-  error?: string;
+  error?: string | null;
 }
 
 /** A declared action's arguments, collected one at a time before the action runs. */
