@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-// @ts-nocheck
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, unlinkSync } from "fs";
 import { execSync } from "child_process";
@@ -23,16 +22,50 @@ import { render } from "./views/render.js";
 import { parseKey, handleKey, handleInputData, handlePluginInputData, handleMarketplaceAddInputData, handleMcpAddInputData, handleSearchData, handleTabInputData, handleConfigInputData, handleConfigActionArgsData, switchPluginSubPage } from "./input.js";
 import { setActivitySeam, withLoaderCause } from "./activity-seam.js";
 import { inputCause } from "./input-cause.js";
+import type { CustomTab } from "./custom-tab.js";
+import type { LoaderCapabilities } from "./app-capabilities.js";
+import type { LoaderConfig } from "./config.js";
+import type { MenuAction } from "./provider-menu.js";
+
+/** What one self-check reports. */
+interface DoctorResult {
+  /** Whether it passed. */
+  passed: boolean;
+  /** What it found, shown either way. */
+  message: string;
+}
+
+/**
+ * The handle an app extension reaches this process by.
+ *
+ * @remarks
+ * A global, because an extension the host app loaded has no import path into the loader's own
+ * bundle: it is a separate module graph in the same process.
+ */
+interface LoaderGlobalApi {
+  /** Where this home keeps its clones. */
+  getReposDir: () => string;
+  /** Where deployed bundles go. */
+  getPluginsDir: () => string;
+  /** This home's root. */
+  getConfigDir: () => string;
+  /** Shows a message in the status line. */
+  log: (msg: string) => void;
+  /** Copies one built plugin file into the deployed plugins directory. */
+  deployPlugin: (pluginName: string, sourcePath: string) => void;
+  /** Removes one deployed plugin file. */
+  removePluginFiles: (pluginName: string) => void;
+}
 
 // A stable global for an app extension that has no import path into this process.
-global.LoaderAPI = {
+(globalThis as typeof globalThis & { LoaderAPI?: LoaderGlobalApi }).LoaderAPI = {
   getReposDir: function() { return REPOS_DIR; },
   getPluginsDir: function() { return PLUGINS_DIR; },
   getConfigDir: function() { return CONFIG_DIR; },
-  log: function(msg) { flash(msg); render(); },
+  log: function(msg: string) { flash(msg); render(); },
   
   // Deploy a plugin binary/script to the active plugins directory
-  deployPlugin: function(pluginName, sourcePath) {
+  deployPlugin: function(pluginName: string, sourcePath: string) {
     const fs = require('fs');
     const path = require('path');
     if (!fs.existsSync(PLUGINS_DIR)) fs.mkdirSync(PLUGINS_DIR, { recursive: true });
@@ -46,7 +79,7 @@ global.LoaderAPI = {
   },
   
   // Remove a plugin's deployed files
-  removePluginFiles: function(pluginName) {
+  removePluginFiles: function(pluginName: string) {
     const fs = require('fs');
     const path = require('path');
     const pluginFile = pluginName.endsWith('.js') ? pluginName : pluginName + '.js';
@@ -82,22 +115,22 @@ function checkForUpdates() {
     if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(UPDATE_CHECK_PATH, String(Date.now()));
 
-    exec(CLI_CMD + " --version", { timeout: 15000 }, function(versionError, installedOut) {
+    exec(CLI_CMD + " --version", { timeout: 15000 }, function(versionError: unknown, installedOut: string) {
       if (versionError) return;
-      exec("npm view " + NPM_PKG + " version", { timeout: 20000 }, function(viewError, latestOut) {
+      exec("npm view " + NPM_PKG + " version", { timeout: 20000 }, function(viewError: unknown, latestOut: string) {
         if (viewError) return;
         var installed = (installedOut || "").trim();
         var latest = (latestOut || "").trim();
         if (!latest || !installed || latest === installed) return;
         flash("Updating " + APP_NAME + " " + installed + " -> " + latest + " in the background");
         render();
-        exec("npm install -g " + NPM_PKG + "@latest", { timeout: 180000 }, function(installError) {
+        exec("npm install -g " + NPM_PKG + "@latest", { timeout: 180000 }, function(installError: Error | null) {
           tuiLog(installError ? "self-update failed: " + installError.message : "self-updated to " + latest);
           if (!installError) { flash(APP_NAME + " updated to " + latest + " (restart to apply)"); render(); }
         });
       });
     });
-  } catch (e) { tuiLog("update check failed: " + e.message); }
+  } catch (e) { tuiLog("update check failed: " + (e instanceof Error ? e.message : e)); }
 }
 
 // deferred so the TUI renders immediately instead of waiting on version checks
@@ -107,26 +140,26 @@ if (autoUpdateCheck()) setTimeout(checkForUpdates, updateCheckDelayMs());
 // Registry Pattern: plugins extend the TUI by exporting a function from tui-extension.js
 // The function receives a tuiApi object with registerTab() to add custom tabs
 export var tuiApi = {
-  registerTab: function(tab) {
+  registerTab: function(tab: CustomTab) {
     if (tab && tab.id && tab.label && !S.customTabs.some(function(t) { return t.id === tab.id; })) {
       S.customTabs.push(tab);   // dedup by id so a double-load can't add the tab twice
     }
   },
   loadConfig: function() { return loadConfig(); },
-  saveConfig: function(cfg) { return saveConfig(cfg); },
+  saveConfig: function(cfg: LoaderConfig) { return saveConfig(cfg); },
   loadPlugins: function() { return loadPlugins(); },
-  flash: function(msg) { flash(msg); },
+  flash: function(msg: string) { flash(msg); },
   // let a custom tab capture raw text (search boxes); routes keys to its handleKey
-  setTextInput: function(on) { S.mode = on ? "tabinput" : "list"; },
+  setTextInput: function(on: boolean) { S.mode = on ? "tabinput" : "list"; },
   // redraw on demand (a tab finished async work off the keypress path, e.g. a
   // login input resolving or a loopback callback auto-completing)
   refresh: function() { render(); },
   // suspend the loader TUI, run a blocking raw-stdin routine (the shared account
   // menu), then re-attach input and redraw
-  runBlocking: function(fn) { return runBlocking(fn); },
-  registerCapabilities: function(caps) {
+  runBlocking: function(fn: () => unknown) { return runBlocking(fn); },
+  registerCapabilities: function(caps: LoaderCapabilities) {
     if (caps && typeof caps === "object") {
-      for (var k in caps) { if (Object.prototype.hasOwnProperty.call(caps, k)) S.capabilities[k] = caps[k]; }
+      Object.assign(S.capabilities, caps);
       // The same object carries the read side the views use and the write side the
       // seam needs, so a loader wires Activity in one place.
       if (caps.activity) setActivitySeam(caps.activity);
@@ -134,7 +167,7 @@ export var tuiApi = {
   }
 };
 
-function runBlocking(fn) {
+function runBlocking(fn: () => unknown) {
   try { process.stdin.removeListener("data", onData); } catch {}
   try { process.stdin.setRawMode(false); } catch {}
   try { process.stdin.pause(); } catch {}
@@ -159,7 +192,7 @@ async function loadCustomTabs() {
   // append after it rather than in front of it.
   tuiApi.registerTab(librariesTab);
   const { pathToFileURL } = require("url");
-  async function loadExt(extPath) {
+  async function loadExt(extPath: string | undefined) {
     if (!extPath || !existsSync(extPath)) return;
     try {
       // tui-extension.js is an esbuild ESM bundle; require() throws under Node, so
@@ -221,7 +254,7 @@ if (arg) {
     }
 
     var testApi = {
-      addTest: function(category, name, fn) {
+      addTest: function(category: string, name: string, fn: () => DoctorResult | null) {
         console.log("\n" + category + " Checks:");
         try {
           var res = fn();
@@ -233,7 +266,7 @@ if (arg) {
             failed++;
           }
         } catch(e) {
-          console.log("\x1b[31m  [✗]\x1b[0m " + name + " (Error: " + e.message + ")");
+          console.log("\x1b[31m  [✗]\x1b[0m " + name + " (Error: " + (e instanceof Error ? e.message : e) + ")");
           failed++;
         }
       }
@@ -315,12 +348,12 @@ async function boot() {
 boot();
 
 
-function onData(buf) {
+function onData(buf: Buffer) {
   var key = parseKey(buf);
   withLoaderCause(inputCause(S.page, S.mode, key), function () { dispatchInput(buf, key); });
 }
 
-function dispatchInput(buf, key) {
+function dispatchInput(buf: Buffer, key: string | null) {
   if (S.globalKeyHandler === "manager_recheck") {
     // The gate offers re-check-or-quit but must NOT trap the arrow keys: the other tabs need no
     // plugin manager. Everything else is swallowed so a stray key cannot act on the hidden list.
@@ -349,7 +382,7 @@ function dispatchInput(buf, key) {
     // Never let a handler error crash the whole TUI: surface it as a status
     // message and keep the loop alive so the user stays in their menu.
     try { handleKey(key); }
-    catch (e) { try { flash("Error: " + ((e && e.message) || e)); } catch (_) {} }
+    catch (e) { try { flash("Error: " + (e instanceof Error ? e.message : e)); } catch (_) {} }
     render();
   }
 }
