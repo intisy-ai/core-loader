@@ -3,12 +3,28 @@
 // and key handler both walk: a "Global" header + its group, then a "Plugins" header + one
 // group row per plugin. Headers are not selectable (nav skips them).
 import { byOrderThenLabel } from "@intisy-ai/core";
-import type { FieldSpec } from "@intisy-ai/core";
+import type { FieldOption, FieldSpec } from "@intisy-ai/core";
 import { buildConfigItems, declarationFor, settingsPluginIds } from "./plugins.js";
+import type { PluginDeclaration } from "./plugins.js";
+import type { ActionSpec } from "./capability-shapes.js";
 import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "./config.js";
 import { S } from "./state.js";
 
-export type SettingsItem = { key: string; value: unknown; def: unknown; isSet: boolean; type: string };
+/** One editable setting: its value, its default, and whether the file actually holds it. */
+export type SettingsItem = {
+  /** The key it is stored under, which may be a dot path into a nested object. */
+  key: string;
+  /** Its effective value. */
+  value: unknown;
+  /** Its declared default. */
+  def: unknown;
+  /** Whether the file holds it, as opposed to it merely defaulting. */
+  isSet: boolean;
+  /** How it is edited, from the declaration when there is one and from the value otherwise. */
+  type: string;
+  /** The choices it steps through, when the declaration named a list. */
+  options?: FieldOption[];
+};
 export type SettingsAction = { kind: "action"; key: string; label: string; description?: string; confirm?: string; danger?: boolean; args?: FieldSpec[] };
 export type SettingsRow = SettingsItem | SettingsAction;
 export type SettingsSection = {
@@ -58,21 +74,21 @@ export type ConfigTarget = {
 // field types), so a key core adds shows up here with no change. The local constant is
 // only the fallback for a host that injects nothing.
 export function buildGlobalSection(): SettingsSection {
-  const injected = (S.capabilities && (S.capabilities as any).globalSettings) || null;
+  const injected = S.capabilities.globalSettings || null;
   const defaults = (injected && injected.defaults) || GLOBAL_SETTINGS_DEFAULTS;
   const fields = (injected && injected.fields) || [];
-  const items = buildConfigItems({ defaults, fields, current: loadGlobalSettings() }) as SettingsItem[];
+  const items = buildConfigItems({ defaults, fields, current: loadGlobalSettings() });
   return { label: "Global", kind: "global", file: "settings.json", bundle: null, items };
 }
 
 // The config file a declaration edits. This is read back as a real path (the editor header names it,
 // and any surface reading a plugin's config must name the same file), so it follows the config name
 // the plugin reports for ITSELF, never the id surfaces route by. One helper, so a second caller cannot drift.
-export function configFileFor(cfg: any): string {
+export function configFileFor(cfg: PluginDeclaration | null | undefined): string {
   return ((cfg && cfg.configName) || (cfg && cfg.name)) + ".json";
 }
 
-function actionRow(action: any): SettingsAction {
+function actionRow(action: ActionSpec): SettingsAction {
   const row: SettingsAction = { kind: "action", key: action.id, label: action.label };
   if (typeof action.description === "string") row.description = action.description;
   if (typeof action.confirm === "string") row.confirm = action.confirm;
@@ -87,11 +103,11 @@ function actionRow(action: any): SettingsAction {
 // contributed section belongs to that section, and whatever no section claimed stays the
 // plugin's own group. A section that claims nothing resolvable is dropped rather than
 // listed empty.
-export function splitBySections(cfg: any): SettingsSection[] {
+export function splitBySections(cfg: PluginDeclaration): SettingsSection[] {
   const name = cfg.name;
   const file = configFileFor(cfg);
   const itemByKey = new Map<string, SettingsRow>((cfg.items || []).map((i: SettingsItem) => [i.key, i]));
-  const actionById = new Map<string, any>((cfg.actions || []).map((a: any) => [a.id, a]));
+  const actionById = new Map<string, ActionSpec>((cfg.actions || []).map((a: ActionSpec) => [a.id, a]));
   const claimed = new Set<string>();
   const sections: SettingsSection[] = [];
 

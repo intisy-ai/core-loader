@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Plugin list building: git-backed repos + npm plugins + the updater engine
 // row, remote-update detection, and the per-plugin action menu.
 
@@ -14,6 +13,64 @@ import { spawnEnv } from "./activity-seam.js";
 import { bundleFor, ledgerRowFor, providerIds, readSettingsSchema } from "./plugin-surface.js";
 import { SETTINGS } from "@intisy-ai/core";
 import type { PluginEntry } from "./config.js";
+import type { ActionRow } from "./action-row.js";
+import type { ForeignPlugin } from "./app-capabilities.js";
+import type { SettingsItem } from "./settings-model.js";
+import type { ActionSpec, CapabilitySchema, FieldSpec, SectionSpec } from "./capability-shapes.js";
+
+/** One plugin's row in the update-status cache the manager writes. */
+interface UpdateCacheRow {
+  /** Whether it is a git clone or an npm package. */
+  kind?: string;
+  /** Whether an update is waiting. */
+  updateAvailable?: boolean;
+  /** The remote commit the manager saw. */
+  remoteHead?: string;
+  /** When it was last updated, in epoch milliseconds. */
+  updatedAt?: number;
+}
+
+/** The update-status cache, by plugin name. */
+interface UpdateCache {
+  /** Each plugin's cached verdict. */
+  plugins: Record<string, UpdateCacheRow>;
+}
+
+/** What a plugin's `config schema` answers: its declared defaults, and what is on disk. */
+export interface ConfigValues {
+  /** The config name the plugin calls its own file, which is the only thing usable as a path. */
+  name: string | null;
+  /** Every setting's declared default. */
+  defaults: Record<string, unknown>;
+  /** What the file actually holds. */
+  current: Record<string, unknown>;
+}
+
+/** A plugin's whole settings declaration, as the Settings tab and the config editor consume it. */
+export interface PluginDeclaration {
+  /** The plugin id every surface routes by. */
+  name: string;
+  /** What the plugin itself calls its config file. */
+  configName: string | null;
+  /** Its deployed bundle, which is what an action is run through, or `null` when it has none. */
+  bundle: string | null;
+  /** Its editable rows. */
+  items: SettingsItem[];
+  /** The actions it declared. */
+  actions: ActionSpec[];
+  /** The sections it contributed. */
+  sections: SectionSpec[];
+}
+
+/** What `buildConfigItems` flattens: declared defaults, what is on disk, and how each is edited. */
+export interface ConfigSchemaInput {
+  /** Every setting's declared default. */
+  defaults?: Record<string, unknown>;
+  /** What the file actually holds. */
+  current?: Record<string, unknown>;
+  /** How each setting is edited. */
+  fields?: FieldSpec[];
+}
 
 /**
  * One row of the Plugins list, whatever kind of plugin it describes.
@@ -87,7 +144,7 @@ export interface CommitRow {
 }
 
 
-export function gitText(args, cwd) {
+export function gitText(args: string[], cwd: string): string {
   try {
     var out = execSync(args.join(" "), { cwd: cwd, encoding: "utf-8", timeout: 15000, stdio: ["ignore", "pipe", "ignore"] });
     return out.trim();
@@ -104,15 +161,15 @@ export function gitText(args, cwd) {
 export function readUpdateCache() {
   try {
     var cachePath = join(dirname(REPOS_DIR), "cache", "plugin-updates.json");
-    var data = readJson(cachePath);
+    var data = readJson<UpdateCache>(cachePath);
     if (!data || typeof data !== "object" || !data.plugins) return null;
     return data;
   } catch { return null; }
 }
 
-export function buildPluginList() {
+export function buildPluginList(): PluginRow[] {
   var plugins = loadPlugins();
-  var list = [];
+  var list: PluginRow[] = [];
   var cache = readUpdateCache();
   var channelUpdater = getUpdater();
   var configDir = dirname(REPOS_DIR);
@@ -125,7 +182,7 @@ export function buildPluginList() {
     var remoteHead = "";
     var subject = "";
     var updateAvail = false;
-    var updatedAt = null;
+    var updatedAt: number | null = null;
     var latestTag = "";
     var enabled = p.enabled !== false;
 
@@ -177,8 +234,8 @@ export function buildPluginList() {
 }
 
 // async git text (non-blocking), so a network `git fetch` never blocks the TUI loop
-function gitTextAsync(args, cwd, cb) {
-  exec(args.join(" "), { cwd: cwd, timeout: 15000 }, function(err, stdout) {
+function gitTextAsync(args: string[], cwd: string, cb: (out: string) => void): void {
+  exec(args.join(" "), { cwd: cwd, timeout: 15000 }, function(err: unknown, stdout: string) {
     cb(err ? "" : String(stdout || "").trim());
   });
 }
@@ -186,11 +243,11 @@ function gitTextAsync(args, cwd, cb) {
 // Fetch each git plugin's remote HEAD OFF the main thread (parallel), then invoke
 // done() once all complete. `git fetch` hits the network (up to 15s each); running
 // it synchronously would freeze the UI, so async keeps the loop free and the spinner animating.
-export function fetchPluginRemotes(pluginItems, done) {
-  var targets = pluginItems.filter(function(p) { return p.type !== "npm" && !p.foreign && p.installed && p.enabled !== false; });
+export function fetchPluginRemotes(pluginItems: PluginRow[], done?: () => void): void {
+  var targets = pluginItems.filter(function(p: PluginRow) { return p.type !== "npm" && !p.foreign && p.installed && p.enabled !== false; });
   var remaining = targets.length;
   if (remaining === 0) { if (done) done(); return; }
-  targets.forEach(function(p) {
+  targets.forEach(function(p: PluginRow) {
     var dir = join(REPOS_DIR, p.folderName);
     gitTextAsync(["git", "fetch", "origin"], dir, function() {
       var refs = ["origin/HEAD", "origin/main", "origin/master"];
@@ -205,7 +262,7 @@ export function fetchPluginRemotes(pluginItems, done) {
       };
       var tryRef = function() {
         if (ri >= refs.length) { finish(); return; }
-        gitTextAsync(["git", "rev-parse", refs[ri]], dir, function(h) {
+        gitTextAsync(["git", "rev-parse", refs[ri]], dir, function(h: string) {
           if (h) { p.remoteHead = h; finish(); }
           else { ri++; tryRef(); }
         });
@@ -215,14 +272,14 @@ export function fetchPluginRemotes(pluginItems, done) {
   });
 }
 
-export function buildCombinedPluginList() {
+export function buildCombinedPluginList(): PluginRow[] {
   var git = buildPluginList();
   var savedPlugins = loadPlugins();
   var cache = readUpdateCache();
   // Where the app's own plugin list carries the manager, list it as the active engine.
   // It's transient (the app fetches it at runtime) so it has no resolvable version;
   // mark it active rather than "not installed".
-  var npm = loadNpmPlugins().map(function(np) {
+  var npm = loadNpmPlugins().map(function(np): PluginRow {
     var manager = resolvedManager();
     var isEngine = !!manager && (np.name === manager.npmName || np.name === manager.id);
     var ncEntry = cache && cache.plugins && cache.plugins[np.name];
@@ -260,12 +317,12 @@ export function buildCombinedPluginList() {
 // (+ `key` = "name@source", the CLI's own identifier) so callers can guard them out
 // of every updater-only action (update/commits/configure operate on a git clone that
 // simply doesn't exist for these rows).
-export function buildForeignPluginList() {
+export function buildForeignPluginList(): PluginRow[] {
   var fpFn = S.capabilities && S.capabilities.foreignPlugins;
   if (typeof fpFn !== "function") return [];
-  var foreign = [];
+  var foreign: ForeignPlugin[] = [];
   try { foreign = fpFn() || []; } catch (e) { foreign = []; }
-  return foreign.map(function(it) {
+  return foreign.map(function(it: ForeignPlugin): PluginRow {
     return {
       type: "foreign",
       foreign: true,
@@ -292,14 +349,14 @@ export function buildForeignPluginList() {
 
 // The host records a row for every plugin it saw, loaded or broken, so diagnostics are offered
 // wherever there is one to show: a disabled plugin's row is often the most interesting of all.
-function pushDiagnostics(actions, pluginId) {
+function pushDiagnostics(actions: ActionRow[], pluginId: string): void {
   if (ledgerRowFor(pluginId)) {
     actions.push({ cat: "Configure", key: "diagnostics", label: "Show plugin diagnostics" });
   }
 }
 
-export function getPluginActions(pitem) {
-  var a = [];
+export function getPluginActions(pitem: PluginRow): ActionRow[] {
+  var a: ActionRow[] = [];
   var pluginId = hostPluginId(pitem);
   if (pitem.foreign) {
     // App-managed plugin (native to the host app): only what the capabilities
@@ -370,7 +427,7 @@ export function getPluginActions(pitem) {
 // The id the plugin host knows a list item by. The host derives a plugin's id from its DEPLOYED
 // sidecar/bundle basename, which is not always the plugins.json name: an entry may name its own
 // pluginFile, and every bundle path in this repo is built from the same expression.
-export function hostPluginId(pitem) {
+export function hostPluginId(pitem: PluginRow | null | undefined): string {
   if (!pitem) return "";
   return basename(pitem.pluginFile || (pitem.name + ".js"), ".js");
 }
@@ -379,10 +436,10 @@ export function hostPluginId(pitem) {
 // (fields, actions, sections) comes from the settings capability; this channel exists because a
 // resolved config cannot say which keys are set and which are merely defaulted, and the editor's
 // "(default)" marker is exactly that distinction.
-export function probeConfigValuesAsync(bundle) {
-  return new Promise(function (resolve) {
+export function probeConfigValuesAsync(bundle: string | null): Promise<ConfigValues | null> {
+  return new Promise<ConfigValues | null>(function (resolve) {
     if (!bundle || !existsSync(bundle)) { resolve(null); return; }
-    exec('node "' + bundle + '" config schema', { timeout: 8000 }, function (err, stdout) {
+    exec('node "' + bundle + '" config schema', { timeout: 8000 }, function (err: unknown, stdout: string) {
       if (err) { resolve(null); return; }
       try {
         var data = JSON.parse(String(stdout).trim());
@@ -397,7 +454,7 @@ export function probeConfigValuesAsync(bundle) {
 // plugin offering neither settings nor actions has nothing to configure, which is what yields null.
 // `name` is the id every surface routes by; `configName` is what the plugin itself calls its config
 // file, which is the only thing that may be used as a path.
-export function declarationOf(pluginId, bundle, schema, values) {
+export function declarationOf(pluginId: string, bundle: string | null, schema: CapabilitySchema | null, values: ConfigValues | null): PluginDeclaration | null {
   var items = buildConfigItems({
     defaults: (values && values.defaults) || {},
     current: (values && values.current) || {},
@@ -419,13 +476,13 @@ export function declarationOf(pluginId, bundle, schema, values) {
 // Declarations are cached per plugin: reading one costs a capability call plus a child process, and
 // every settings render walks the whole list. An absent key means "not read yet" and a null value
 // means "read, and this plugin has nothing to configure".
-var DECLARATIONS = new Map();
+var DECLARATIONS = new Map<string, PluginDeclaration | null>();
 
-export function declarationFor(pluginId) {
+export function declarationFor(pluginId: string): PluginDeclaration | null | undefined {
   return DECLARATIONS.has(pluginId) ? DECLARATIONS.get(pluginId) : undefined;
 }
 
-export async function readDeclaration(pluginId) {
+export async function readDeclaration(pluginId: string): Promise<PluginDeclaration | null> {
   var schema = await readSettingsSchema(pluginId);
   var bundle = bundleFor(pluginId);
   var values = await probeConfigValuesAsync(bundle);
@@ -434,7 +491,7 @@ export async function readDeclaration(pluginId) {
   return declaration;
 }
 
-export function invalidateDeclaration(pluginId) {
+export function invalidateDeclaration(pluginId: string): void {
   DECLARATIONS.delete(pluginId);
 }
 
@@ -451,20 +508,20 @@ export async function primeDeclarations() {
   await Promise.all(pending.map(function (pluginId) { return readDeclaration(pluginId); }));
 }
 
-function digPath(obj, dotKey) {
-  var node = obj;
+function digPath(obj: unknown, dotKey: string): unknown {
+  var node: unknown = obj;
   var parts = dotKey.split(".");
   for (var i = 0; i < parts.length; i++) {
     if (!node || typeof node !== "object" || !(parts[i] in node)) return undefined;
-    node = node[parts[i]];
+    node = (node as Record<string, unknown>)[parts[i]];
   }
   return node;
 }
 
 // A declared type outranks the value's own: a secret holding a string is still a secret, and only
 // the declaration can say so.
-function configRow(key, value, def, isSet, field) {
-  var item = { key: key, value: value, def: def, isSet: isSet, type: (field && typeof field.type === "string") ? field.type : typeof value };
+function configRow(key: string, value: unknown, def: unknown, isSet: boolean, field?: FieldSpec): SettingsItem {
+  var item: SettingsItem = { key: key, value: value, def: def, isSet: isSet, type: (field && typeof field.type === "string") ? field.type : typeof value };
   // A declared choice list turns a free-text row into one that steps through its options.
   if (field && Array.isArray(field.options) && field.options.length) item.options = field.options;
   return item;
@@ -472,11 +529,11 @@ function configRow(key, value, def, isSet, field) {
 
 // Flatten a schema into editable rows: every key (declared default or on-disk),
 // its effective value, whether it is explicitly set, and its inferred type.
-export function buildConfigItems(schema) {
+export function buildConfigItems(schema: ConfigSchemaInput | null | undefined): SettingsItem[] {
   var defaults = (schema && schema.defaults) || {};
   var current = (schema && schema.current) || {};
   var fields = (schema && schema.fields) || [];
-  var byKey = {};
+  var byKey: Record<string, FieldSpec> = {};
   for (var i = 0; i < fields.length; i++) { if (fields[i] && fields[i].key) byKey[fields[i].key] = fields[i]; }
   var merged = Object.assign({}, defaults, current);
   // A nested object cannot be edited through a text row: typing JSON into one would be
@@ -493,7 +550,7 @@ export function buildConfigItems(schema) {
   // A declared key may address a leaf INSIDE one of those objects ("categories.accounts").
   // Those are editable after all, since core's config get/set both take a dot path, and
   // without this the only way to reach them is the dashboard.
-  var seen = {};
+  var seen: Record<string, boolean> = {};
   for (var r = 0; r < rows.length; r++) seen[rows[r].key] = true;
   for (var f = 0; f < fields.length; f++) {
     var field = fields[f];
@@ -510,9 +567,9 @@ export function buildConfigItems(schema) {
 
 // Persist one setting by shelling back into the plugin's own config CLI: `config set`
 // is the only thing that writes a file, so a config appears only once actually changed.
-export function setPluginConfig(bundle, key, valueStr) {
+export function setPluginConfig(bundle: string, key: string, valueStr: unknown): string {
   try {
     execSync('node "' + bundle + '" config set ' + JSON.stringify(key) + ' ' + JSON.stringify(String(valueStr)), { timeout: 8000, stdio: ["ignore", "ignore", "ignore"], env: spawnEnv() });
     return "";
-  } catch (e) { return (e && e.message) || "set failed"; }
+  } catch (e) { return (e instanceof Error && e.message) || "set failed"; }
 }
