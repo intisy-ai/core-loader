@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { homePaths } from "./home-paths.js";
 import type { MarketplaceSource } from "./catalog-sources.js";
+import type { CatalogEntry } from "./capability-catalog.js";
 import {
   CATALOG_CACHE_FILE,
   catalogFor,
   categoryOf,
+  entriesFromMarketplaceManifest,
   entryFrom,
   invalidateCapabilityCatalog,
   isPluginCandidate,
@@ -267,5 +269,183 @@ describe("categoryOf", () => {
   it("groups a capability this host has never heard of by its own name", () => {
     const entry = { id: "x", npmName: "x", url: "u", capabilities: ["time-travel"], description: "", sourceId: "s" };
     expect(categoryOf(entry)).toBe("Time-travel");
+  });
+});
+
+describe("an owner that is a person, not an organisation", () => {
+  const USER: MarketplaceSource = { id: "person", label: "person", type: "github-org", enabled: true, org: "person" };
+  const REPOS = [{ name: "tool", html_url: "https://github.com/person/tool", description: "A tool", topics: [], archived: false }];
+
+  function scopedFetch(answers: Record<string, unknown>) {
+    const seen: string[] = [];
+    const fetchJson = async (url: string): Promise<unknown> => {
+      seen.push(url);
+      return Object.prototype.hasOwnProperty.call(answers, url) ? answers[url] : null;
+    };
+    return { seen, fetchJson };
+  }
+
+  it("falls back to the user listing when the org listing answers nothing", async () => {
+    const { seen, fetchJson } = scopedFetch({
+      "https://api.github.com/users/person/repos?per_page=100&page=1": REPOS,
+      "https://raw.githubusercontent.com/person/tool/HEAD/plugin.json": { id: "tool", api: 1 },
+    });
+    const entries = await readCatalog([USER], { fetchJson });
+    expect(entries.map((entry) => entry.id)).toEqual(["tool"]);
+    expect(seen).toContain("https://api.github.com/orgs/person/repos?per_page=100&page=1");
+  });
+
+  it("never asks the user listing when the org listing answered", async () => {
+    const { seen, fetchJson } = scopedFetch({
+      "https://api.github.com/orgs/person/repos?per_page=100&page=1": REPOS,
+      "https://raw.githubusercontent.com/person/tool/HEAD/plugin.json": { id: "tool", api: 1 },
+    });
+    const entries = await readCatalog([USER], { fetchJson });
+    expect(entries.map((entry) => entry.id)).toEqual(["tool"]);
+    expect(seen.some((url) => url.includes("/users/"))).toBe(false);
+  });
+
+  it("pages within the scope that answered, never re-resolving it", async () => {
+    const full = Array.from({ length: 100 }, (unused, index) => ({
+      name: "repo-" + index, html_url: "https://github.com/person/repo-" + index, description: "", topics: ["plugin"], archived: false,
+    }));
+    const { seen, fetchJson } = scopedFetch({
+      "https://api.github.com/users/person/repos?per_page=100&page=1": full,
+      "https://api.github.com/users/person/repos?per_page=100&page=2": REPOS,
+    });
+    await readCatalog([USER], { fetchJson });
+    expect(seen).toContain("https://api.github.com/users/person/repos?per_page=100&page=2");
+    expect(seen.filter((url) => url.includes("/orgs/"))).toEqual([
+      "https://api.github.com/orgs/person/repos?per_page=100&page=1",
+    ]);
+  });
+
+  it("an owner neither listing knows costs nothing further", async () => {
+    const { seen, fetchJson } = scopedFetch({});
+    expect(await readCatalog([USER], { fetchJson })).toEqual([]);
+    expect(seen).toHaveLength(2);
+  });
+});
+
+describe("entriesFromMarketplaceManifest", () => {
+  const candidate = { url: "https://github.com/person/market.git", description: "the repo" };
+
+  it("offers one entry per listed plugin, with the repo's own url for a relative source", () => {
+    const entries = entriesFromMarketplaceManifest(
+      { plugins: [{ name: "one", source: "./plugin", description: "first" }, { name: "two", source: "./other" }] },
+      candidate,
+      "src",
+    );
+    expect(entries).toEqual([
+      { id: "one", npmName: "one", url: candidate.url, capabilities: [], description: "first", category: "Plugin", sourceId: "src" },
+      { id: "two", npmName: "two", url: candidate.url, capabilities: [], description: "the repo", category: "Plugin", sourceId: "src" },
+    ]);
+  });
+
+  it("resolves a url source and an owner/repo source to their own clone url", () => {
+    const entries = entriesFromMarketplaceManifest(
+      {
+        plugins: [
+          { name: "byUrl", source: { source: "url", url: "https://github.com/other/thing.git" } },
+          { name: "byRepo", source: { source: "github", repo: "other/named" } },
+        ],
+      },
+      candidate,
+      "src",
+    );
+    expect(entries.map((entry) => entry.url)).toEqual([
+      "https://github.com/other/thing.git",
+      "https://github.com/other/named.git",
+    ]);
+  });
+
+  it("prefers the source's own curated category over the third-party default", () => {
+    const entries = entriesFromMarketplaceManifest({ plugins: [{ name: "one" }] }, { ...candidate, category: "Memory" }, "src");
+    expect(entries[0].category).toBe("Memory");
+  });
+
+  it("skips an item with no name and yields nothing for a file with no plugins", () => {
+    expect(entriesFromMarketplaceManifest({ plugins: [{ description: "nameless" }, { name: "" }] }, candidate, "src")).toEqual([]);
+    expect(entriesFromMarketplaceManifest({ name: "market" }, candidate, "src")).toEqual([]);
+    expect(entriesFromMarketplaceManifest(null, candidate, "src")).toEqual([]);
+    expect(entriesFromMarketplaceManifest("nope", candidate, "src")).toEqual([]);
+  });
+});
+
+describe("a third-party repository a declared source offers", () => {
+  const LISTING = "https://example.test/featured.json";
+  const source: MarketplaceSource = { id: "featured", label: "featured", type: "manifest", enabled: true, url: LISTING };
+
+  function thirdPartyFetch(answers: Record<string, unknown>) {
+    const seen: string[] = [];
+    const fetchJson = async (url: string): Promise<unknown> => {
+      seen.push(url);
+      return Object.prototype.hasOwnProperty.call(answers, url) ? answers[url] : null;
+    };
+    return { seen, fetchJson };
+  }
+
+  it("reads its marketplace file when it carries no plugin.json of ours", async () => {
+    const { fetchJson } = thirdPartyFetch({
+      [LISTING]: { entries: [{ url: "https://github.com/person/market.git", description: "listed", category: "Memory" }] },
+      "https://raw.githubusercontent.com/person/market/HEAD/.claude-plugin/marketplace.json": {
+        plugins: [{ name: "remembers", source: "./plugin", description: "keeps things" }],
+      },
+    });
+    const entries = await readCatalog([source], { fetchJson });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe("remembers");
+    expect(entries[0].description).toBe("keeps things");
+    expect(categoryOf(entries[0])).toBe("Memory");
+    expect(entries[0].sourceId).toBe("featured");
+  });
+
+  it("is described by its own plugin.json when it has one, and its marketplace file is never fetched", async () => {
+    const { seen, fetchJson } = thirdPartyFetch({
+      [LISTING]: { entries: [{ url: "https://github.com/person/market.git", description: "listed" }] },
+      "https://raw.githubusercontent.com/person/market/HEAD/plugin.json": { id: "ours", api: 1, capabilities: ["screens"] },
+      "https://raw.githubusercontent.com/person/market/HEAD/.claude-plugin/marketplace.json": { plugins: [{ name: "theirs" }] },
+    });
+    const entries = await readCatalog([source], { fetchJson });
+    expect(entries.map((entry) => entry.id)).toEqual(["ours"]);
+    expect(seen.some((url) => url.includes(".claude-plugin"))).toBe(false);
+  });
+
+  it("offers every plugin one repository carries", async () => {
+    const { fetchJson } = thirdPartyFetch({
+      [LISTING]: { entries: [{ url: "https://github.com/person/market.git" }] },
+      "https://raw.githubusercontent.com/person/market/HEAD/.claude-plugin/marketplace.json": {
+        plugins: [{ name: "first", source: "./a" }, { name: "second", source: "./b" }],
+      },
+    });
+    const entries = await readCatalog([source], { fetchJson });
+    expect(entries.map((entry) => entry.id)).toEqual(["first", "second"]);
+    expect(entries.every((entry) => entry.url === "https://github.com/person/market.git")).toBe(true);
+  });
+
+  it("is offered by the catalog but never matched by a capability query, because it declares none", async () => {
+    const paths = homePaths(tempHome());
+    const { fetchJson } = thirdPartyFetch({
+      [LISTING]: { entries: [{ url: "https://github.com/person/market.git" }] },
+      "https://raw.githubusercontent.com/person/market/HEAD/.claude-plugin/marketplace.json": { plugins: [{ name: "remembers" }] },
+    });
+    const deps = { fetchJson, now: () => 1000 };
+    expect((await catalogFor([source], paths, 3600000, deps)).map((entry) => entry.id)).toEqual(["remembers"]);
+    expect(await queryCapability("provider", [source], paths, 3600000, deps)).toEqual([]);
+  });
+});
+
+describe("categoryOf, with a declared category", () => {
+  const entry = (extra: Partial<CatalogEntry>): CatalogEntry => ({
+    id: "x", npmName: "x", url: "u", capabilities: [], description: "", sourceId: "s", ...extra,
+  });
+
+  it("prefers a declared category over one derived from a capability", () => {
+    expect(categoryOf(entry({ capabilities: ["provider"], category: "Memory" }))).toBe("Memory");
+  });
+
+  it("ignores an empty declared category and falls back", () => {
+    expect(categoryOf(entry({ capabilities: ["provider"], category: "" }))).toBe("Provider");
+    expect(categoryOf(entry({}))).toBe("Library");
   });
 });

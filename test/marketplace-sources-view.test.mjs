@@ -138,3 +138,26 @@ describe("fetchSourceCatalogAsync's guard flag", () => {
     assert.equal(S.sourceFetched, true);
   });
 });
+
+describe("Level 2 for a source offering a third-party marketplace's plugins", () => {
+  it("takes the clone name from the url, not the entry id, so a subdirectory plugin resolves", () => {
+    S.sourceCatalog = [
+      { id: "mem-cowork", npmName: "mem-cowork", url: "https://github.com/person/mem.git", capabilities: [], description: "d", category: "Memory", sourceId: "featured" },
+    ];
+    S.inputBuf = "";
+    const rows = buildMarketplacePluginsList("Featured", "source", "featured");
+    assert.equal(rows[0].name, "mem-cowork");
+    assert.equal(rows[0].repoName, "mem");
+    assert.equal(rows[0].full_name, "person/mem");
+  });
+
+  it("groups by the category the entry declares rather than calling it a library", () => {
+    S.sourceCatalog = [
+      { id: "mem", npmName: "mem", url: "https://github.com/person/mem.git", capabilities: [], description: "d", category: "Memory", sourceId: "featured" },
+      { id: "lib", npmName: "lib", url: "https://github.com/person/lib.git", capabilities: [], description: "d", sourceId: "featured" },
+    ];
+    S.inputBuf = "";
+    const rows = buildMarketplacePluginsList("Featured", "source", "featured");
+    assert.deepEqual(rows.map((row) => row.category), ["Library", "Memory"]);
+  });
+});
