@@ -1,3 +1,5 @@
+import type { TuiApi } from "./tui.js";
+
 // The contract a plugin's tui-extension implements to add its own tab (see tui.ts registerTab).
 // It lives in its own module so both the renderer and the key router can name it without either
 // importing the other.
@@ -64,5 +66,5 @@ export interface CustomTab {
    * A custom tab owns ALL its keys, Escape included, so it can back out of its own sub-views
    * instead of the loader quitting underneath it.
    */
-  handleKey?: (key: string | null, context: CustomTabContext, api: unknown) => void;
+  handleKey?: (key: string | null, context: CustomTabContext, api: TuiApi) => void;
 }
