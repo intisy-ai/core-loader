@@ -87,6 +87,7 @@ export interface McpRow {
 // and plugin-cache dirs, which made every MCP render (buildMcpList) hit disk and lag
 // navigation. Embedded MCPs change only when plugins are added/removed (restart re-scans).
 var EMBEDDED_MCP_CACHE: EmbeddedMcpScan | null = null;
+/** Every MCP server shipped inside a plugin, across every home the registry declares. Scanned once per session. */
 export function scanPluginEmbeddedMcps(): EmbeddedMcpScan {
   if (EMBEDDED_MCP_CACHE !== null) return EMBEDDED_MCP_CACHE;
   var embedded: Record<string, EmbeddedMcpServer> = {};
@@ -180,6 +181,7 @@ export function scanPluginEmbeddedMcps(): EmbeddedMcpScan {
   return EMBEDDED_MCP_CACHE;
 }
 
+/** The servers this home has configured, plus the embedded ones nothing has overridden. */
 export function getInstalledMcpList(): McpRow[] {
   var config = loadMcpConfig();
   var servers = config.mcpServers || {};
@@ -198,6 +200,7 @@ export function getInstalledMcpList(): McpRow[] {
   return list;
 }
 
+/** The MCP marketplace list: the curated catalog plus any embedded server not already in it, ranked by stars. */
 export function buildMcpList(categoryFilter?: string): McpRow[] {
   fetchCatalogsAsync();
   var installed = loadMcpConfig().mcpServers || {};
@@ -233,6 +236,7 @@ export function buildMcpList(categoryFilter?: string): McpRow[] {
   return list;
 }
 
+/** Writes one catalog entry into this home's MCP config. */
 export function installMcpServer(entry: McpRow): void {
   var config = loadMcpConfig();
   var serverConfig: { command?: string; args?: string[]; env?: Record<string, string> } = { command: entry.command, args: (entry.args || []).slice() };
@@ -242,6 +246,7 @@ export function installMcpServer(entry: McpRow): void {
   saveMcpConfig(config);
 }
 
+/** Removes one server from that config. */
 export function uninstallMcpServer(name: string): void {
   var config = loadMcpConfig();
   delete config.mcpServers[name];
@@ -283,6 +288,7 @@ export function buildInstalledMcpRows(): McpRow[] {
   return rows;
 }
 
+/** The action menu for one MCP row. */
 export function getMcpActions(mitem: McpRow): ActionRow[] {
   var a: ActionRow[] = [];
   if (mitem.installed) {

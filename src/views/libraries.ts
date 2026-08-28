@@ -25,6 +25,7 @@ function versionLabel(library: LibraryReading, api: CustomTabUi): string {
   return api.RED + "missing" + api.RST;
 }
 
+/** The Libraries tab, contributed the same way a plugin contributes one. */
 export var librariesTab: CustomTab = {
   id: "libraries",
   label: "Libraries",

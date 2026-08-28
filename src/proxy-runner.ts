@@ -11,8 +11,10 @@ import { join } from "path";
 import { readDeployedProviders } from "./loader-runtime.js";
 import type { ActivitySpec } from "@intisy-ai/core";
 
+/** One provider the proxy can route to, and the handler file that answers for it. */
 export type ProxyHandlerEntry = { provider: string; handlerPath: string };
 
+/** The little this runner needs of a proxy server, so it never names one implementation. */
 export type ProxyServerLike = {
   listen: () => Promise<number>;
   close?: () => Promise<void>;
@@ -54,6 +56,7 @@ export type StartLoaderProxyOptions<TProfile = unknown> = {
   emitActivity?: (spec: ActivitySpec) => void;
 };
 
+/** A proxy that is up: what it is listening on, and how to stop it. */
 export type StartedLoaderProxy = {
   server: ProxyServerLike;
   configDir: string;

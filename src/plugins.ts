@@ -152,6 +152,7 @@ export interface CommitRow {
 }
 
 
+/** One git command's trimmed output, or an empty string when it failed. */
 export function gitText(args: string[], cwd: string): string {
   try {
     var out = execSync(args.join(" "), { cwd: cwd, encoding: "utf-8", timeout: 15000, stdio: ["ignore", "pipe", "ignore"] });
@@ -177,6 +178,7 @@ export function readUpdateCache() {
   } catch { return null; }
 }
 
+/** The git-backed plugins this home holds, each with its local state and whatever the update cache knows. */
 export function buildPluginList(): PluginRow[] {
   var plugins = loadPlugins();
   var list: PluginRow[] = [];
@@ -284,6 +286,7 @@ export function fetchPluginRemotes(pluginItems: PluginRow[], done?: () => void):
   });
 }
 
+/** Every plugin the Plugins page lists: git clones, npm plugins, and the host app's own. */
 export function buildCombinedPluginList(): PluginRow[] {
   var git = buildPluginList();
   var savedPlugins = loadPlugins();
@@ -369,6 +372,7 @@ function pushDiagnostics(actions: ActionRow[], pluginId: string): void {
   }
 }
 
+/** The action menu for one plugin row, offering only what that kind of plugin actually supports. */
 export function getPluginActions(pitem: PluginRow): ActionRow[] {
   var a: ActionRow[] = [];
   var pluginId = hostPluginId(pitem);
@@ -498,10 +502,12 @@ export function declarationOf(pluginId: string, bundle: string | null, schema: C
 // means "read, and this plugin has nothing to configure".
 var DECLARATIONS = new Map<string, PluginDeclaration | null>();
 
+/** One plugin's cached settings declaration. `undefined` means it has not been read, `null` that it has nothing to configure. */
 export function declarationFor(pluginId: string): PluginDeclaration | null | undefined {
   return DECLARATIONS.has(pluginId) ? DECLARATIONS.get(pluginId) : undefined;
 }
 
+/** Reads one plugin's declaration through its capability and its values channel, and caches the answer. */
 export async function readDeclaration(pluginId: string): Promise<PluginDeclaration | null> {
   var schema = await readSettingsSchema(pluginId);
   var bundle = bundleFor(pluginId);
@@ -511,6 +517,7 @@ export async function readDeclaration(pluginId: string): Promise<PluginDeclarati
   return declaration;
 }
 
+/** Drops one plugin's cached declaration, so the next read goes back to the plugin. */
 export function invalidateDeclaration(pluginId: string): void {
   DECLARATIONS.delete(pluginId);
 }

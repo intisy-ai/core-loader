@@ -7,8 +7,10 @@
 // no-op, so the TUI works with Activity absent. The read side stays on
 // S.capabilities.activity.read, where the views need it.
 
+/** Why something happened, carried down a scope so every record inside it inherits the same reason. */
 export type LoaderCause = { kind: string; surface?: string; detail?: string };
 
+/** The write side of Activity, as the host injects it. Every member absent means Activity is simply off. */
 export type LoaderActivitySeam = {
   emit?: (spec: Record<string, unknown>) => void;
   scope?: <T>(cause: LoaderCause, fn: () => T) => T;
@@ -17,10 +19,12 @@ export type LoaderActivitySeam = {
 
 let SEAM: LoaderActivitySeam = {};
 
+/** Installs the seam the host supplied, or clears it. */
 export function setActivitySeam(seam: LoaderActivitySeam | null | undefined): void {
   SEAM = seam && typeof seam === "object" ? seam : {};
 }
 
+/** Records one activity, and never throws: Activity is not worth breaking an action for. */
 export function emitLoaderActivity(spec: Record<string, unknown>): void {
   try { SEAM.emit?.(spec); } catch { /* activity is never worth breaking an action for */ }
 }
@@ -55,6 +59,7 @@ export function withLoaderCause<T>(cause: LoaderCause, fn: () => T): T {
   return value as T;
 }
 
+/** The environment a child process needs to join this activity's chain. */
 export function loaderActivityEnv(): Record<string, string> {
   try {
     const env = SEAM.env?.();

@@ -9,6 +9,7 @@ import { hints, messageLine } from "./common.js";
 import type { PushBody, PushFoot, PushSticky } from "./common.js";
 import type { ProjectItem } from "../projects.js";
 
+/** Draws one project row. */
 export function buildProjectItem(pushBody: PushBody, i: number, item: ProjectItem, nameW: number, cols: number, isSelected?: boolean): void {
   var sel = i === S.cursor;
   var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
@@ -41,6 +42,7 @@ export function buildProjectItem(pushBody: PushBody, i: number, item: ProjectIte
   }
 }
 
+/** Draws the row that opens the current working directory. */
 export function buildOpenHereItem(pushBody: PushBody): void {
   var sel = S.cursor === S.items.length;
   var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
@@ -49,6 +51,7 @@ export function buildOpenHereItem(pushBody: PushBody): void {
   pushBody("  " + bg + arrow + nameStyle + "Open " + APP_NAME + " here" + RST + bg + "  " + GRAY + process.cwd() + RST, sel);
 }
 
+/** Draws the session picker for the project being opened. */
 export function buildSessions(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number): void {
   var nameW = Math.min(46, Math.max(20, cols - 18));
   var proj = (S.sessionDir || "").split(/[\\/]/).pop() || S.sessionDir;
@@ -77,6 +80,7 @@ export function buildSessions(pushBody: PushBody, pushFoot: PushFoot, cols: numb
   pushFoot(hints([["↑↓", "move"], ["enter", "select"], ["esc", "back"]]));
 }
 
+/** Draws the Projects page, or the session picker when one is open. */
 export function buildProjects(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number): void {
   if (S.mode === "sessions") { buildSessions(pushBody, pushFoot, cols, barW); return; }
   var nameW = Math.min(28, Math.max(16, cols - 36));

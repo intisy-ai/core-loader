@@ -53,6 +53,7 @@ type ProviderManifest = Record<string, unknown> & {
   authProviders?: DeclaredProvider[];
 };
 
+/** Where the loader's shell wrappers are installed. */
 export function getBinDir() {
   return join(homedir(), ".local", "bin");
 }
@@ -168,6 +169,7 @@ function homeDynamicProviders(reposDir: string, configDir: string): DeployedProv
 // failure here just means the user runs the wrapper by full path until they fix PATH.
 const PATH_MARKER = "# intisy loader (cc/oc) PATH";
 
+/** Registers that directory on PATH for new shells, idempotently, and never throws. */
 export function ensureOnPath(binDir: string, log: (message: string) => void) {
   try {
     if (process.platform === "win32") ensureOnPathWindows(binDir, log);

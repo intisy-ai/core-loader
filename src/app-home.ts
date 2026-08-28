@@ -9,6 +9,7 @@ export function loaderConfigDir(appHomeDefault: string): string {
   return process.env.HUB_CONFIG_DIR || appHomeDefault;
 }
 
+/** Where this home keeps its clones, honouring an override the environment set. */
 export function loaderReposDir(appHomeDefault: string): string {
   return join(loaderConfigDir(appHomeDefault), "repos");
 }

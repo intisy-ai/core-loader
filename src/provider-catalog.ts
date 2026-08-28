@@ -57,6 +57,7 @@ type DeclaredModel = string | { id: string; name?: string };
 // The pre-rename file is still read so a home that has not refreshed since keeps its catalog.
 const CATALOG_FILES = ["models.json", "core-auth-models.json"];
 
+/** The per-provider model catalog the account library caches, or an empty map when there is none to read. */
 export function readModelCatalog(configDir: string): Record<string, ProviderCatalogEntry> {
   for (const file of CATALOG_FILES) {
     const at = join(configDir, "config", file);

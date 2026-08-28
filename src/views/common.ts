@@ -60,6 +60,7 @@ export function marketplaceRow(cols: number, opts: MarketplaceRowOptions): strin
   return "  " + bg + arrow + opts.statusIcon + " " + badge + nameStyle + pad(trunc(opts.name, nameW), nameW) + RST + bg + "  " + GRAY + descText + RST + starStr + RST;
 }
 
+/** Shows a message in the status line for a couple of seconds. */
 export function flash(msg: string): void {
   S.message = msg;
   if (S.msgTimeout) clearTimeout(S.msgTimeout);
@@ -72,12 +73,15 @@ export function scheduleRender(): void {
   S.renderTimer = setTimeout(function() { S.renderTimer = null; render(); }, 120);
 }
 
+/** The footer's key hints, from pairs of key and what it does. */
 export function hints(pairs: string[][]): string {
   return "  " + GRAY + pairs.map(function(p: string[]) { return p[0] + " " + p[1]; }).join(" · ") + RST;
 }
 
+/** The spinner's current frame. */
 export function spinnerFrame(): string { return ACCENT + SPINNER_FRAMES[S.spinnerTick % SPINNER_FRAMES.length] + RST; }
 
+/** Starts or stops the spinner, matching whether anything is actually pending. */
 export function updateSpinner(): void {
   var active = S.catalogPending > 0 || (S.message && S.message.indexOf("...") !== -1);
   if (active && !S.spinnerTimer) {
@@ -88,11 +92,13 @@ export function updateSpinner(): void {
   }
 }
 
+/** The status line, with the spinner in front of it while something is running. */
 export function messageLine(cols: number): string {
   var prefix = S.message.indexOf("...") !== -1 ? spinnerFrame() + " " : "  ";
   return "  " + ACCENT + prefix + trunc(S.message, cols - 6) + RST;
 }
 
+/** The confirm dialog. */
 export function buildConfirm(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number): void {
   pushBody("  " + BOLD + WHITE + "Confirm" + RST, false);
   pushBody("", false);
@@ -111,6 +117,7 @@ export function buildConfirm(pushBody: PushBody, pushFoot: PushFoot, cols: numbe
   pushFoot(hints([["↑↓", "move"], ["enter", "confirm"], ["y", "yes"], ["n/esc", "cancel"]]));
 }
 
+/** The help overlay, listing the active page's own keys. */
 export function buildHelp(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number): void {
   var binds: string[][] = (HELP_BINDINGS as Record<string, string[][]>)[S.page] || [];
   pushBody("  " + BOLD + WHITE + "Keyboard shortcuts" + RST, false);

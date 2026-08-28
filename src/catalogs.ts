@@ -109,6 +109,7 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
 // and fetch stars directly (deduped per repo). Entries not listed here fall back
 // to npm->repo resolution (works for standalone packages like todoist, docker).
 const MCP_SERVERS_MONOREPO = "modelcontextprotocol/servers";
+/** The repository behind each curated MCP server, where it is known, so star enrichment can skip the npm lookup. */
 export const CURATED_MCP_REPOS: Record<string, string> = {
   "brave-search": MCP_SERVERS_MONOREPO, "fetch": MCP_SERVERS_MONOREPO, "filesystem": MCP_SERVERS_MONOREPO,
   "memory": MCP_SERVERS_MONOREPO, "postgres": MCP_SERVERS_MONOREPO, "sqlite": MCP_SERVERS_MONOREPO,

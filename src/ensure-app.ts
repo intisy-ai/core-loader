@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import { join, delimiter } from "path";
 import { execFileSync } from "child_process";
 
+/** Whether a binary resolves on this machine's PATH. */
 export function binaryOnPath(binary: string): boolean {
   const pathEnv = process.env.PATH ?? process.env.Path ?? "";
   const exts = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";") : [""];

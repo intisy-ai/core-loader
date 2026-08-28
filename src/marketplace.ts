@@ -109,10 +109,12 @@ export interface MarketplaceRow {
   id?: string;
 }
 
+/** Drops the cached plugin and MCP catalogs, so the next open refetches them. */
 export function invalidateCatalogCache() {
   try { unlinkSync(CATALOG_CACHE_PATH); } catch {}
 }
 
+/** Drops the cached seed manifests. */
 export function invalidateSeedCache() {
   try { unlinkSync(SEED_CACHE_PATH); } catch {}
 }
@@ -130,6 +132,7 @@ function withCurrentCategory(entry: MarketplaceRow): MarketplaceRow {
   return entry;
 }
 
+/** Fills the catalogs from the on-disk cache, answering whether it was fresh enough to use. */
 export function loadCatalogCache(): boolean {
   try {
     var cached = readJson<CatalogCacheFile>(CATALOG_CACHE_PATH);
@@ -331,6 +334,7 @@ function withoutAppPrefix(name: string): string {
   return prefix && text.indexOf(prefix) === 0 ? text.slice(prefix.length) : text;
 }
 
+/** Starts the catalog fetches, once per session, and returns at once: every result lands through a redraw. */
 export function fetchCatalogsAsync() {
   if (S.catalogFetched) return;
   S.catalogFetched = true;

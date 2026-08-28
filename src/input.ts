@@ -346,6 +346,7 @@ function installSeedPlugin(item: MarketplaceRow, done: () => void): void {
   done();
 }
 
+/** Routes one key to whichever page or dialog currently owns it. */
 export function handleKey(key: string): void {
   // A long install/update is running off-thread; ignore every key so the user
   // stays in the current menu and can't navigate away or fire another action.
@@ -389,6 +390,7 @@ export function handleKey(key: string): void {
   }
 }
 
+/** The Projects page's keys, including its action menu and the session picker. */
 export function handleProjectKey(key: string): void {
   if (S.mode === "list") {
     if (key === "up" || key === "w") { S.cursor = Math.max(0, S.cursor - 1); }
@@ -436,6 +438,7 @@ export function handleProjectKey(key: string): void {
   }
 }
 
+/** The Plugins page's keys, across its Installed, Marketplace and contributed sub-tabs. */
 export function handlePluginKey(key: string): void {
   if (S.mode === "pdiag") {
     if (key === "q") { cleanup(); process.exit(1); return; }
@@ -991,6 +994,7 @@ export function handlePluginKey(key: string): void {
   }
 }
 
+/** Raw text for the change-path prompt. */
 export function handleInputData(buf: Buffer): void {
   if (buf[0] === 27) { S.mode = "list"; S.chpathDir = ""; return; }
   if (buf[0] === 3) { cleanup(); process.exit(1); }
@@ -1039,6 +1043,7 @@ export function handleInputData(buf: Buffer): void {
   }
 }
 
+/** The key one input buffer means, or nothing when it is a sequence this TUI does not act on. */
 export function parseKey(buf: Buffer): string | null {
   if (buf[0] === 27) {
     if (buf.length === 1) return "escape";
@@ -1061,6 +1066,7 @@ export function parseKey(buf: Buffer): string | null {
   return null;
 }
 
+/** The confirm dialog's keys, which is where every destructive action is actually carried out. */
 export function handleConfirmKey(key: string): void {
   if (key === "up" || key === "w") { S.confirmCursor = 0; return; }
   if (key === "down" || key === "s") { S.confirmCursor = 1; return; }
@@ -1242,6 +1248,7 @@ function runContributedScreenAction(entry: ScreenEntry, row: ScreenRow): void {
   });
 }
 
+/** The MCP page's keys, across its Installed and Marketplace sub-tabs. */
 export function handleMcpKey(key: string): void {
   if (S.mcpMode === "catalog") {
     if (key === "tab") {
@@ -1367,6 +1374,7 @@ export function handleActivityKey(key: string): void {
   else if (key === "q" || key === "escape") { cleanup(); process.exit(1); }
 }
 
+/** Raw text for the search box, which filters whichever list is showing. */
 export function handleSearchData(buf: Buffer): void {
   if (buf[0] === 27) { S.mode = "list"; return; }
   if (buf[0] === 3) { cleanup(); process.exit(1); }
@@ -1445,6 +1453,7 @@ export function handleConfigInputData(buf: Buffer): void {
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }
 
+/** Raw text for the add-plugin prompt on the Plugins page. */
 export function handlePluginInputData(buf: Buffer): void {
   if (buf[0] === 27) { S.inputBuf = ""; S.mode = "list"; return; }
   if (buf[0] === 13 || buf[0] === 10) {

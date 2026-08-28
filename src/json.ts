@@ -5,6 +5,7 @@
 
 import { readFileSync } from "fs";
 
+/** One JSON file's contents, or the caller's fallback when it is absent, empty or malformed. */
 export function readJson<T = unknown>(file: string, fallback: T | null = null): T | null {
   try {
     const parsed = JSON.parse(readFileSync(file, "utf8"));

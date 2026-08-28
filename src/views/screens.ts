@@ -47,6 +47,7 @@ export async function refreshScreenSpecs() {
   S.screenSpecs = perPlugin.flat();
 }
 
+/** The contributed screens, each with the plugin that declared it and that plugin's actions. */
 export function collectScreens(specs?: ScreenEntry[] | null): ScreenEntry[] {
   const entries = specs || S.screenSpecs || [];
   return entries.map((entry: ScreenEntry) => ({ plugin: entry.plugin, spec: entry.spec, actions: entry.actions || [] }));
@@ -71,6 +72,7 @@ export function entryId(entry: ScreenEntry | null | undefined): string | null {
   return entry && entry.spec ? entry.plugin + ":" + entry.spec.id : null;
 }
 
+/** The Settings tab's sub-pages: its own, then one per contributed screen, in declared order. */
 export function subPages(entries: ScreenEntry[]): ScreenSubPage[] {
   const sorted = entries.slice().sort((a, b) => byOrderThenLabel(a.spec, b.spec));
   const pages: ScreenSubPage[] = [{ id: "settings", label: "Settings" }];
@@ -85,6 +87,7 @@ function markScreenUnreadable(pageId: string | null): void {
   scheduleRender();
 }
 
+/** Reads one contributed screen's data and flattens it into rows, discarding an answer that lands after the user moved on. */
 export function refreshScreen(entry: ScreenEntry | null | undefined): Promise<void> | undefined {
   if (!entry || !entry.spec) return;
   const pageId = entryId(entry);

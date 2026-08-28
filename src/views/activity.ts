@@ -16,6 +16,7 @@ function impactGlyph(impact: string | undefined): string {
   return DIM + "-" + RST;   // info (default)
 }
 
+/** Draws the Activity page. */
 export function buildActivity(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number, pushSticky: PushSticky): void {
   var readFn = S.capabilities && S.capabilities.activity && S.capabilities.activity.read;
   var impacts = S.activityImpacts || [];

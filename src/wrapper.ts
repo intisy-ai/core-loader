@@ -31,10 +31,12 @@ function changedSubdirs(names: SubdirNames): [string, string][] {
     .map(([envVar, value]) => [envVar, value] as [string, string]);
 }
 
+/** The Windows lines a wrapper needs to pass this home's non-default subdirectory names down. */
 export function subdirEnvCmdLines(names: SubdirNames): string[] {
   return changedSubdirs(names).map(([envVar, value]) => `set "${envVar}=${value}"`);
 }
 
+/** The same, for a POSIX shell. */
 export function subdirEnvShLines(names: SubdirNames): string[] {
   return changedSubdirs(names).map(([envVar, value]) => `export ${envVar}="${value}"`);
 }

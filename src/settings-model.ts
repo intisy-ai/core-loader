@@ -33,8 +33,11 @@ export type SettingsItem = {
   /** The choices it steps through, when the declaration named a list. */
   options?: FieldOption[];
 };
+/** One action a plugin declared, as a row the editor can arm and run. */
 export type SettingsAction = { kind: "action"; key: string; label: string; description?: string; confirm?: string; danger?: boolean; args?: FieldSpec[] };
+/** One row of a settings section: a setting to edit, or an action to run. */
 export type SettingsRow = SettingsItem | SettingsAction;
+/** One group of rows: the global settings, a plugin's own, or a section a plugin contributed. */
 export type SettingsSection = {
   label: string;
   kind: "global" | "plugin";
@@ -165,6 +168,7 @@ export function buildPluginSections(): SettingsSection[] {
   return out;
 }
 
+/** One line of the Settings page: a heading, a group to open, or a plugin still being read. */
 export type SettingsEntry =
   | { type: "header"; label: string }
   | { type: "group"; section: SettingsSection }

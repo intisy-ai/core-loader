@@ -31,6 +31,7 @@ function vlabel(v: string | undefined): string | undefined {
   return "v" + base + suffix;
 }
 
+/** Draws one plugin row. */
 export function buildPluginItem(pushBody: PushBody, i: number, pitem: PluginRow, nameW: number, cols: number, isSelected?: boolean): void {
   var sel = i === S.pcursor;
   var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
@@ -100,6 +101,7 @@ export function buildPluginItem(pushBody: PushBody, i: number, pitem: PluginRow,
 
 }
 
+/** Draws the Plugins page, across all its sub-tabs. */
 export function buildPlugins(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number, pushSticky: PushSticky): void {
   var nameW = Math.min(32, Math.max(20, cols - 44));
 

@@ -11,6 +11,7 @@ import { buildMcp } from "./mcp.js";
 import { buildActivity } from "./activity.js";
 import { buildSettings } from "./settings.js";
 
+/** Draws one whole frame and writes it to stderr. */
 export function render() {
   // Prefer the stream we draw to (stderr), but fall back to stdout, depending on how
   // the wrapper launches bun, only one of them reports a TTY size. Re-read every frame

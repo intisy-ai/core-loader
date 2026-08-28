@@ -95,6 +95,7 @@ export function managerBootstrapCommand() {
   return ref ? bootstrapCommand(ref, APP_ID) : "";
 }
 
+/** The plugin manager module this home resolved, or null when none did. */
 export function getUpdater() {
   return S.UPDATER_MODULE || null;
 }
@@ -107,6 +108,7 @@ export function getUpdaterPath() {
   return S.UPDATER_PATH;
 }
 
+/** That manager's version, read from its own package, or an empty string when it cannot be read. */
 export function getUpdaterVersion() {
   try {
     if (!getUpdater() || !S.UPDATER_PATH) return "";
@@ -147,6 +149,7 @@ export function setupPlugin(repo: PluginEntry & { branch?: string }, done: (erro
   child.on("exit", function(code: number | null) { done(code === 0 ? "" : (errBuf.trim() || "update failed")); });
 }
 
+/** The global npm root, asked for once and held, empty when npm could not answer. */
 export function getNpmGlobalRoot() {
   if (S.NPM_GLOBAL_ROOT !== null) return S.NPM_GLOBAL_ROOT;
   try { S.NPM_GLOBAL_ROOT = execSync("npm root -g", { timeout: 10000, stdio: ["ignore", "pipe", "ignore"] }).toString().trim(); }
@@ -154,6 +157,7 @@ export function getNpmGlobalRoot() {
   return S.NPM_GLOBAL_ROOT;
 }
 
+/** The npm plugins the app's own list holds, with whatever version this home actually resolved. */
 export function loadNpmPlugins(): NpmPluginRow[] {
   var updater = getUpdater();
   if (updater && typeof updater.getNpmPlugins === "function") {
@@ -215,6 +219,7 @@ export function clearUpdaterCache() {
   S.pluginManager = undefined;
 }
 
+/** The clone directory one plugin entry lands in: owner-nested when that layout exists, flat otherwise. */
 export function getFolderName(plugin: PluginEntry): string {
   var match = (plugin.url || "").match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
   if (match) {

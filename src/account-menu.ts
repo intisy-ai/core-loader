@@ -67,6 +67,7 @@ function pushBar(h: CustomTabUi, it: ProviderMenuItem): void {
   if (it.reset) h.pushBody("     " + h.GRAY + "Resets " + it.reset + h.RST, false);
 }
 
+/** One isolated account menu, so each tab that opens one keeps its own navigation and input state. */
 export function createAccountMenu() {
   // per-instance state: a stack of menu builders, plus an optional text-input field
   const nav: MenuNav = { active: false, cur: 0, stack: [], input: null, inputBuf: "", busy: null, busyTimer: null, busyTimeout: null };

@@ -6,6 +6,7 @@ import { buildMcpList, getMcpActions, buildInstalledMcpRows } from "../mcp.js";
 import { hints, messageLine, marketplaceRow } from "./common.js";
 import type { PushBody, PushFoot, PushSticky } from "./common.js";
 
+/** Draws the MCP page. */
 export function buildMcp(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number, pushSticky: PushSticky): void {
   var nameW = Math.min(28, Math.max(18, cols - 50));
 

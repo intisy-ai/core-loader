@@ -66,11 +66,13 @@ function readSettingsDeclarations() {
   }
 }
 
+/** Rebuilds the Settings page's sections and rows from what has been read so far. */
 export function refreshSettings(): void {
   buildSectionsFromCache();
   readSettingsDeclarations();
 }
 
+/** Draws the Settings page, or whichever contributed screen is showing. */
 export function buildSettings(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number, pushSticky: PushSticky): void {
   var sub = S.settingsSubPage || "settings";
   var pages = settingsSubPages();

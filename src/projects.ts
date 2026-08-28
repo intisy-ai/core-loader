@@ -92,6 +92,7 @@ function resolveSessionDbPath(candidates: string[]): string {
   return expanded.find(function (candidate: string) { return existsSync(candidate); }) || expanded[0];
 }
 
+/** The projects the active app recorded, newest first, from whichever source it declares. */
 export function queryProjects(): ProjectRecord[] {
   var declared = appProjects();
   if (declared.historyFile) {
@@ -146,6 +147,7 @@ export function listSessions(dir: string): SessionEntry[] {
   try { return typeof fn === "function" ? (fn(dir) || []) : []; } catch (e) { return []; }
 }
 
+/** A directory with the home prefix replaced by a tilde, which is what a row shows. */
 export function shortPath(dir: string): string {
   var h = HOME.replace(/\\/g, "/");
   var d = dir.replace(/\\/g, "/");
@@ -153,6 +155,7 @@ export function shortPath(dir: string): string {
   return d;
 }
 
+/** The Projects list: pinned rows first, then the rest, narrowed by whatever is in the search box. */
 export function buildList(): ProjectItem[] {
   var cfg = loadConfig();
   var rows = queryProjects();
@@ -192,6 +195,7 @@ export function buildList(): ProjectItem[] {
   return list;
 }
 
+/** The action menu for one project row. */
 export function getActions(item: ProjectItem): ActionRow[] {
   var a: ActionRow[] = [
     { key: "open", label: "Open in " + APP_NAME, icon: ">" },
@@ -208,6 +212,7 @@ export function getActions(item: ProjectItem): ActionRow[] {
   return a;
 }
 
+/** Hands a directory to the wrapper that launched this TUI, through its output file or standard output. */
 export function outputDir(dir: string): void {
   var outFile = process.env.HUB_OUTPUT || process.env.OC_OUTPUT || process.env.CC_OUTPUT;
   if (outFile) {
@@ -217,6 +222,7 @@ export function outputDir(dir: string): void {
   }
 }
 
+/** Leaves the TUI and tells the wrapper to open this project. */
 export function openProject(item: ProjectItem): void {
   cleanup();
   outputDir(item.dir);
@@ -242,6 +248,7 @@ export function openProjectSession(dir: string, sessionId?: string): void {
   process.exit(0);
 }
 
+/** Pins or unpins one row, then rebuilds the list around the change. */
 export function togglePin(idx: number): void {
   var item = S.items[idx];
   var cfg = loadConfig();
@@ -257,6 +264,7 @@ export function togglePin(idx: number): void {
   if (S.cursor >= S.items.length) S.cursor = Math.max(0, S.items.length - 1);
 }
 
+/** Hides one row from the list, then rebuilds it. */
 export function hideItem(idx: number): void {
   var item = S.items[idx];
   var cfg = loadConfig();
@@ -268,6 +276,7 @@ export function hideItem(idx: number): void {
   if (S.cursor >= S.items.length) S.cursor = Math.max(0, S.items.length - 1);
 }
 
+/** Restores every hidden project. */
 export function unhideAll() {
   var cfg = loadConfig();
   var count = cfg.hidden.length;
@@ -278,6 +287,7 @@ export function unhideAll() {
   if (S.cursor >= S.items.length) S.cursor = Math.max(0, S.items.length - 1);
 }
 
+/** A project's identity: the sha of its git root commit, or nothing when it is not a repository. */
 export function getProjectId(dir: string): string | null {
   try {
     var root = execSync("git rev-list --max-parents=0 HEAD", { cwd: dir, encoding: "utf-8", timeout: 5000 });
@@ -298,6 +308,7 @@ export function writeProjectMarker(projectDir: string, markerFile: string | unde
   } catch (e) {}
 }
 
+/** Moves every session recorded at one path to another, and repoints the pins and hides that named it. */
 export function changeProjectPath(oldDir: string, newDir: string): void {
   var declared = appProjects();
   var dbPath = resolveSessionDbPath(declared.sessionDb || []);

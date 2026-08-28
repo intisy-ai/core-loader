@@ -63,6 +63,7 @@ export function loaderConfigName() {
   return loaderIdOfHome();
 }
 
+/** The active loader's own knobs, read once and held. Empty when this home has no such file. */
 export function loadLoaderConfig(): Record<string, unknown> {
   if (LOADER_CONFIG !== null) return LOADER_CONFIG;
   var name = loaderConfigName();
@@ -76,24 +77,30 @@ function num(v: unknown, fallback: number): number {
   return (v != null && !isNaN(n)) ? n : fallback;
 }
 
+/** Whether the loader checks for a newer version of the app itself. On unless turned off. */
 export function autoUpdateCheck() {
   return loadLoaderConfig().auto_update_check !== false;   // default true
 }
+/** How long after the first frame that check runs, so a fresh TUI is never waiting on a registry. */
 export function updateCheckDelayMs() {
   return num(loadLoaderConfig().update_check_delay_ms, 1500);
 }
+/** How long a check counts for before the next one runs. */
 export function updateCheckIntervalHours() {
   return num(loadLoaderConfig().update_check_interval_hours, 24);
 }
+/** How long a fetched marketplace catalog counts for before it is fetched again. */
 export function catalogCacheHours() {
   return num(loadLoaderConfig().catalog_cache_hours, 6);
 }
+/** Which page the TUI opens on, falling back to Projects when the configured name is not a page. */
 export function defaultTab() {
   var t = loadLoaderConfig().default_tab;
   // validate against the real page names; fall back to "projects" if invalid
   return (t === "projects" || t === "plugins" || t === "mcp" || t === "settings") ? t : "projects";
 }
 
+/** This home's pinned and hidden projects, empty when nothing has been pinned or hidden yet. */
 export function loadConfig(): LoaderConfig {
   if (!CONFIG_DIR) return { pinned: [], hidden: [] };
   var current = readJson<LoaderConfig>(CONFIG_PATH);
@@ -103,6 +110,7 @@ export function loadConfig(): LoaderConfig {
   return { pinned: [], hidden: [] };
 }
 
+/** Writes those preferences back. */
 export function saveConfig(cfg: LoaderConfig): void {
   if (!CONFIG_DIR) return;
   try {
@@ -118,12 +126,14 @@ export function saveConfig(cfg: LoaderConfig): void {
 // the FALLBACK: the host loader injects core's own declaration (see buildGlobalSection),
 // which is authoritative and carries field types.
 var GLOBAL_SETTINGS_FILE = CONFIG_FOLDER ? join(CONFIG_FOLDER, "settings.json") : "";
+/** The shared settings' fallback defaults, used only where the host injects no declaration of its own. */
 export var GLOBAL_SETTINGS_DEFAULTS = { logConsole: false, logColor: true };
 
 // Cached parsed settings so a navigation render (buildSettings reads these every
 // frame) never re-reads settings.json from disk. Invalidated when setGlobalSetting writes.
 var GLOBAL_SETTINGS_CACHE: Record<string, unknown> | null = null;
 
+/** The shared ecosystem settings, read once and held until a write invalidates them. */
 export function loadGlobalSettings(): Record<string, unknown> {
   if (GLOBAL_SETTINGS_CACHE !== null) return GLOBAL_SETTINGS_CACHE;
   var out = readJson<Record<string, unknown>>(GLOBAL_SETTINGS_FILE, {}) ?? {};
@@ -141,6 +151,7 @@ function coerceGlobal(v: string): unknown {
   return v;
 }
 
+/** Writes one shared setting, coercing the typed text the editor collected. Answers with an error, or an empty string. */
 export function setGlobalSetting(key: string, valueStr: string): string {
   if (!GLOBAL_SETTINGS_FILE) return "no app home";
   try {
@@ -153,6 +164,7 @@ export function setGlobalSetting(key: string, valueStr: string): string {
   } catch (e) { return (e instanceof Error && e.message) || "set failed"; }
 }
 
+/** Moves a legacy top-level config file into the config subdirectory, once, leaving an already-migrated home alone. */
 export function migrateConfigs() {
   if (!CONFIG_DIR) return;
   if (!existsSync(CONFIG_FOLDER)) try { mkdirSync(CONFIG_FOLDER, { recursive: true }); } catch {}
@@ -166,6 +178,7 @@ export function migrateConfigs() {
   }
 }
 
+/** The plugin list, read straight from `plugins.json`. */
 export function loadPlugins() {
   // Read the plugin list DIRECTLY from plugins.json, the single source of truth the
   // plugin manager itself reads and writes, and exactly how the non-interactive
@@ -198,6 +211,7 @@ export function loadPlugins() {
   return [];
 }
 
+/** Writes that list back, preferring the config subdirectory. */
 export function savePlugins(plugins: PluginEntry[]): void {
   if (!CONFIG_DIR) return;
   if (!existsSync(CONFIG_FOLDER)) try { mkdirSync(CONFIG_FOLDER, { recursive: true }); } catch {}
@@ -228,6 +242,7 @@ export function registerPlugin(name: string, url: string): boolean {
 // disk during navigation. Invalidated when saveMcpConfig writes.
 var MCP_CONFIG_CACHE: McpConfig | null = null;
 
+/** The MCP server config, read once and held until a write invalidates it. */
 export function loadMcpConfig(): McpConfig {
   if (MCP_CONFIG_CACHE !== null) return MCP_CONFIG_CACHE;
   var out = readJson<McpConfig>(MCP_CONFIG_PATH, { mcpServers: {} }) ?? { mcpServers: {} };
@@ -235,6 +250,7 @@ export function loadMcpConfig(): McpConfig {
   return out;
 }
 
+/** Writes it back and drops the cached copy, so the next read reflects the write. */
 export function saveMcpConfig(config: McpConfig): void {
   if (!MCP_CONFIG_PATH) return;
   try {
