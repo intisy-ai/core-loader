@@ -106,7 +106,7 @@ function cloneDirFor(paths: HomePaths, id: string): string | null {
 }
 
 function packageNameOf(dir: string, fallback: string): string {
-  const name = (readJson(join(dir, "package.json")) || {}).name;
+  const name = readJson<{ name?: unknown }>(join(dir, "package.json"))?.name;
   return typeof name === "string" && name ? name : fallback;
 }
 
@@ -228,7 +228,7 @@ export function managerEntries(paths: HomePaths, ref: PluginManagerRef): Manager
     ...(npmPackageCache(paths) ? [join(npmPackageCache(paths), `${ref.npmName}@latest`, "node_modules", ref.npmName)] : []),
   ];
   for (const dir of packageDirs) {
-    const main = (readJson(join(dir, "package.json")) || {}).main;
+    const main = readJson<{ main?: unknown }>(join(dir, "package.json"))?.main;
     const entry = join(dir, typeof main === "string" && main ? main : "index.js");
     if (existsSync(entry)) found.push({ entry, packageDir: dir });
   }

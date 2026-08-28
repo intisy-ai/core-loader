@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Terminal formatting: ANSI codes and width-aware string helpers (CJK counts 2).
 import { appAccent } from "./app-descriptor.js";
 
@@ -28,7 +27,7 @@ export function ansi256FromHex(hex: string): string {
   if (!match) return "";
   const value = parseInt(match[1], 16);
   const levels = [0, 95, 135, 175, 215, 255];
-  const nearest = (channel) => {
+  const nearest = (channel: number) => {
     let best = 0;
     for (var i = 1; i < levels.length; i++) {
       if (Math.abs(levels[i] - channel) < Math.abs(levels[best] - channel)) best = i;
@@ -49,11 +48,11 @@ export const BAD = E + "38;5;174m";      // dusty rose, problem (disabled, missi
 export const INFO = E + "38;5;110m";     // soft blue, generic secondary/info tone (handed to custom-tab renderers)
 
 // Solid box-drawing divider, dim gray. Used for every full-width rule.
-export function rule(width) {
+export function rule(width: number): string {
   return GRAY + "─".repeat(width) + RST;
 }
 
-export function stringWidth(str) {
+export function stringWidth(str: string): number {
   var w = 0;
   str = String(str || "").replace(/\x1b\[[0-9;]*m/g, "");
   for (var i = 0; i < str.length; i++) {
@@ -67,7 +66,7 @@ export function stringWidth(str) {
   return w;
 }
 
-export function pad(s, len) {
+export function pad(s: string, len: number): string {
   s = String(s || "");
   var w = stringWidth(s);
   var padStr = "";
@@ -75,7 +74,7 @@ export function pad(s, len) {
   return s + padStr;
 }
 
-export function trunc(s, len) {
+export function trunc(s: string, len: number): string {
   s = String(s || "");
   if (stringWidth(s) <= len) return s;
   var res = "";
@@ -119,7 +118,7 @@ export function isBooleanRowOn(value: unknown): boolean {
   return value === true || value === "true";
 }
 
-export function timeAgo(ts) {
+export function timeAgo(ts: number | undefined): string {
   if (!ts) return "--";
   var d = Date.now() - ts;
   if (d < 60000) return "now";

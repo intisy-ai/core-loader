@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Environment: app identity, filesystem paths, static catalogs, and the file
 // logger. All values here are read-only constants shared across modules.
 
@@ -34,7 +33,7 @@ export const CONFIG_SUBDIR = SUBDIRS.config;
 
 // Every home-relative path goes through here: `join("", "config")` yields the RELATIVE "config",
 // so an unknown app would read and write into whatever directory the process was launched from.
-function underHome(...segments) {
+function underHome(...segments: string[]): string {
   return CONFIG_DIR ? join(CONFIG_DIR, ...segments) : "";
 }
 
@@ -54,7 +53,7 @@ export const SEED_CACHE_PATH = underHome(CACHE_SUBDIR, "seed-marketplaces.json")
 // anything printed to the terminal corrupts the TUI, diagnostics go to a file
 export const TUI_START_TIME = new Date().toISOString().replace(/:/g, "-").split(".")[0];
 // isError just tags the line for grep-ability -- never mirrored to stderr (see above).
-export function tuiLog(msg, isError?) {
+export function tuiLog(msg: string, isError?: boolean): void {
   try {
     if (!CONFIG_DIR) return;
     var dateStr = new Date().toISOString().split("T")[0];

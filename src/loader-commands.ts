@@ -34,6 +34,25 @@ export interface LoaderCommandsOptions {
   busDrain?: () => void;
 }
 
+/** The little `/accounts` needs of one account to list it. */
+interface AccountLike {
+  /** The address it was signed in with. */
+  email?: string;
+  /** Its id, shown when there is no address. */
+  id?: string;
+  /** Whether it is in use. Only an explicit `false` disables it. */
+  enabled?: boolean;
+}
+
+/**
+ * The account store, by provider.
+ *
+ * @remarks
+ * Two shapes are read because the store has carried both: a bare array per provider, and an object
+ * holding one. A reader that assumed either would list nothing for half the homes in existence.
+ */
+type AccountStore = Record<string, AccountLike[] | { accounts?: AccountLike[] }>;
+
 /** One slash command, before it is rendered to the markdown file the app reads. */
 interface CommandDef {
   /** The command's name, and the basename of the file it is written to. */
@@ -124,11 +143,12 @@ export function makeLoaderCommands(opts: LoaderCommandsOptions) {
 
   function listAccounts(configDir: string) {
     for (const p of [join(configDir, CONFIG_SUBDIR, "accounts.json"), join(configDir, "accounts.json"), join(configDir, CONFIG_SUBDIR, "core-auth-accounts.json"), join(configDir, "core-auth-accounts.json")]) {
-      const store = readJson(p);
+      const store = readJson<AccountStore>(p);
       if (store === null || typeof store !== "object") continue;
-      const lines = [];
+      const lines: string[] = [];
       for (const provider of Object.keys(store)) {
-        const accts = Array.isArray(store[provider]) ? store[provider] : (store[provider]?.accounts || []);
+        const held = store[provider];
+        const accts = Array.isArray(held) ? held : (held?.accounts || []);
         for (const a of accts) lines.push(`- [${provider}] ${a.email || a.id}${a.enabled === false ? " (disabled)" : ""}`);
       }
       return console.log(lines.length ? lines.join("\n") : "No accounts signed in.");

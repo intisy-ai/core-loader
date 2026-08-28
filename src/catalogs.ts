@@ -1,10 +1,69 @@
-// @ts-nocheck
 // Third-party catalog data: MCP servers, seeded marketplaces and curated standalone plugin repos.
 // Every name here is a SOURCE (someone else's repository or package), not this app's identity,
 // which is why the app-name guard excuses this one file and no other.
 
+/** One curated MCP server, as this file's catalog declares it. */
+export interface McpCatalogEntry {
+  /** The server's name, which is also the key it is configured under. */
+  name: string;
+  /** One line about what it does. */
+  desc: string;
+  /** The command that starts it. */
+  command: string;
+  /** That command's arguments. */
+  args: string[];
+  /** The environment it needs, usually the API keys, empty-valued here. */
+  env: Record<string, string>;
+  /** The heading it is grouped under. */
+  category: string;
+  /** Set on every entry this file declares, which is what marks it hand-verified. */
+  curated?: boolean;
+  /** The repository's `owner/name`, so star enrichment can fetch directly. */
+  full_name?: string;
+  /** Its GitHub star count, filled in by enrichment. */
+  stars?: number;
+}
+
+/** One seeded marketplace: a name and the repository whose manifest is fetched for it. */
+export interface SeedMarketplaceEntry {
+  /** What the level-1 row is shown as. */
+  name: string;
+  /** The `owner/repo` its manifest is read from. */
+  repo: string;
+}
+
+/**
+ * One curated standalone plugin repository.
+ *
+ * @remarks
+ * The last five fields are DERIVED from `repo` at module load, not declared per entry, which is
+ * why they are optional: the raw list stays two names and a sentence per line.
+ */
+export interface FeaturedPluginEntry {
+  /** What the row is shown as. */
+  name: string;
+  /** The `owner/repo` it is cloned from. */
+  repo: string;
+  /** One line about what it does. */
+  description: string;
+  /** The heading it is grouped under, capitalised for display once derived. */
+  category: string;
+  /** The GitHub account that owns it. */
+  author?: string;
+  /** The repository's own name. */
+  repoName?: string;
+  /** The repository's `owner/name`, which is its identity in a selection. */
+  full_name?: string;
+  /** Its clone URL. */
+  url?: string;
+  /** The description, under the key every catalog row uses. */
+  desc?: string;
+  /** Set on every entry here, which is what routes it to the Featured list. */
+  featured?: boolean;
+}
+
 // MCP Server Catalog (curated, verified packages)
-export const MCP_CATALOG = [
+export const MCP_CATALOG: McpCatalogEntry[] = [
   // Search & Research
   { name: "brave-search", desc: "Web search via Brave API", command: "npx", args: ["-y", "@modelcontextprotocol/server-brave-search"], env: { BRAVE_API_KEY: "" }, category: "Search" },
   { name: "exa", desc: "AI-powered semantic search", command: "npx", args: ["-y", "exa-mcp-server"], env: { EXA_API_KEY: "" }, category: "Search" },
@@ -50,7 +109,7 @@ export const MCP_CATALOG = [
 // and fetch stars directly (deduped per repo). Entries not listed here fall back
 // to npm->repo resolution (works for standalone packages like todoist, docker).
 const MCP_SERVERS_MONOREPO = "modelcontextprotocol/servers";
-export const CURATED_MCP_REPOS = {
+export const CURATED_MCP_REPOS: Record<string, string> = {
   "brave-search": MCP_SERVERS_MONOREPO, "fetch": MCP_SERVERS_MONOREPO, "filesystem": MCP_SERVERS_MONOREPO,
   "memory": MCP_SERVERS_MONOREPO, "postgres": MCP_SERVERS_MONOREPO, "sqlite": MCP_SERVERS_MONOREPO,
   "redis": MCP_SERVERS_MONOREPO, "aws-kb-retrieval": MCP_SERVERS_MONOREPO, "github": MCP_SERVERS_MONOREPO,
@@ -73,7 +132,7 @@ MCP_CATALOG.forEach(function (e) { e.curated = true; if (CURATED_MCP_REPOS[e.nam
 // each repo's .claude-plugin/marketplace.json (HEAD, falling back to main/master)
 // to derive a plugin count + drill-in list, cached on disk (see fetchSeedMarketplacesAsync).
 // Verified list, do NOT add unverified repos here.
-export const DEFAULT_MARKETPLACES = [
+export const DEFAULT_MARKETPLACES: SeedMarketplaceEntry[] = [
   { name: "claude-plugins-official", repo: "anthropics/claude-plugins-official" },
   { name: "claude-plugins-community", repo: "anthropics/claude-plugins-community" },
   { name: "superpowers", repo: "obra/superpowers-marketplace" },
@@ -97,7 +156,7 @@ export const DEFAULT_MARKETPLACES = [
 // like any other catalog plugin, git clone via the updater, using the derived
 // .url below; there is no marketplace.json to fetch, so these never go through
 // the seed fetch machinery. Verified list, do NOT add unverified repos here.
-export const FEATURED_PLUGINS = [
+export const FEATURED_PLUGINS: FeaturedPluginEntry[] = [
   { name: "claude-mem", repo: "thedotmack/claude-mem", description: "Persistent cross-session memory (capture/compress/reinject)", category: "memory" },
   { name: "hindsight", repo: "vectorize-io/hindsight", description: "Agent memory that learns (+ hindsight-skills)", category: "memory" },
   { name: "context7", repo: "upstash/context7", description: "Up-to-date library docs for LLMs via MCP", category: "docs" },

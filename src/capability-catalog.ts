@@ -286,7 +286,7 @@ export function invalidateCapabilityCatalog(paths: HomePaths): void {
 }
 
 function cachedEntries(paths: HomePaths, windowMs: number, now: () => number): CatalogEntry[] | null {
-  const cached = readJson(join(paths.cacheDir, CATALOG_CACHE_FILE));
+  const cached = readJson<{ time?: unknown; entries?: unknown }>(join(paths.cacheDir, CATALOG_CACHE_FILE));
   if (!cached || typeof cached !== "object" || !Array.isArray(cached.entries)) return null;
   if (now() - Number(cached.time || 0) > windowMs) return null;
   return (cached.entries as unknown[]).filter(
