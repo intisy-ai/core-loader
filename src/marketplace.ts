@@ -795,15 +795,19 @@ export function buildMarketplacePluginsList(marketName: string, marketKind?: str
     var resSrc = declaredEntries
       .filter(function (e) { return e.sourceId === sourceId; })
       .map(function (e: CatalogEntry): MarketplaceRow {
+        var fullName = (e.url || "").replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "");
+        // The clone name, which is what an install lands under: a marketplace repo can offer several
+        // plugins out of one repository, so its entry id is not always its directory name.
+        var repoName = fullName.split("/").pop() || e.id;
         return {
           name: e.id,
           desc: e.description,
           url: e.url,
-          repoName: e.id,
-          full_name: (e.url || "").replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, ""),
+          repoName: repoName,
+          full_name: fullName,
           category: categoryOf(e),
           sourceId: e.sourceId,
-          installed: installedHere.indexOf(e.id) !== -1,
+          installed: installedHere.indexOf(e.id) !== -1 || installedHere.indexOf(repoName) !== -1,
         };
       });
     if (S.inputBuf) {

@@ -423,13 +423,15 @@ describe("a third-party repository a declared source offers", () => {
     expect(entries.every((entry) => entry.url === "https://github.com/person/market.git")).toBe(true);
   });
 
-  it("a capability query never matches one, because it declares none", async () => {
+  it("is offered by the catalog but never matched by a capability query, because it declares none", async () => {
     const paths = homePaths(tempHome());
     const { fetchJson } = thirdPartyFetch({
       [LISTING]: { entries: [{ url: "https://github.com/person/market.git" }] },
       "https://raw.githubusercontent.com/person/market/HEAD/.claude-plugin/marketplace.json": { plugins: [{ name: "remembers" }] },
     });
-    expect(await queryCapability("provider", [source], paths, 3600000, { fetchJson, now: () => 1000 })).toEqual([]);
+    const deps = { fetchJson, now: () => 1000 };
+    expect((await catalogFor([source], paths, 3600000, deps)).map((entry) => entry.id)).toEqual(["remembers"]);
+    expect(await queryCapability("provider", [source], paths, 3600000, deps)).toEqual([]);
   });
 });
 
