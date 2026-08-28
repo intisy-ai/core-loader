@@ -1,4 +1,3 @@
-// @ts-nocheck
 // The Libraries tab: what is actually resolvable from this home. The shared store holds the
 // libraries plugins stopped inlining, so a plugin that will not load is usually one whose
 // library is missing or at the wrong version, and that is invisible everywhere else.
@@ -8,8 +7,10 @@
 
 import { CONFIG_DIR } from "../env.js";
 import { getUpdater } from "../updater.js";
+import type { HomeLibraries, LibraryReading } from "../plugin-manager.js";
+import type { CustomTab, CustomTabUi } from "../custom-tab.js";
 
-function readLibraries() {
+function readLibraries(): HomeLibraries | null {
   var updater = getUpdater();
   if (!updater || typeof updater.homeLibraries !== "function") return null;
   try {
@@ -19,12 +20,12 @@ function readLibraries() {
   }
 }
 
-function versionLabel(library, api) {
+function versionLabel(library: LibraryReading, api: CustomTabUi): string {
   if (library.version) return api.GRAY + library.version + api.RST;
   return api.RED + "missing" + api.RST;
 }
 
-export var librariesTab = {
+export var librariesTab: CustomTab = {
   id: "libraries",
   label: "Libraries",
   render: function(ctx, api) {

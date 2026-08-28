@@ -9,18 +9,22 @@ export type PaletteTokens = Record<
   string
 >;
 
-/** What a contributed tab is told about the frame it is drawing into. */
+/** What a contributed tab is told when it is asked to handle a key. */
 export interface CustomTabContext {
-  /** The sub-page id currently active, which is this tab's own id while it renders. */
+  /** The sub-page id currently active, which is this tab's own id while it is showing. */
   pluginSubPage: string;
   /** The key-handling mode, so a tab can tell a normal frame from its own text input. */
   mode: string;
+}
+
+/** What it is told when it is asked to draw, which is the key context plus the frame's measurements. */
+export interface CustomTabRenderContext extends CustomTabContext {
   /** The terminal width. */
-  cols?: number;
-  /** The width the plugin-name column was given, so a tab can line up with the built-in ones. */
-  nameW?: number;
+  cols: number;
+  /** The width the plugin-name column was given, so a tab lines up with the built-in ones. */
+  nameW: number;
   /** The status message the frame is already showing. */
-  message?: string;
+  message: string;
 }
 
 /** The helpers and palette a contributed tab draws with. */
@@ -52,7 +56,7 @@ export interface CustomTab {
   /** The name shown in the sub-tab strip. */
   label: string;
   /** Draws the tab's frame. */
-  render?: (context: CustomTabContext, ui: CustomTabUi) => void;
+  render?: (context: CustomTabRenderContext, ui: CustomTabUi) => void;
   /**
    * Handles one key.
    *

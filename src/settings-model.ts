@@ -12,6 +12,14 @@ import { S } from "./state.js";
 
 /** One editable setting: its value, its default, and whether the file actually holds it. */
 export type SettingsItem = {
+  /**
+   * Never set on a setting.
+   *
+   * @remarks
+   * Declared so the union with {@link SettingsAction} is discriminated: without it, a renderer
+   * testing `row.kind === "action"` narrows nothing and reads every other field off the union.
+   */
+  kind?: undefined;
   /** The key it is stored under, which may be a dot path into a nested object. */
   key: string;
   /** Its effective value. */

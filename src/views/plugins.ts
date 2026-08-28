@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Plugins page rendering: plugin rows (git + npm + engine), the installed /
 // marketplace / custom sub-pages, and the action/commit menus.
 
@@ -14,12 +13,15 @@ import { appNpmPlugins, expandPath } from "../app-descriptor.js";
 import { hints, messageLine, spinnerFrame, marketplaceRow } from "./common.js";
 import { diagnosticLines } from "../plugin-diagnostics.js";
 import { ledgerRowFor } from "../plugin-surface.js";
+import type { PushBody, PushFoot, PushSticky } from "./common.js";
+import type { PluginRow } from "../plugins.js";
+import type { SettingsRow } from "../settings-model.js";
 
 // Normalizes any rendered version/tag to a single "vX.Y.Z" form: strips a
 // leading v/V (if present) then re-adds exactly one "v", so a git tag, an npm
 // registry version, and a foreign-plugin version all display consistently.
 // A trailing git "(shortsha)" suffix (added by buildPluginList) is preserved.
-function vlabel(v) {
+function vlabel(v: string | undefined): string | undefined {
   if (!v) return v;
   var s = String(v);
   var suffixMatch = s.match(/(\s\([0-9a-fA-F]{4,40}\))$/);
@@ -29,7 +31,7 @@ function vlabel(v) {
   return "v" + base + suffix;
 }
 
-export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
+export function buildPluginItem(pushBody: PushBody, i: number, pitem: PluginRow, nameW: number, cols: number, isSelected?: boolean): void {
   var sel = i === S.pcursor;
   var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
   var bg = sel ? BG_SEL : "";
@@ -98,7 +100,7 @@ export function buildPluginItem(pushBody, i, pitem, nameW, cols, isSelected) {
 
 }
 
-export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
+export function buildPlugins(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number, pushSticky: PushSticky): void {
   var nameW = Math.min(32, Math.max(20, cols - 44));
 
   // "hasUpdater" must mean the manager is actually INSTALLED AND LOADABLE, not merely listed:
@@ -171,11 +173,15 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       var csel = ci === S.cfgcursor;
       var editing = S.mode === "pcfginput" && csel;
       var valStr;
-      if (editing) valStr = BG_SEL + " " + (it.type === "secret" ? entryMask(S.inputBuf) : S.inputBuf) + BOLD + "|" + RST;
-      else if (it.type === "boolean") valStr = (isBooleanRowOn(it.value) ? OK + "true" : GRAY + "false") + RST;
-      else if (it.type === "secret" && S.cfgReveal !== it.key) valStr = GRAY + secretMask(it.value) + RST;
-      else valStr = WHITE + JSON.stringify(it.value) + RST;
-      var mark = it.isSet ? "" : (GRAY + " (default)" + RST);
+      var mark = "";
+      if (it.kind === "action") valStr = GRAY + "↵ run" + RST;
+      else {
+        if (editing) valStr = BG_SEL + " " + (it.type === "secret" ? entryMask(S.inputBuf) : S.inputBuf) + BOLD + "|" + RST;
+        else if (it.type === "boolean") valStr = (isBooleanRowOn(it.value) ? OK + "true" : GRAY + "false") + RST;
+        else if (it.type === "secret" && S.cfgReveal !== it.key) valStr = GRAY + secretMask(it.value) + RST;
+        else valStr = WHITE + JSON.stringify(it.value) + RST;
+        mark = it.isSet ? "" : (GRAY + " (default)" + RST);
+      }
       var carrow = csel ? (ACCENT + " ❯ " + RST) : "   ";
       var cbg = csel ? BG_SEL : "";
       var cNameStyle = csel ? (BOLD + WHITE) : DIM;
@@ -184,7 +190,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
     pushBody("", false);
     if (S.message) pushFoot(messageLine(cols));
     pushFoot("  " + rule(barW));
-    var hasSecret = S.configItems.some(function (row) { return row.type === "secret"; });
+    var hasSecret = S.configItems.some(function (row: SettingsRow) { return row.kind !== "action" && row.type === "secret"; });
     if (S.mode === "pcfginput") pushFoot(hints([["enter", "save"], ["esc", "cancel"]]));
     else pushFoot(hints(hasSecret ? [["↑↓", "move"], ["enter", "edit/toggle"], ["r", "reveal"], ["esc", "back"]] : [["↑↓", "move"], ["enter", "edit/toggle"], ["esc", "back"]]));
     return;
@@ -276,7 +282,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
       if (!mitem) { S.mkMode = "browse"; }
       else {
         pushBody("  " + BOLD + WHITE + "" + trunc(mitem.name, cols - 6) + RST, false);
-        pushBody("  " + GRAY + trunc(mitem.desc || mitem.command + " " + (mitem.args || []).join(" "), cols - 6) + RST, false);
+        pushBody("  " + GRAY + trunc(mitem.desc || "", cols - 6) + RST, false);
         pushBody("", false);
         var mkActs = getMarketplaceActions(mitem, S.hasUpdater);
         for (var ai = 0; ai < mkActs.length; ai++) {
@@ -465,7 +471,7 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
 
   pushSticky("");   // spacer between the count and the engine/locations block
 
-  var abbr = function(pth) { return (pth && HOME && String(pth).indexOf(HOME) === 0) ? "~" + String(pth).slice(HOME.length) : pth; };
+  var abbr = function(pth: string | undefined) { return (pth && HOME && String(pth).indexOf(HOME) === 0) ? "~" + String(pth).slice(HOME.length) : pth; };
   // An app with an npm-plugin mechanism already carries its engine as an npm row, so naming the
   // manager here too would report the same thing twice.
   if (!appNpmPlugins()) {
@@ -473,7 +479,8 @@ export function buildPlugins(pushBody, pushFoot, cols, barW, pushSticky) {
     var uv = getUpdaterVersion();
     pushSticky("  " + DIM + "manager " + (mref ? mref.id : "(unresolved)") + (uv ? " v" + uv : "") + GRAY + (getUpdaterPath() ? " · " + abbr(getUpdaterPath()) : "") + RST);
   }
-  var npmCache = appNpmPlugins() && appNpmPlugins().packageCache ? expandPath(appNpmPlugins().packageCache, CONFIG_DIR) : "";
+  var npmPlugins = appNpmPlugins();
+  var npmCache = npmPlugins && npmPlugins.packageCache ? expandPath(npmPlugins.packageCache, CONFIG_DIR) : "";
   pushSticky("  " + DIM + "git " + abbr(PLUGINS_DIR) + GRAY + " · clones " + abbr(REPOS_DIR) + (npmCache ? " · npm " + abbr(npmCache) : "") + RST);
 
   pushSticky("");   // spacer between the locations block and the plugin list

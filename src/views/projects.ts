@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Projects page rendering: each project row, the "open here" row, and the
 // full projects view with its action menu and footer.
 
@@ -7,8 +6,10 @@ import { S } from "../state.js";
 import { APP_NAME } from "../env.js";
 import { getActions, shortPath } from "../projects.js";
 import { hints, messageLine } from "./common.js";
+import type { PushBody, PushFoot, PushSticky } from "./common.js";
+import type { ProjectItem } from "../projects.js";
 
-export function buildProjectItem(pushBody, i, item, nameW, cols, isSelected) {
+export function buildProjectItem(pushBody: PushBody, i: number, item: ProjectItem, nameW: number, cols: number, isSelected?: boolean): void {
   var sel = i === S.cursor;
   var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
   var bg = sel ? BG_SEL : "";
@@ -40,7 +41,7 @@ export function buildProjectItem(pushBody, i, item, nameW, cols, isSelected) {
   }
 }
 
-export function buildOpenHereItem(pushBody) {
+export function buildOpenHereItem(pushBody: PushBody): void {
   var sel = S.cursor === S.items.length;
   var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
   var bg = sel ? BG_SEL : "";
@@ -48,7 +49,7 @@ export function buildOpenHereItem(pushBody) {
   pushBody("  " + bg + arrow + nameStyle + "Open " + APP_NAME + " here" + RST + bg + "  " + GRAY + process.cwd() + RST, sel);
 }
 
-export function buildSessions(pushBody, pushFoot, cols, barW) {
+export function buildSessions(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number): void {
   var nameW = Math.min(46, Math.max(20, cols - 18));
   var proj = (S.sessionDir || "").split(/[\\/]/).pop() || S.sessionDir;
   pushBody("  " + BOLD + WHITE + "Sessions" + RST + GRAY + " · " + trunc(proj, cols - 16) + RST, false);
@@ -76,7 +77,7 @@ export function buildSessions(pushBody, pushFoot, cols, barW) {
   pushFoot(hints([["↑↓", "move"], ["enter", "select"], ["esc", "back"]]));
 }
 
-export function buildProjects(pushBody, pushFoot, cols, barW) {
+export function buildProjects(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number): void {
   if (S.mode === "sessions") { buildSessions(pushBody, pushFoot, cols, barW); return; }
   var nameW = Math.min(28, Math.max(16, cols - 36));
 

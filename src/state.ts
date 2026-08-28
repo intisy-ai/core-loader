@@ -4,6 +4,7 @@
 
 import type { FieldSpec } from "./capability-shapes.js";
 import type { LoaderCapabilities, McpServerDraft } from "./app-capabilities.js";
+import type { ActivityRecord } from "@intisy-ai/core";
 import type { CustomTab } from "./custom-tab.js";
 import type { CatalogEntry } from "./capability-catalog.js";
 import type { PluginManagerModule, PluginManagerRef } from "./plugin-manager.js";
@@ -158,7 +159,7 @@ export interface LoaderState {
   cfgReveal: string;
 
   /** The Activity feed, as the injected reader last returned it. */
-  activityRecords: Record<string, unknown>[];
+  activityRecords: ActivityRecord[];
   /** The cursor within it. */
   activityCursor: number;
   /** Which impacts the feed is narrowed to; empty means every impact. */

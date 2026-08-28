@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Contributed screens as one more Settings sub-page. A plugin declares whole screens through the
 // `screens` capability; this module caches those declarations, orders them into sub-pages, and
 // fills S.screenRows from the capability's own read and invoke calls. Both calls run under a
@@ -14,6 +13,20 @@ import { invokeScreenAction, providerIds, readScreenData, readScreenSpecs, readS
 import { RST, BOLD, DIM, GRAY, WHITE, BG_SEL, ACCENT, rule } from "../format.js";
 import { hints, messageLine, scheduleRender } from "./common.js";
 import { SCREENS } from "@intisy-ai/core";
+import type { ActionSpec } from "../capability-shapes.js";
+import type { ScreenEntry, ScreenRow } from "../screens.js";
+import type { ActionResult } from "../capability-shapes.js";
+import type { PushBody, PushFoot, PushSticky } from "./common.js";
+
+/** One sub-page of the Settings tab: the built-in one, or a screen a plugin contributed. */
+export interface ScreenSubPage {
+  /** Its id, which is `settings` or `<plugin>:<screenId>`. */
+  id: string;
+  /** What the sub-tab strip shows. */
+  label: string;
+  /** The contributed screen behind it, absent on the built-in one. */
+  entry?: ScreenEntry;
+}
 
 // Read once into S.screenSpecs: screens() may be async and the sub-page list is walked on every
 // render frame. A row's action metadata comes from the same plugin's settings declaration, which is
@@ -32,40 +45,41 @@ export async function refreshScreenSpecs() {
   S.screenSpecs = perPlugin.flat();
 }
 
-export function collectScreens(specs) {
+export function collectScreens(specs?: ScreenEntry[] | null): ScreenEntry[] {
   const entries = specs || S.screenSpecs || [];
-  return entries.map((entry) => ({ plugin: entry.plugin, spec: entry.spec, actions: entry.actions || [] }));
+  return entries.map((entry: ScreenEntry) => ({ plugin: entry.plugin, spec: entry.spec, actions: entry.actions || [] }));
 }
 
 // Declared metadata (label/confirm/danger) for a screen row's action id, the terminal's analogue of
 // what the dashboard's Actions.svelte resolves. An id the plugin never declared (a screen-only
 // action) still has to run, just without that metadata.
-export function resolveScreenAction(entry, actionId) {
+export function resolveScreenAction(entry: ScreenEntry | null | undefined, actionId: string): ActionSpec {
   const actions = (entry && entry.actions) || [];
-  return actions.find((a) => a && a.id === actionId) || { id: actionId, label: actionId };
+  return actions.find((a: ActionSpec) => a && a.id === actionId) || { id: actionId, label: actionId };
 }
 
 // The sub-page id a screen renders under, shared by subPages (which assigns it) and refreshScreen's
 // staleness guard (which must agree on the same id to detect "the user tabbed away before this
 // response landed").
-export function entryId(entry) {
+export function entryId(entry: ScreenEntry | null | undefined): string | null {
   return entry && entry.spec ? entry.plugin + ":" + entry.spec.id : null;
 }
 
-export function subPages(entries) {
+export function subPages(entries: ScreenEntry[]): ScreenSubPage[] {
   const sorted = entries.slice().sort((a, b) => byOrderThenLabel(a.spec, b.spec));
-  return [{ id: "settings", label: "Settings" }].concat(sorted.map((entry) => ({ id: entryId(entry), label: entry.spec.label, entry })));
+  const pages: ScreenSubPage[] = [{ id: "settings", label: "Settings" }];
+  return pages.concat(sorted.map((entry) => ({ id: entryId(entry) || "", label: entry.spec.label || entry.spec.id, entry })));
 }
 
 // A read that failed renders as itself rather than as a permanent "Loading…": a screen sub-page has
 // no refresh key, so the only retry a reader has is leaving the sub-page and coming back.
-function markScreenUnreadable(pageId) {
+function markScreenUnreadable(pageId: string | null): void {
   S.screenFailed = pageId;
   S.screenRows = [];
   scheduleRender();
 }
 
-export function refreshScreen(entry) {
+export function refreshScreen(entry: ScreenEntry | null | undefined): Promise<void> | undefined {
   if (!entry || !entry.spec) return;
   const pageId = entryId(entry);
   return readScreenData(entry.plugin, entry.spec.id).then(function (sources) {
@@ -85,10 +99,10 @@ export function refreshScreen(entry) {
 // done always receives an ActionResult shape, exactly once, on every path including a throw: a
 // caller owns whatever it armed before the call (the busy gate) and releases it in there, so
 // skipping the call would leave the loader gated on an action nothing will ever report.
-export function runScreenAction(entry, row, done) {
+export function runScreenAction(entry: ScreenEntry | null | undefined, row: ScreenRow | null | undefined, done?: (answer: ActionResult) => void): Promise<void> | undefined {
   const finish = typeof done === "function" ? done : function () {};
   var reported = false;
-  function report(answer) {
+  function report(answer: ActionResult): void {
     if (reported) return;
     reported = true;
     finish(answer);
@@ -107,7 +121,7 @@ export function runScreenAction(entry, row, done) {
 
 // One row per flattened screen node, indented by its depth; a row carrying an actionId is the only
 // kind that can be selected/run (S.screenCursor only ever rests on one).
-export function buildContributedScreen(pushBody, pushFoot, cols, barW, pushSticky, entry) {
+export function buildContributedScreen(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number, pushSticky: PushSticky, entry?: ScreenEntry): void {
   var label = (entry && entry.spec && entry.spec.label) || "Screen";
   pushSticky("  " + BOLD + WHITE + label + RST);
   pushSticky("");

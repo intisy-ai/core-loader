@@ -31,6 +31,32 @@ export interface PluginManagerRef {
   source: "deployed" | "clone" | "cache" | "catalog";
 }
 
+/** One library the home resolved, and what version it landed at. */
+export interface LibraryReading {
+  /** The package it was installed as. */
+  specifier: string;
+  /** The version on disk, absent when nothing satisfied it. */
+  version?: string;
+  /** The clones that declare it. */
+  usedBy: string[];
+}
+
+/** One plugin's own dependencies, listed under its name. */
+export interface PluginLibraries {
+  /** The plugin they belong to. */
+  plugin: string;
+  /** What it declares. */
+  dependencies: LibraryReading[];
+}
+
+/** What this home has installed: the shared store, and each plugin's own declarations. */
+export interface HomeLibraries {
+  /** The store every deployed bundle resolves from. */
+  shared: LibraryReading[];
+  /** Each plugin's declarations, so a missing one can be traced to who wanted it. */
+  plugins: PluginLibraries[];
+}
+
 /**
  * What the plugin manager's module exposes, as far as this loader ever asks.
  *
@@ -65,7 +91,7 @@ export interface PluginManagerModule {
   /** Whether one clone follows the prerelease channel, and whether that channel has something newer. */
   pluginChannelState?: (configDir: string, name: string) => { onExperimental: boolean; experimentalAvailable: boolean | null };
   /** The shared libraries this home installed, and which clones use each. */
-  homeLibraries?: (configDir: string) => unknown[];
+  homeLibraries?: (configDir: string) => HomeLibraries;
 }
 
 /** One importable module of the manager, and the package directory its version is read from. */

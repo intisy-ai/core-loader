@@ -1,12 +1,12 @@
-// @ts-nocheck
 // MCP page rendering: installed / marketplace sub-pages and the action menu.
 
 import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, BG_SEL, stringWidth, pad, trunc, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
 import { buildMcpList, getMcpActions, buildInstalledMcpRows } from "../mcp.js";
 import { hints, messageLine, marketplaceRow } from "./common.js";
+import type { PushBody, PushFoot, PushSticky } from "./common.js";
 
-export function buildMcp(pushBody, pushFoot, cols, barW, pushSticky) {
+export function buildMcp(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number, pushSticky: PushSticky): void {
   var nameW = Math.min(28, Math.max(18, cols - 50));
 
   if (S.mcpMode === "actions") {
@@ -77,15 +77,16 @@ export function buildMcp(pushBody, pushFoot, cols, barW, pushSticky) {
     }
     pushBody("", false);
     if (S.mode === "mcpaddinput") {
+      var draft = S.mcpAddDraft || { name: "", transport: "http", target: "" };
       pushFoot("  " + rule(barW));
       if (S.mcpAddStep === 1) {
-        var httpSel = S.mcpAddDraft.transport === "http";
+        var httpSel = draft.transport === "http";
         pushFoot("  " + ACCENT + "Transport: " + RST
           + (httpSel ? (BOLD + ACCENT + "[http]" + RST) : (DIM + " http " + RST)) + "  "
           + (!httpSel ? (BOLD + ACCENT + "[stdio]" + RST) : (DIM + " stdio " + RST)));
         pushFoot(hints([["\u2190\u2192", "toggle"], ["enter", "next"], ["esc", "cancel"]]));
       } else {
-        var stepLabel = S.mcpAddStep === 0 ? "Name: " : ("Target (" + (S.mcpAddDraft.transport === "http" ? "URL" : "command") + "): ");
+        var stepLabel = S.mcpAddStep === 0 ? "Name: " : ("Target (" + (draft.transport === "http" ? "URL" : "command") + "): ");
         pushFoot("  " + ACCENT + stepLabel + RST + S.inputBuf + BOLD + "|" + RST);
         pushFoot(hints([["enter", S.mcpAddStep === 2 ? "confirm" : "next"], ["esc", "cancel"]]));
       }

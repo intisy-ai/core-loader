@@ -26,14 +26,22 @@ interface UpdateCacheRow {
   updateAvailable?: boolean;
   /** The remote commit the manager saw. */
   remoteHead?: string;
-  /** When it was last updated, in epoch milliseconds. */
-  updatedAt?: number;
+  /** When it was last updated, as the timestamp of the check that updated it. */
+  updatedAt?: string;
 }
 
 /** The update-status cache, by plugin name. */
-interface UpdateCache {
+export interface UpdateCache {
   /** Each plugin's cached verdict. */
   plugins: Record<string, UpdateCacheRow>;
+  /**
+   * When the manager last ran its check.
+   *
+   * @remarks
+   * A row whose `updatedAt` equals this was updated by that very run, which is how the Plugins page
+   * can say what a silent background update changed.
+   */
+  checkedAt?: string;
 }
 
 /** What a plugin's `config schema` answers: its declared defaults, and what is on disk. */
@@ -115,8 +123,8 @@ export interface PluginRow {
   subject: string;
   /** Whether an update is waiting. */
   updateAvail: boolean;
-  /** When it was last updated, in epoch milliseconds. */
-  updatedAt?: number | null;
+  /** When it was last updated, as the timestamp of the check that updated it. */
+  updatedAt?: string | null;
   /** Whether a prerelease channel has something newer, or `null` when that was not asked. */
   experimentalAvailable?: boolean | null;
   /** Whether this clone is following the prerelease channel. */
@@ -182,7 +190,7 @@ export function buildPluginList(): PluginRow[] {
     var remoteHead = "";
     var subject = "";
     var updateAvail = false;
-    var updatedAt: number | null = null;
+    var updatedAt: string | null = null;
     var latestTag = "";
     var enabled = p.enabled !== false;
 

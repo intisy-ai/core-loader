@@ -5,6 +5,7 @@
 
 import type { FieldSpec } from "./capability-shapes.js";
 import type { LoaderActivitySeam } from "./activity-seam.js";
+import type { ActivityQuery, ActivityRecord } from "@intisy-ai/core";
 
 /** What a capability answers when it was asked to change something. */
 export interface CapabilityResult {
@@ -89,7 +90,7 @@ export interface GlobalSettingsDeclaration {
 /** The Activity seam plus the read side the views need. */
 export type ActivityCapability = LoaderActivitySeam & {
   /** The records to show, newest first, narrowed by the query. */
-  read?: (query?: Record<string, unknown>) => Record<string, unknown>[];
+  read?: (query?: ActivityQuery) => ActivityRecord[];
 };
 
 /**
