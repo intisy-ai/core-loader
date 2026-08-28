@@ -32,7 +32,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@intisy-ai/api": "^1.0.1",
+    "@intisy-ai/api": "^1.6.0",
     "@intisy-ai/core": "^2.6.0"
   },
   "devDependencies": {
