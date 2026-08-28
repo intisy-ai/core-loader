@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Bridge for auth-provider notifications. The proxy publishes user notifications onto
 // core's shared event bus; this registers a PostToolUse + Stop hook that runs the
 // loader's `bus-drain` action, which drains the bus and hands each message to the
@@ -9,13 +8,21 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync } from "fs";
 import { readJson } from "./json.js";
 import { join } from "path";
 
-// Registers the drain hooks pointing at `node "<loaderEntry>" bus-drain`, and clears
-// out the retired read-truncate queue artifacts. Idempotent. loaderEntry is the
-// absolute path to the loader's runtime plugin.js (which handles the bus-drain CLI).
-export function ensureNotifyDrainHook(configDir, loaderEntry) {
+/** The part of an app's `settings.json` this bridge touches: its hook table, by event name. */
+interface AppSettings {
+  /** Each event's registered hooks, exactly as the app wrote them. */
+  hooks?: Record<string, unknown[]>;
+}
+
+/**
+ * Registers the drain hooks pointing at `node "<loaderEntry>" bus-drain`, and clears
+ * out the retired read-truncate queue artifacts. Idempotent. loaderEntry is the
+ * absolute path to the loader's runtime plugin.js (which handles the bus-drain CLI).
+ */
+export function ensureNotifyDrainHook(configDir: string, loaderEntry: string): void {
   try {
     const settingsPath = join(configDir, "settings.json");
-    const settings = readJson(settingsPath, {});
+    const settings = readJson<AppSettings>(settingsPath, {}) ?? {};
     const hooks = settings.hooks || (settings.hooks = {});
     const cmd = `node "${loaderEntry}" bus-drain`;
     // Drain on BOTH Stop (end of every turn, surfaces notifications even when no tool
@@ -24,7 +31,7 @@ export function ensureNotifyDrainHook(configDir, loaderEntry) {
     let changed = false;
     for (const evt of ["Stop", "PostToolUse"]) {
       const list = hooks[evt] || (hooks[evt] = []);
-      const kept = list.filter((entry) => {
+      const kept = list.filter((entry: unknown) => {
         const s = JSON.stringify(entry);
         return !s.includes("bus-drain") && !s.includes("auth-notify-drain");
       });

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Top-level frame renderer: builds header + tabs, dispatches to the active
 // page/overlay builder, applies viewport scrolling, and writes to stderr.
 
@@ -12,6 +11,7 @@ import { buildMcp } from "./mcp.js";
 import { buildActivity } from "./activity.js";
 import { buildSettings } from "./settings.js";
 
+/** Draws one whole frame and writes it to stderr. */
 export function render() {
   // Prefer the stream we draw to (stderr), but fall back to stdout, depending on how
   // the wrapper launches bun, only one of them reports a TTY size. Re-read every frame
@@ -21,24 +21,24 @@ export function render() {
   // rules/dividers span the full width so the frame scales with the console.
   var barW = Math.max(20, cols - 4);
 
-  var headLines = [];
-  var stickyLines = [];
-  var bodyLines = [];
-  var footLines = [];
+  var headLines: string[] = [];
+  var stickyLines: string[] = [];
+  var bodyLines: string[] = [];
+  var footLines: string[] = [];
   var selStart = 0;
   var selEnd = 0;
 
-  function pushHead(s) { headLines.push(s); }
+  function pushHead(s: string) { headLines.push(s); }
   // Sticky region: rendered ALWAYS between the header/tabs and the scrollable body.
   // Never scrolled and never counted in selStart/selEnd, so a view's top info block
   // stays visible while only its list scrolls.
-  function pushSticky(s) { stickyLines.push(s); }
-  function pushBody(s, isSelLine) {
+  function pushSticky(s: string) { stickyLines.push(s); }
+  function pushBody(s: string, isSelLine?: boolean) {
     if (isSelLine && selStart === 0) selStart = bodyLines.length;
     bodyLines.push(s);
     if (isSelLine) selEnd = bodyLines.length;
   }
-  function pushFoot(s) { footLines.push(s); }
+  function pushFoot(s: string) { footLines.push(s); }
 
   // 1. Build Header
   pushHead("");
@@ -61,7 +61,7 @@ export function render() {
   } else if (S.mode === "confirm") {
     buildConfirm(pushBody, pushFoot, cols, barW);
   } else if (S.page === "projects") {
-    buildProjects(pushBody, pushFoot, cols, barW, pushSticky);
+    buildProjects(pushBody, pushFoot, cols, barW);
   } else if (S.page === "mcp") {
     buildMcp(pushBody, pushFoot, cols, barW, pushSticky);
   } else if (S.page === "activity" && showActivityTab) {

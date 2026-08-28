@@ -1,4 +1,3 @@
-// @ts-nocheck
 // The plugin manager this home resolved, and the npm-plugin / repo helpers that wrap it.
 
 import { existsSync, readFileSync } from "fs";
@@ -16,6 +15,19 @@ import { queryCapability } from "./capability-catalog.js";
 import type { CatalogEntry } from "./capability-catalog.js";
 import { bootstrapCommand, managerEntries, resolvePluginManager, PLUGIN_MANAGEMENT_CAPABILITY } from "./plugin-manager.js";
 import { catalogCacheHours } from "./config.js";
+import type { PluginEntry } from "./config.js";
+
+/** One npm plugin the app's own list holds, as the Plugins tab needs it. */
+export interface NpmPluginRow {
+  /** The package name, with any version suffix stripped. */
+  name: string;
+  /** The version resolved from a package cache, or an empty string when none was found. */
+  version: string;
+  /** Whether a version was found at all. */
+  installed: boolean;
+  /** The entry exactly as the app's list holds it. */
+  raw: unknown;
+}
 
 /** What resolution may reach the network through. */
 export interface PreloadDeps {
@@ -38,9 +50,11 @@ export function marketplaceQuery(): (capabilityId: string) => Promise<CatalogEnt
   return (capabilityId) => queryCapability(capabilityId, sources, paths, windowMs, { log: tuiLog });
 }
 
-// The manager is an ESM bundle with top-level await, so require() throws ERR_REQUIRE_ASYNC_MODULE
-// under Node and it MUST be import()'d. Resolved and imported once at TUI startup; getUpdater()
-// then answers the sync callers from the cache.
+/**
+ * The manager is an ESM bundle with top-level await, so require() throws ERR_REQUIRE_ASYNC_MODULE
+ * under Node and it MUST be import()'d. Resolved and imported once at TUI startup; getUpdater()
+ * then answers the sync callers from the cache.
+ */
 export async function preloadUpdater(deps: PreloadDeps = {}) {
   if (S.UPDATER_MODULE !== undefined) return S.UPDATER_MODULE;
   const paths = homePaths(CONFIG_DIR);
@@ -81,27 +95,33 @@ export function managerBootstrapCommand() {
   return ref ? bootstrapCommand(ref, APP_ID) : "";
 }
 
+/** The plugin manager module this home resolved, or null when none did. */
 export function getUpdater() {
   return S.UPDATER_MODULE || null;
 }
 
-// The manager's package directory, cached by preloadUpdater(). setupPlugin passes it to a
-// child process (via S.UPDATER_ENTRY) so updatePluginPublic runs off the main thread.
+/**
+ * The manager's package directory, cached by preloadUpdater(). setupPlugin passes it to a
+ * child process (via S.UPDATER_ENTRY) so updatePluginPublic runs off the main thread.
+ */
 export function getUpdaterPath() {
   return S.UPDATER_PATH;
 }
 
+/** That manager's version, read from its own package, or an empty string when it cannot be read. */
 export function getUpdaterVersion() {
   try {
     if (!getUpdater() || !S.UPDATER_PATH) return "";
-    return (readJson(join(S.UPDATER_PATH, "package.json")) || {}).version || "";
+    return readJson<{ version?: string }>(join(S.UPDATER_PATH, "package.json"))?.version || "";
   } catch { return ""; }
 }
 
-// Run the updater's updatePluginPublic (git + build + deploy + activate) in a
-// child node process so the git/build execSync inside the manager blocks that
-// child, not our main event loop, so the TUI keeps rendering and animating.
-export function setupPlugin(repo, done) {
+/**
+ * Run the updater's updatePluginPublic (git + build + deploy + activate) in a
+ * child node process so the git/build execSync inside the manager blocks that
+ * child, not our main event loop, so the TUI keeps rendering and animating.
+ */
+export function setupPlugin(repo: PluginEntry & { branch?: string }, done: (error: string) => void): void {
   var updater = getUpdater();
   // The ENTRY is what the child imports, so it is what readiness means: a home with a deployed
   // bundle and no clone directory has no package dir to report and still updates perfectly well.
@@ -124,11 +144,12 @@ export function setupPlugin(repo, done) {
   });
   var child = require("child_process").spawn(process.execPath, ["-e", script], { stdio: ["ignore", "ignore", "pipe"], env: childEnv });
   var errBuf = "";
-  child.stderr.on("data", function(d) { errBuf += d.toString(); });
-  child.on("error", function(e) { done(String((e && e.message) || e)); });
-  child.on("exit", function(code) { done(code === 0 ? "" : (errBuf.trim() || "update failed")); });
+  child.stderr.on("data", function(d: Buffer) { errBuf += d.toString(); });
+  child.on("error", function(e: Error) { done(String((e && e.message) || e)); });
+  child.on("exit", function(code: number | null) { done(code === 0 ? "" : (errBuf.trim() || "update failed")); });
 }
 
+/** The global npm root, asked for once and held, empty when npm could not answer. */
 export function getNpmGlobalRoot() {
   if (S.NPM_GLOBAL_ROOT !== null) return S.NPM_GLOBAL_ROOT;
   try { S.NPM_GLOBAL_ROOT = execSync("npm root -g", { timeout: 10000, stdio: ["ignore", "pipe", "ignore"] }).toString().trim(); }
@@ -136,14 +157,15 @@ export function getNpmGlobalRoot() {
   return S.NPM_GLOBAL_ROOT;
 }
 
-export function loadNpmPlugins() {
+/** The npm plugins the app's own list holds, with whatever version this home actually resolved. */
+export function loadNpmPlugins(): NpmPluginRow[] {
   var updater = getUpdater();
   if (updater && typeof updater.getNpmPlugins === "function") {
     try {
-      return updater.getNpmPlugins(CONFIG_DIR);
+      return updater.getNpmPlugins(CONFIG_DIR) as NpmPluginRow[];
     } catch(e) {}
   }
-  var declared = appNpmPlugins();
+  const declared = appNpmPlugins();
   if (!declared) return [];
   var candidates = declared.configFiles.map(function (file) { return expandPath(file, CONFIG_DIR); });
   var appConfigPath = candidates.find(function (candidate) { return existsSync(candidate); });
@@ -152,10 +174,10 @@ export function loadNpmPlugins() {
     var raw = readFileSync(appConfigPath, "utf-8");
     var stripped = raw.replace(/^\s*\/\/[^\n]*/gm, "");
     var appConfig = JSON.parse(stripped);
-    var plugins = appConfig[declared.pluginsKey] || [];
+    var plugins: unknown[] = appConfig[declared.pluginsKey] || [];
     return plugins
-      .filter(function(p) { return typeof p === "string"; })
-      .map(function(p) {
+      .filter(function(p): p is string { return typeof p === "string"; })
+      .map(function(p: string): NpmPluginRow {
         var name = p.replace(/@[^@\/]+$/, "") || p;
         var version = "";
         try {
@@ -166,7 +188,7 @@ export function loadNpmPlugins() {
             for (var entry of cacheEntries) {
               if (entry !== name && entry.indexOf(name + "@") !== 0) continue;
               var cachedPkg = join(pkgCache, entry, "node_modules", name, "package.json");
-              version = (readJson(cachedPkg) || {}).version || "";
+              version = readJson<{ version?: string }>(cachedPkg)?.version || "";
               if (version) break;
             }
           }
@@ -175,7 +197,7 @@ export function loadNpmPlugins() {
             for (var root of roots) {
               if (!root) continue;
               var pkgPath = join(root, name, "package.json");
-              version = (readJson(pkgPath) || {}).version || "";
+              version = readJson<{ version?: string }>(pkgPath)?.version || "";
               if (version) break;
             }
           }
@@ -185,8 +207,10 @@ export function loadNpmPlugins() {
   } catch { return []; }
 }
 
-// Force getUpdater() to re-resolve on next call (after installing the engine, so the
-// gate lifts without an app restart).
+/**
+ * Force getUpdater() to re-resolve on next call (after installing the engine, so the
+ * gate lifts without an app restart).
+ */
 export function clearUpdaterCache() {
   S.UPDATER_MODULE = undefined;
   S.UPDATER_PATH = undefined;
@@ -195,7 +219,8 @@ export function clearUpdaterCache() {
   S.pluginManager = undefined;
 }
 
-export function getFolderName(plugin) {
+/** The clone directory one plugin entry lands in: owner-nested when that layout exists, flat otherwise. */
+export function getFolderName(plugin: PluginEntry): string {
   var match = (plugin.url || "").match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
   if (match) {
     var nested = match[1] + "/" + plugin.name;

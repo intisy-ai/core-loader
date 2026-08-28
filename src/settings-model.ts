@@ -3,50 +3,139 @@
 // and key handler both walk: a "Global" header + its group, then a "Plugins" header + one
 // group row per plugin. Headers are not selectable (nav skips them).
 import { byOrderThenLabel } from "@intisy-ai/core";
-import type { FieldSpec } from "@intisy-ai/core";
+import type { FieldOption, FieldSpec } from "@intisy-ai/core";
 import { buildConfigItems, declarationFor, settingsPluginIds } from "./plugins.js";
+import type { PluginDeclaration } from "./plugins.js";
+import type { ActionSpec } from "./capability-shapes.js";
 import { GLOBAL_SETTINGS_DEFAULTS, loadGlobalSettings } from "./config.js";
 import { S } from "./state.js";
 
-export type SettingsItem = { key: string; value: unknown; def: unknown; isSet: boolean; type: string };
-export type SettingsAction = { kind: "action"; key: string; label: string; description?: string; confirm?: string; danger?: boolean; args?: FieldSpec[] };
-export type SettingsRow = SettingsItem | SettingsAction;
-export type SettingsSection = {
+/** One editable setting: its value, its default, and whether the file actually holds it. */
+export type SettingsItem = {
+  /**
+   * Never set on a setting.
+   *
+   * @remarks
+   * Declared so the union with {@link SettingsAction} is discriminated: without it, a renderer
+   * testing `row.kind === "action"` narrows nothing and reads every other field off the union.
+   */
+  kind?: undefined;
+  /** The key it is stored under, which may be a dot path into a nested object. */
+  key: string;
+  /** Its effective value. */
+  value: unknown;
+  /** Its declared default. */
+  def: unknown;
+  /** Whether the file holds it, as opposed to it merely defaulting. */
+  isSet: boolean;
+  /** How it is edited, from the declaration when there is one and from the value otherwise. */
+  type: string;
+  /** The choices it steps through, when the declaration named a list. */
+  options?: FieldOption[];
+};
+/** One action a plugin declared, as a row the editor can arm and run. */
+export type SettingsAction = {
+  /** Always `action`, which is what tells this row apart from a setting. */
+  kind: "action";
+  /** The action's id, which is what the plugin is asked to run. */
+  key: string;
+  /** What the row says. */
   label: string;
-  kind: "global" | "plugin";
-  // The plugin this section belongs to, which is how a surface routes an action run or a re-read
-  // back to its owner.
-  plugin?: string;
-  file: string;
-  bundle: string | null;
-  items: SettingsRow[];
-  // Set on a section a plugin CONTRIBUTED (as opposed to its own flat config), so every
-  // surface can say who added it and re-resolve it after a write.
-  addedBy?: string;
-  sectionId?: string;
+  /** The line under it. */
   description?: string;
+  /** The question a first Enter asks, when the action wants confirming. */
+  confirm?: string;
+  /** Whether it is destructive. */
+  danger?: boolean;
+  /** What must be collected before it runs. */
+  args?: FieldSpec[];
+};
+/** One row of a settings section: a setting to edit, or an action to run. */
+export type SettingsRow = SettingsItem | SettingsAction;
+/** One group of rows: the global settings, a plugin's own, or a section a plugin contributed. */
+export type SettingsSection = {
+  /** The heading it is shown under. */
+  label: string;
+  /** Whether it is the shared settings or one plugin's. */
+  kind: "global" | "plugin";
+  /**
+   * The plugin this section belongs to.
+   *
+   * @remarks
+   * How a surface routes an action run, or a re-read, back to its owner.
+   */
+  plugin?: string;
+  /** The config file it edits. */
+  file: string;
+  /** The bundle an action is run through, `null` where there is none. */
+  bundle: string | null;
+  /** Its rows. */
+  items: SettingsRow[];
+  /**
+   * The plugin that CONTRIBUTED this section, as opposed to owning the file.
+   *
+   * @remarks
+   * Set only on a contributed section, so every surface can say who added it and re-resolve it
+   * after a write.
+   */
+  addedBy?: string;
+  /** That section's own id. */
+  sectionId?: string;
+  /** The line under its heading. */
+  description?: string;
+  /** Where it sorts among the others. */
   order?: number;
 };
 
-// The host loader injects core's own declaration of the shared settings (defaults plus
-// field types), so a key core adds shows up here with no change. The local constant is
-// only the fallback for a host that injects nothing.
+/**
+ * What the config editor is currently editing: one section, plus how to write it back.
+ *
+ * @remarks
+ * Built from a settings section or from a plugin's own declaration, which is why `plugin` and
+ * `global` are alternatives rather than both required.
+ */
+export type ConfigTarget = {
+  /** The heading the editor shows. */
+  name: string;
+  /** The plugin this section belongs to, absent on the global one. */
+  plugin?: string;
+  /** Set on the global section, which is written directly rather than through a plugin. */
+  global?: boolean;
+  /** The bundle an action is run through, when there is one. */
+  bundle?: string | null;
+  /** The config file being edited, which the editor header names. */
+  file: string;
+  /** The rows being edited. */
+  items: SettingsRow[];
+  /** The plugin that CONTRIBUTED this section, when it is not the plugin that owns the file. */
+  addedBy?: string;
+  /** The contributed section's id, which is how it is re-resolved after a write. */
+  sectionId?: string;
+};
+
+/**
+ * The host loader injects core's own declaration of the shared settings (defaults plus
+ * field types), so a key core adds shows up here with no change. The local constant is
+ * only the fallback for a host that injects nothing.
+ */
 export function buildGlobalSection(): SettingsSection {
-  const injected = (S.capabilities && (S.capabilities as any).globalSettings) || null;
+  const injected = S.capabilities.globalSettings || null;
   const defaults = (injected && injected.defaults) || GLOBAL_SETTINGS_DEFAULTS;
   const fields = (injected && injected.fields) || [];
-  const items = buildConfigItems({ defaults, fields, current: loadGlobalSettings() }) as SettingsItem[];
+  const items = buildConfigItems({ defaults, fields, current: loadGlobalSettings() });
   return { label: "Global", kind: "global", file: "settings.json", bundle: null, items };
 }
 
-// The config file a declaration edits. This is read back as a real path (the editor header names it,
-// and any surface reading a plugin's config must name the same file), so it follows the config name
-// the plugin reports for ITSELF, never the id surfaces route by. One helper, so a second caller cannot drift.
-export function configFileFor(cfg: any): string {
+/**
+ * The config file a declaration edits. This is read back as a real path (the editor header names it,
+ * and any surface reading a plugin's config must name the same file), so it follows the config name
+ * the plugin reports for ITSELF, never the id surfaces route by. One helper, so a second caller cannot drift.
+ */
+export function configFileFor(cfg: PluginDeclaration | null | undefined): string {
   return ((cfg && cfg.configName) || (cfg && cfg.name)) + ".json";
 }
 
-function actionRow(action: any): SettingsAction {
+function actionRow(action: ActionSpec): SettingsAction {
   const row: SettingsAction = { kind: "action", key: action.id, label: action.label };
   if (typeof action.description === "string") row.description = action.description;
   if (typeof action.confirm === "string") row.confirm = action.confirm;
@@ -57,15 +146,17 @@ function actionRow(action: any): SettingsAction {
   return row;
 }
 
-// The claim rule, applied to this surface's flat rows: a setting or action NAMED by a
-// contributed section belongs to that section, and whatever no section claimed stays the
-// plugin's own group. A section that claims nothing resolvable is dropped rather than
-// listed empty.
-export function splitBySections(cfg: any): SettingsSection[] {
+/**
+ * The claim rule, applied to this surface's flat rows: a setting or action NAMED by a
+ * contributed section belongs to that section, and whatever no section claimed stays the
+ * plugin's own group. A section that claims nothing resolvable is dropped rather than
+ * listed empty.
+ */
+export function splitBySections(cfg: PluginDeclaration): SettingsSection[] {
   const name = cfg.name;
   const file = configFileFor(cfg);
   const itemByKey = new Map<string, SettingsRow>((cfg.items || []).map((i: SettingsItem) => [i.key, i]));
-  const actionById = new Map<string, any>((cfg.actions || []).map((a: any) => [a.id, a]));
+  const actionById = new Map<string, ActionSpec>((cfg.actions || []).map((a: ActionSpec) => [a.id, a]));
   const claimed = new Set<string>();
   const sections: SettingsSection[] = [];
 
@@ -95,8 +186,10 @@ export function splitBySections(cfg: any): SettingsSection[] {
   return sections;
 }
 
-// Only declarations already read: this runs on a render path, so it never starts a capability call
-// or a child process of its own.
+/**
+ * Only declarations already read: this runs on a render path, so it never starts a capability call
+ * or a child process of its own.
+ */
 export function buildPluginSections(): SettingsSection[] {
   const out: SettingsSection[] = [];
   for (const pluginId of settingsPluginIds()) {
@@ -107,13 +200,31 @@ export function buildPluginSections(): SettingsSection[] {
   return out;
 }
 
+/** One line of the Settings page: a heading, a group to open, or a plugin still being read. */
 export type SettingsEntry =
-  | { type: "header"; label: string }
-  | { type: "group"; section: SettingsSection }
-  | { type: "loading"; label: string };   // a plugin whose declaration has not landed yet
+  | {
+      /** A heading, which the cursor skips. */
+      type: "header";
+      /** What it says. */
+      label: string;
+    }
+  | {
+      /** A group the cursor can open. */
+      type: "group";
+      /** The section behind it. */
+      section: SettingsSection;
+    }
+  | {
+      /** A plugin whose declaration has not landed yet, drawn with a spinner. */
+      type: "loading";
+      /** What it says meanwhile. */
+      label: string;
+    };
 
-// `sections` holds only resolved groups (Global + plugins with settings); `loading` holds the
-// ids of plugins whose declaration is still being read in the background (rendered with a spinner).
+/**
+ * `sections` holds only resolved groups (Global + plugins with settings); `loading` holds the
+ * ids of plugins whose declaration is still being read in the background (rendered with a spinner).
+ */
 export function buildSettingsEntries(sections: SettingsSection[], loading: string[] = []): SettingsEntry[] {
   const entries: SettingsEntry[] = [];
   const globals = sections.filter((s) => s.kind === "global");
@@ -134,7 +245,7 @@ export function buildSettingsEntries(sections: SettingsSection[], loading: strin
   return entries;
 }
 
-// Only "group" rows are selectable, nav skips headers AND loading placeholders.
+/** Only "group" rows are selectable, nav skips headers AND loading placeholders. */
 export function firstSelectableIndex(entries: SettingsEntry[]): number {
   for (let i = 0; i < entries.length; i++) if (entries[i].type === "group") return i;
   return 0;

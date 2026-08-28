@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Shared view helpers: status message, spinner, hint bar, and the confirm/help
 // overlays. flash/scheduleRender drive redraws via render().
 
@@ -7,11 +6,42 @@ import { S } from "../state.js";
 import { HELP_BINDINGS, SPINNER_FRAMES } from "../env.js";
 import { render } from "./render.js";
 
-// One marketplace row, shared by the plugins AND MCP marketplaces, they differ only
-// in the badge (curated ✦ vs git/npm) and the selected sub-line, never the layout.
-// The star count is right-aligned to the edge and the description scales with `cols`.
-// opts: { selected, name, nameW, desc, stars, statusIcon (colored 1-char), badge, badgeW }
-export function marketplaceRow(cols, opts) {
+/** Appends one scrollable body line, saying whether it is the selected row. */
+export type PushBody = (line: string, selected?: boolean) => void;
+
+/** Appends one footer line. */
+export type PushFoot = (line: string) => void;
+
+/** Appends one line pinned between the tabs and the scrollable body. */
+export type PushSticky = (line: string, selected?: boolean) => void;
+
+/** What one marketplace row is drawn from, shared by the plugin and MCP marketplaces. */
+export interface MarketplaceRowOptions {
+  /** Whether this is the selected row. */
+  selected: boolean;
+  /** What the row is shown as. */
+  name: string;
+  /** The width the name column was given. */
+  nameW: number;
+  /** The description after it. */
+  desc?: string;
+  /** The star count, right-aligned to the edge. */
+  stars?: number;
+  /** The single coloured character before the name. */
+  statusIcon: string;
+  /** The tag between that icon and the name. */
+  badge?: string;
+  /** How wide that tag is, which the description width is measured against. */
+  badgeW?: number;
+}
+
+/**
+ * One marketplace row, shared by the plugins AND MCP marketplaces, they differ only
+ * in the badge (curated ✦ vs git/npm) and the selected sub-line, never the layout.
+ * The star count is right-aligned to the edge and the description scales with `cols`.
+ * opts: { selected, name, nameW, desc, stars, statusIcon (colored 1-char), badge, badgeW }
+ */
+export function marketplaceRow(cols: number, opts: MarketplaceRowOptions): string {
   var sel = opts.selected;
   var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
   var bg = sel ? BG_SEL : "";
@@ -30,25 +60,29 @@ export function marketplaceRow(cols, opts) {
   return "  " + bg + arrow + opts.statusIcon + " " + badge + nameStyle + pad(trunc(opts.name, nameW), nameW) + RST + bg + "  " + GRAY + descText + RST + starStr + RST;
 }
 
-export function flash(msg) {
+/** Shows a message in the status line for a couple of seconds. */
+export function flash(msg: string): void {
   S.message = msg;
   if (S.msgTimeout) clearTimeout(S.msgTimeout);
   S.msgTimeout = setTimeout(function() { S.message = ""; render(); }, 2500);
 }
 
-// async catalog fetches arrive in bursts, coalesce their redraws
-export function scheduleRender() {
+/** async catalog fetches arrive in bursts, coalesce their redraws */
+export function scheduleRender(): void {
   if (S.renderTimer) return;
   S.renderTimer = setTimeout(function() { S.renderTimer = null; render(); }, 120);
 }
 
-export function hints(pairs) {
-  return "  " + GRAY + pairs.map(function(p) { return p[0] + " " + p[1]; }).join(" · ") + RST;
+/** The footer's key hints, from pairs of key and what it does. */
+export function hints(pairs: string[][]): string {
+  return "  " + GRAY + pairs.map(function(p: string[]) { return p[0] + " " + p[1]; }).join(" · ") + RST;
 }
 
-export function spinnerFrame() { return ACCENT + SPINNER_FRAMES[S.spinnerTick % SPINNER_FRAMES.length] + RST; }
+/** The spinner's current frame. */
+export function spinnerFrame(): string { return ACCENT + SPINNER_FRAMES[S.spinnerTick % SPINNER_FRAMES.length] + RST; }
 
-export function updateSpinner() {
+/** Starts or stops the spinner, matching whether anything is actually pending. */
+export function updateSpinner(): void {
   var active = S.catalogPending > 0 || (S.message && S.message.indexOf("...") !== -1);
   if (active && !S.spinnerTimer) {
     S.spinnerTimer = setInterval(function() { S.spinnerTick++; render(); }, 120);
@@ -58,12 +92,14 @@ export function updateSpinner() {
   }
 }
 
-export function messageLine(cols) {
+/** The status line, with the spinner in front of it while something is running. */
+export function messageLine(cols: number): string {
   var prefix = S.message.indexOf("...") !== -1 ? spinnerFrame() + " " : "  ";
   return "  " + ACCENT + prefix + trunc(S.message, cols - 6) + RST;
 }
 
-export function buildConfirm(pushBody, pushFoot, cols, barW) {
+/** The confirm dialog. */
+export function buildConfirm(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number): void {
   pushBody("  " + BOLD + WHITE + "Confirm" + RST, false);
   pushBody("", false);
   pushBody("  " + BOLD + WHITE + trunc(S.confirmLabel, cols - 4) + RST, false);
@@ -81,8 +117,9 @@ export function buildConfirm(pushBody, pushFoot, cols, barW) {
   pushFoot(hints([["↑↓", "move"], ["enter", "confirm"], ["y", "yes"], ["n/esc", "cancel"]]));
 }
 
-export function buildHelp(pushBody, pushFoot, cols, barW) {
-  var binds = HELP_BINDINGS[S.page] || [];
+/** The help overlay, listing the active page's own keys. */
+export function buildHelp(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number): void {
+  var binds: string[][] = (HELP_BINDINGS as Record<string, string[][]>)[S.page] || [];
   pushBody("  " + BOLD + WHITE + "Keyboard shortcuts" + RST, false);
   pushBody("", false);
   for (var i = 0; i < binds.length; i++) {

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "src/account-menu.ts",
+    "src/action-row.ts",
+    "src/activity-seam.ts",
+    "src/app-capabilities.ts",
+    "src/app-descriptor.ts",
+    "src/app-home.ts",
+    "src/capability-catalog.ts",
+    "src/capability-shapes.ts",
+    "src/catalog-sources.ts",
+    "src/config.ts",
+    "src/custom-provider.ts",
+    "src/custom-tab.ts",
+    "src/format.ts",
+    "src/home-paths.ts",
+    "src/json.ts",
+    "src/loader-commands.ts",
+    "src/loader-runtime.ts",
+    "src/marketplace.ts",
+    "src/mcp.ts",
+    "src/notify.ts",
+    "src/plugin-manager.ts",
+    "src/plugins.ts",
+    "src/projects.ts",
+    "src/provider-catalog.ts",
+    "src/provider-menu.ts",
+    "src/provider-rows.ts",
+    "src/proxy-runner.ts",
+    "src/screens.ts",
+    "src/selection.ts",
+    "src/settings-model.ts",
+    "src/state.ts",
+    "src/tui.ts",
+    "src/updater.ts",
+    "src/wrapper.ts"
+  ],
+  "out": "site",
+  "name": "@intisy-ai/core-loader",
+  "excludePrivate": true,
+  "treatWarningsAsErrors": true,
+  "validation": {
+    "notExported": true,
+    "invalidLink": true,
+    "notDocumented": true
+  },
+  "highlightLanguages": [
+    "bash",
+    "java",
+    "js",
+    "json",
+    "ts",
+    "typescript"
+  ],
+  "ignoredHighlightLanguages": [
+    "mermaid"
+  ],
+  "sourceLinkTemplate": "https://github.com/intisy-ai/core-loader/blob/{gitRevision}/{path}#L{line}",
+  "tsconfig": "./tsconfig.json",
+  "intentionallyNotExported": [
+    "UpdateCacheRow"
+  ]
+}

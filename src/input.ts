@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Keyboard handling: key parsing and the per-page key handlers (projects,
 // plugins, mcp, confirm dialog) plus the text-input handlers.
 
@@ -26,12 +25,21 @@ import { configFileFor, splitBySections } from "./settings-model.js";
 import { render } from "./views/render.js";
 import { tuiApi } from "./tui.js";
 import { emitLoaderActivity } from "./activity-seam.js";
+import type { ActionResult, FieldOption } from "./capability-shapes.js";
+import type { CommitRow, PluginRow } from "./plugins.js";
+import type { MarketplaceRow } from "./marketplace.js";
+import type { McpRow } from "./mcp.js";
+import type { SettingsAction, SettingsItem, SettingsRow } from "./settings-model.js";
+import type { ScreenEntry } from "./screens.js";
+import type { ScreenRow } from "./screens.js";
+import type { CapabilityResult } from "./app-capabilities.js";
+import type { ActivityQuery } from "@intisy-ai/core";
 
 // A declared action runs through the plugin's own settings capability. One declaring `confirm` arms
 // on the first enter and runs on the second, which keeps a destructive action two keystrokes away
 // without a modal the config screen has no room for. The run is bounded and asynchronous, so the
 // editor stays on screen and busy while it happens; the trailing "..." is what animates the spinner.
-function activateConfigAction(citem) {
+function activateConfigAction(citem: SettingsAction): void {
   var pluginId = S.configTarget && S.configTarget.plugin;
   if (!pluginId) return;
   if (citem.confirm && S.configConfirm !== citem.key) { S.configConfirm = citem.key; return; }
@@ -50,7 +58,7 @@ function activateConfigAction(citem) {
 // The run itself, shared by an action that needed nothing collected and one whose prompts are done.
 // Bounded and asynchronous, so the editor stays on screen and busy while it happens; the trailing
 // "..." is what animates the spinner.
-function runConfigAction(actionId, label, input) {
+function runConfigAction(actionId: string, label: string, input: Record<string, unknown> | undefined): void {
   var pluginId = S.configTarget && S.configTarget.plugin;
   if (!pluginId) return;
   S.busy = true;
@@ -68,10 +76,12 @@ function runConfigAction(actionId, label, input) {
   });
 }
 
-// Free-text entry for one of an action's declared args. Enter takes the value and moves to the next;
-// the last one runs the action with everything collected. Esc abandons the whole action rather than
-// one arg, since a half-collected action is not one the plugin declared.
-export function handleConfigActionArgsData(buf) {
+/**
+ * Free-text entry for one of an action's declared args. Enter takes the value and moves to the next;
+ * the last one runs the action with everything collected. Esc abandons the whole action rather than
+ * one arg, since a half-collected action is not one the plugin declared.
+ */
+export function handleConfigActionArgsData(buf: Buffer): void {
   var pending = S.configActionArgs;
   if (!pending) { S.mode = "pconfig"; return; }
   if (buf[0] === 27) { S.inputBuf = ""; S.configActionArgs = null; S.mode = "pconfig"; return; }
@@ -94,7 +104,7 @@ export function handleConfigActionArgsData(buf) {
 // lands. The re-read is asynchronous, so without this the frame drawn right after the keystroke
 // still shows the old value under a message saying it changed, and a second Enter would compute its
 // next value from the stale one and write the same thing again instead of toggling back.
-function markRowSaved(row, saved) {
+function markRowSaved(row: SettingsItem, saved: unknown): void {
   if (!row) return;
   row.value = (row.type === "number" && saved !== "" && !isNaN(Number(saved))) ? Number(saved) : saved;
   row.isSet = true;
@@ -103,7 +113,7 @@ function markRowSaved(row, saved) {
 // Moves the config editor's cursor, clamped to the row list, clearing a revealed secret only
 // when the index actually changes: a clamp at either end must not drop a reveal on a keypress
 // that moved nothing.
-function stepCfgCursor(dir) {
+function stepCfgCursor(dir: number): void {
   var next = dir < 0 ? Math.max(0, S.cfgcursor - 1) : Math.min(S.configItems.length - 1, S.cfgcursor + 1);
   if (next !== S.cfgcursor) S.cfgReveal = "";
   S.cfgcursor = next;
@@ -112,14 +122,14 @@ function stepCfgCursor(dir) {
 // Enter on a config row: a boolean flips, a field with a declared choice list steps to
 // its next option, anything else opens the text input. Shared by both config editors so
 // the write path exists once.
-function activateConfigItem(citem, textMode) {
+function activateConfigItem(citem: SettingsRow, textMode: string): void {
   if (!citem) return;
   if (citem.kind === "action") { activateConfigAction(citem); return; }
   S.configConfirm = null;
   var next = null;
   if (citem.type === "boolean") next = !isBooleanRowOn(citem.value);
   else if (citem.type !== "secret" && Array.isArray(citem.options) && citem.options.length) {
-    var values = citem.options.map(function (o) { return typeof o === "string" ? o : o.value; });
+    var values = citem.options.map(function (o: FieldOption) { return typeof o === "string" ? o : o.value; });
     var at = values.indexOf(String(citem.value));
     next = values[(at + 1) % values.length];
   }
@@ -130,9 +140,11 @@ function activateConfigItem(citem, textMode) {
     S.mode = textMode;
     return;
   }
-  var err = S.configTarget.global
+  var target = S.configTarget;
+  if (!target) return;
+  var err = target.global
     ? setGlobalSetting(citem.key, String(next))
-    : setPluginConfig(S.configTarget.bundle, citem.key, String(next));
+    : setPluginConfig(target.bundle || "", citem.key, String(next));
   if (err) { flash(citem.key + ": " + err); return; }
   markRowSaved(citem, next);
   refreshConfigItems();
@@ -145,9 +157,9 @@ function activateConfigItem(citem, textMode) {
 function readActivityRecords() {
   var readFn = S.capabilities && S.capabilities.activity && S.capabilities.activity.read;
   if (typeof readFn !== "function") return [];
-  var query = { limit: 200 };
+  var query: ActivityQuery = { limit: 200 };
   var impacts = S.activityImpacts || [];
-  if (impacts.length) query.impacts = impacts.slice();
+  if (impacts.length) query.impacts = impacts.slice() as ActivityQuery["impacts"];
   try { return readFn(query) || []; } catch (e) { return []; }
 }
 
@@ -166,7 +178,7 @@ function cycleImpactFilter() {
 // Plugin lifecycle facts share one vocabulary with the plugin manager's, so a reader
 // sees the same actions whoever performed them. Only actions this menu performs ITSELF
 // are reported here: what it delegates to the manager, the manager already reports.
-function reportPluginAction(action, name, details) {
+function reportPluginAction(action: string, name: string, details?: Record<string, unknown>): void {
   emitLoaderActivity({
     topic: "plugin.installed",
     action: action,
@@ -181,10 +193,10 @@ function reportPluginAction(action, name, details) {
 // app's listSessions capability (absent -> none, picker skipped). With no prior
 // sessions, launch fresh immediately: "Open here" keeps the exit-42 path so the
 // wrapper forwards the user's own cc args; a project row writes its dir.
-function enterSessions(dir, here) {
+function enterSessions(dir: string, here: boolean): void {
   var sessions = listSessions(dir);
   if (!sessions.length) {
-    if (here) { cleanup(); process.exit(42); } else { openProjectSession(dir, null); }
+    if (here) { cleanup(); process.exit(42); } else { openProjectSession(dir); }
     return;
   }
   S.sessionItems = sessions; S.scursor = 0; S.sessionDir = dir; S.sessionHere = here;
@@ -194,7 +206,7 @@ function enterSessions(dir, here) {
 // Set a persistent status message for a long busy action. Unlike flash(), it does
 // NOT auto-clear after 2.5s; the message (and its "..." spinner) stays up until
 // the completion callback flashes the result. Clears any pending flash timeout.
-function setBusyMessage(msg) {
+function setBusyMessage(msg: string): void {
   if (S.msgTimeout) { clearTimeout(S.msgTimeout); S.msgTimeout = null; }
   S.message = msg;
 }
@@ -206,9 +218,9 @@ function setBusyMessage(msg) {
 // summary, and runs onDone (cursor clamp). Used by update-all ('a' key + action) and
 // single update.
 var UPDATE_POOL_SIZE = 4;
-function runUpdateSequence(toUpdate, onDone) {
+function runUpdateSequence(toUpdate: PluginRow[], onDone?: (errors: string[]) => void): void {
   S.busy = true;
-  var errors = [];
+  var errors: string[] = [];
   var started = 0;
   var finished = 0;
   var plugins = loadPlugins();
@@ -222,7 +234,7 @@ function runUpdateSequence(toUpdate, onDone) {
     S.pluginItems = buildCombinedPluginList();
     S.busy = false;
     flash(errors.length > 0 ? errors.join("; ") : toUpdate.length + " plugin(s) updated. Restart " + APP_NAME + " to apply.");
-    if (onDone) onDone();
+    if (onDone) onDone(errors);
     render();
   };
   if (toUpdate.length === 0) { finishAll(); return; }
@@ -241,9 +253,11 @@ function runUpdateSequence(toUpdate, onDone) {
   for (var i = 0; i < Math.min(UPDATE_POOL_SIZE, toUpdate.length); i++) startNext();
 }
 
-// Cycle the plugins sub-tab (Installed -> Marketplace -> custom tabs -> Installed).
-// Exported so the "updater missing" gate handler in tui.ts can move the user off
-// the gated Installed tab onto the Marketplace with the same mechanics as Tab here.
+/**
+ * Cycle the plugins sub-tab (Installed -> Marketplace -> custom tabs -> Installed).
+ * Exported so the "updater missing" gate handler in tui.ts can move the user off
+ * the gated Installed tab onto the Marketplace with the same mechanics as Tab here.
+ */
 export function switchPluginSubPage() {
   S.inputBuf = "";
   if (S.pluginSubPage === "installed") {
@@ -269,10 +283,10 @@ export function switchPluginSubPage() {
 // "Community"/"Curated"). A capability marketplace's plugins carry no
 // category, so there is only one implicit group there; in that case (or any
 // single-group list) fall back to a 10-row page jump so the keys stay useful.
-function jumpMarketplaceGroup(dir) {
+function jumpMarketplaceGroup(dir: number): void {
   var items = S.marketplaceItems;
   if (items.length === 0) return;
-  var groupOf = function(it) { return it.category || (it.capability ? "capability" : "Community"); };
+  var groupOf = function(it: MarketplaceRow) { return it.category || (it.capability ? "capability" : "Community"); };
   var boundaries = [];
   for (var i = 0; i < items.length; i++) {
     if (i === 0 || groupOf(items[i]) !== groupOf(items[i - 1])) boundaries.push(i);
@@ -291,7 +305,7 @@ function jumpMarketplaceGroup(dir) {
 }
 
 // Install a marketplace entry through the resolved manager. Calls done(errOrNull, methodLabel).
-function marketplaceInstall(item, done) {
+function marketplaceInstall(item: MarketplaceRow, done: (error: string | null, method?: string) => void): void {
   installMarketplacePlugin(item, function (err) { done(err, "git"); });
 }
 
@@ -302,7 +316,7 @@ function marketplaceInstall(item, done) {
 // action does both. Both calls are guarded (absent capability -> graceful flash,
 // same as a capability-marketplace row); `done()` always runs so the caller can
 // refresh the list/cursor and re-render.
-function installSeedPlugin(item, done) {
+function installSeedPlugin(item: MarketplaceRow, done: () => void): void {
   var addMkFn = S.capabilities && S.capabilities.addMarketplace;
   var installAppFn = S.capabilities && S.capabilities.installAppPlugin;
   if (typeof addMkFn !== "function" || typeof installAppFn !== "function") {
@@ -313,9 +327,9 @@ function installSeedPlugin(item, done) {
   S.busy = true;
   setBusyMessage("Adding " + (item.repo || item.source) + "...");
   render();
-  var addRes;
-  try { addRes = addMkFn(item.repo || item.source); }
-  catch (e) { addRes = { ok: false, error: (e && e.message) || String(e) }; }
+  var addRes: CapabilityResult;
+  try { addRes = addMkFn(item.repo || item.source || ""); }
+  catch (e) { addRes = { ok: false, error: String(e instanceof Error ? e.message : e) }; }
   if (!addRes || !addRes.ok) {
     S.busy = false;
     flash("Failed to add marketplace: " + ((addRes && addRes.error) || ""));
@@ -324,15 +338,16 @@ function installSeedPlugin(item, done) {
   }
   setBusyMessage("Installing " + item.name + "...");
   render();
-  var iares;
-  try { iares = installAppFn(item.id, item.source); }
-  catch (e) { iares = { ok: false, error: (e && e.message) || String(e) }; }
+  var iares: CapabilityResult;
+  try { iares = installAppFn(item.id || "", item.source || ""); }
+  catch (e) { iares = { ok: false, error: String(e instanceof Error ? e.message : e) }; }
   S.busy = false;
   flash(iares && iares.ok ? ("Installing " + item.name + "… restart to activate") : ("Failed: " + ((iares && iares.error) || "")));
   done();
 }
 
-export function handleKey(key) {
+/** Routes one key to whichever page or dialog currently owns it. */
+export function handleKey(key: string): void {
   // A long install/update is running off-thread; ignore every key so the user
   // stays in the current menu and can't navigate away or fire another action.
   if (S.busy) return;
@@ -346,7 +361,7 @@ export function handleKey(key) {
     if (S.capabilities && S.capabilities.activity) pages.push("activity");
     pages.push("settings");
     var pi = pages.indexOf(S.page);
-    var switchTo = function (np) {
+    var switchTo = function (np: string) {
       S.page = np; S.mode = "list";
       S.globalKeyHandler = null;   // leaving the plugin-manager gate: don't let it intercept keys on the new tab
       if (np === "activity") {
@@ -375,7 +390,8 @@ export function handleKey(key) {
   }
 }
 
-export function handleProjectKey(key) {
+/** The Projects page's keys, including its action menu and the session picker. */
+export function handleProjectKey(key: string): void {
   if (S.mode === "list") {
     if (key === "up" || key === "w") { S.cursor = Math.max(0, S.cursor - 1); }
     else if (key === "down" || key === "s") { S.cursor = Math.min(S.items.length, S.cursor + 1); }
@@ -413,7 +429,7 @@ export function handleProjectKey(key) {
     else if (key === "enter" || key === "space") {
       if (S.scursor === 0) {
         if (S.sessionHere) { cleanup(); process.exit(42); }
-        else { openProjectSession(S.sessionDir, null); }
+        else { openProjectSession(S.sessionDir); }
       } else {
         openProjectSession(S.sessionDir, S.sessionItems[S.scursor - 1].id);
       }
@@ -422,7 +438,8 @@ export function handleProjectKey(key) {
   }
 }
 
-export function handlePluginKey(key) {
+/** The Plugins page's keys, across its Installed, Marketplace and contributed sub-tabs. */
+export function handlePluginKey(key: string): void {
   if (S.mode === "pdiag") {
     if (key === "q") { cleanup(); process.exit(1); return; }
     if (key === "escape" || key === "left" || key === "enter" || key === "space") S.mode = "list";
@@ -480,7 +497,7 @@ export function handlePluginKey(key) {
             S.busy = true;
             setBusyMessage("Installing " + (mitem.name || mitem.repoName) + "...");
             render();
-            marketplaceInstall(mitem, function(merr, method) {
+            marketplaceInstall(mitem, function(merr: string | null, method?: string) {
               S.busy = false;
               if (merr) flash(merr);
               else { flash("Installed (" + method + ")! Restart to activate."); S.pluginItems = buildCombinedPluginList(); }
@@ -492,7 +509,7 @@ export function handlePluginKey(key) {
           } else if (action === "install-app") {
             S.mkMode = "browse";
             var installAppFn = S.capabilities && S.capabilities.installAppPlugin;
-            var iares = typeof installAppFn === "function" ? installAppFn(mitem.id, S.mkMarket) : { ok: false, error: "not available" };
+            var iares: CapabilityResult = typeof installAppFn === "function" ? installAppFn(mitem.id || "", S.mkMarket || "") : { ok: false, error: "not available" };
             flash(iares && iares.ok ? ("Installing " + mitem.name + "… restart to activate") : ("Failed: " + ((iares && iares.error) || "")));
             S.marketplaceItems = buildMarketplaceList();
             if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
@@ -527,7 +544,7 @@ export function handlePluginKey(key) {
       else if (key === "enter") {
         var curItem = S.marketplaceItems[S.mkCursor];
         if (curItem && curItem.isAction) {
-          S.mkAddAction = curItem.actionKey;
+          S.mkAddAction = curItem.actionKey || null;
           S.inputBuf = "";
           S.mode = "mkinput";
           return;
@@ -584,8 +601,8 @@ export function handlePluginKey(key) {
           // Install the selection SEQUENTIALLY off-thread: each callback kicks the next, so only one
           // clone runs at a time and the progress count is coherent.
           S.busy = true;
-          var failed = [];
-          var installNext = function(k) {
+          var failed: string[] = [];
+          var installNext = function(k: number) {
             if (k >= batch.length) {
               var okCount = batch.length - failed.length;
               S.mkSelected = {};
@@ -603,8 +620,8 @@ export function handlePluginKey(key) {
             var batchMethod = "git";
             setBusyMessage("Installing " + (k + 1) + "/" + batch.length + " (" + batchMethod + ")...");
             render();
-            marketplaceInstall(batchItem, function(berr) {
-              if (berr) failed.push(batchItem.name || batchItem.repoName);
+            marketplaceInstall(batchItem, function(berr: string | null) {
+              if (berr) failed.push(batchItem.name || batchItem.repoName || "");
               installNext(k + 1);
             });
           };
@@ -616,7 +633,7 @@ export function handlePluginKey(key) {
           if (quickItem.capability) {
             var installAppFn2 = S.capabilities && S.capabilities.installAppPlugin;
             if (typeof installAppFn2 !== "function") { flash("Not installable from here yet."); return; }
-            var iares2 = installAppFn2(quickItem.id, S.mkMarket);
+            var iares2 = installAppFn2(quickItem.id || "", S.mkMarket || "");
             flash(iares2 && iares2.ok ? ("Installing " + quickItem.name + "… restart to activate") : ("Failed: " + ((iares2 && iares2.error) || "")));
             S.marketplaceItems = buildMarketplaceList();
             if (S.mkCursor >= S.marketplaceItems.length) S.mkCursor = Math.max(0, S.marketplaceItems.length - 1);
@@ -633,7 +650,7 @@ export function handlePluginKey(key) {
           S.busy = true;
           setBusyMessage("Installing " + (quickItem.name || quickItem.repoName) + "...");
           render();
-          marketplaceInstall(quickItem, function(quickErr, quickMethod) {
+          marketplaceInstall(quickItem, function(quickErr: string | null, quickMethod?: string) {
             S.busy = false;
             if (quickErr) flash(quickErr);
             else { flash("Installed (" + quickMethod + ")! Restart to activate."); S.pluginItems = buildCombinedPluginList(); }
@@ -739,7 +756,7 @@ export function handlePluginKey(key) {
         if (toUpdate.length === 0) {
           flash("All plugins are already up to date.");
         } else {
-          runUpdateSequence(toUpdate, null);
+          runUpdateSequence(toUpdate);
         }
       }
       else if (action === "refresh") {
@@ -767,7 +784,7 @@ export function handlePluginKey(key) {
           savePlugins(cplugins);
         }
         S.mode = "list";
-        runUpdateSequence([pitem], null);
+        runUpdateSequence([pitem]);
       }
       else if (action === "disable-plugin") {
         var updater = getUpdater();
@@ -794,7 +811,7 @@ export function handlePluginKey(key) {
           err = updater.updateNpmPlugin(pitem.name, CONFIG_DIR, 0) || "";
         } else {
           try { execSync("npm update -g " + pitem.name, { timeout: 60000, stdio: "ignore" }); }
-          catch(e) { err = e.message; }
+          catch(e) { err = e instanceof Error ? e.message : String(e); }
         }
         S.pluginItems = buildCombinedPluginList();
         if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
@@ -872,7 +889,7 @@ export function handlePluginKey(key) {
         S.mode = "list";
         var newEnabled = !pitem.enabled;
         var toggleFn = S.capabilities && S.capabilities.setForeignPluginEnabled;
-        var tres = typeof toggleFn === "function" ? toggleFn(pitem.key, newEnabled) : { ok: false, error: "not available" };
+        var tres: CapabilityResult = typeof toggleFn === "function" ? toggleFn(pitem.key || "", newEnabled) : { ok: false, error: "not available" };
         S.pluginItems = buildCombinedPluginList();
         if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
         flash(tres && tres.ok ? (pitem.name + (newEnabled ? " enabled." : " disabled.")) : ("Failed: " + ((tres && tres.error) || "unknown error")));
@@ -891,7 +908,7 @@ export function handlePluginKey(key) {
     if (key === "up" || key === "w") { S.configConfirm = null; stepCfgCursor(-1); }
     else if (key === "down" || key === "s") { S.configConfirm = null; stepCfgCursor(1); }
     else if (key === "escape" || key === "q" || key === "left") { S.configConfirm = null; S.cfgReveal = ""; S.mode = "pactions"; }
-    else if (key === "r" && citem && citem.type === "secret") { S.cfgReveal = S.cfgReveal === citem.key ? "" : citem.key; }
+    else if (key === "r" && citem && citem.kind !== "action" && citem.type === "secret") { S.cfgReveal = S.cfgReveal === citem.key ? "" : citem.key; }
     else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
   } else if (S.mode === "confirm") {
     if (key === "y") {
@@ -944,8 +961,8 @@ export function handlePluginKey(key) {
     else if (key === "escape" || key === "q" || key === "left") { S.mode = "list"; }
     else if (key === "enter" || key === "space") {
       var pitem = S.pluginItems[S.pcursor];
-      var citem = S.commitItems[S.ccursor];
-      flash("Downgrading " + pitem.name + " to " + citem.hash + "...");
+      var commit = S.commitItems[S.ccursor];
+      flash("Downgrading " + pitem.name + " to " + commit.hash + "...");
       render();
       
       var err = "";
@@ -956,17 +973,17 @@ export function handlePluginKey(key) {
       if (updater && typeof updater.downgrade === "function") {
         var plugins = loadPlugins();
         var repo = plugins.find(function(r) { return r.name === pitem.name; });
-        err = repo ? updater.downgrade(repo, citem.hash) : "plugin not found";
+        err = repo ? updater.downgrade(repo, commit.hash) : "plugin not found";
       } else {
         var dir = join(REPOS_DIR, pitem.folderName);
         try {
           execSync("git reset --hard", { cwd: dir, timeout: 15000, stdio: "ignore" });
-          execSync("git checkout " + citem.hash, { cwd: dir, timeout: 15000, stdio: "ignore" });
+          execSync("git checkout " + commit.hash, { cwd: dir, timeout: 15000, stdio: "ignore" });
         } catch (e) {
           flash("Checkout failed"); S.mode = "list"; return;
         }
         // only this branch is our own work: updater.downgrade() reports itself
-        reportPluginAction("downgraded", pitem.name, { hash: citem.hash, message: "Downgraded " + pitem.name + " to " + citem.hash });
+        reportPluginAction("downgraded", pitem.name, { hash: commit.hash, message: "Downgraded " + pitem.name + " to " + commit.hash });
       }
       if (err === "Success" || !err) err = "";
       
@@ -977,7 +994,8 @@ export function handlePluginKey(key) {
   }
 }
 
-export function handleInputData(buf) {
+/** Raw text for the change-path prompt. */
+export function handleInputData(buf: Buffer): void {
   if (buf[0] === 27) { S.mode = "list"; S.chpathDir = ""; return; }
   if (buf[0] === 3) { cleanup(); process.exit(1); }
   if (buf[0] === 13 || buf[0] === 10) {
@@ -1025,7 +1043,8 @@ export function handleInputData(buf) {
   }
 }
 
-export function parseKey(buf) {
+/** The key one input buffer means, or nothing when it is a sequence this TUI does not act on. */
+export function parseKey(buf: Buffer): string | null {
   if (buf[0] === 27) {
     if (buf.length === 1) return "escape";
     if (buf[1] === 91) {
@@ -1047,7 +1066,8 @@ export function parseKey(buf) {
   return null;
 }
 
-export function handleConfirmKey(key) {
+/** The confirm dialog's keys, which is where every destructive action is actually carried out. */
+export function handleConfirmKey(key: string): void {
   if (key === "up" || key === "w") { S.confirmCursor = 0; return; }
   if (key === "down" || key === "s") { S.confirmCursor = 1; return; }
   var accepted = key === "y" || ((key === "enter" || key === "space") && S.confirmCursor === 0);
@@ -1069,7 +1089,7 @@ export function handleConfirmKey(key) {
       reportPluginAction("uninstalled", pitem.name, { kind: "git", message: "Uninstalled " + pitem.name });
       flash(pitem.name + " uninstalled.");
     } else if (S.confirmAction && S.confirmAction.type === "uninstall-npm") {
-      var npmName = S.confirmAction.target.name || S.confirmAction.target;
+      var npmName = S.confirmAction.target.name;
       var npmUpdater = getUpdater();
       var npmErr = "updater not available";
       if (npmUpdater && typeof npmUpdater.uninstallNpmPlugin === "function") {
@@ -1087,7 +1107,7 @@ export function handleConfirmKey(key) {
     } else if (S.confirmAction && S.confirmAction.type === "uninstall-foreign") {
       var fpitem = S.confirmAction.target;
       var uninstallFn = S.capabilities && S.capabilities.uninstallForeignPlugin;
-      var ures = typeof uninstallFn === "function" ? uninstallFn(fpitem.key) : { ok: false, error: "not available" };
+      var ures: CapabilityResult = typeof uninstallFn === "function" ? uninstallFn(fpitem.key || "") : { ok: false, error: "not available" };
       S.pluginItems = buildCombinedPluginList();
       if (S.pcursor >= S.pluginItems.length) S.pcursor = Math.max(0, S.pluginItems.length - 1);
       flash(ures && ures.ok ? (fpitem.name + " uninstalled.") : ("Failed: " + ((ures && ures.error) || "unknown error")));
@@ -1108,10 +1128,12 @@ export function handleConfirmKey(key) {
   }
 }
 
-// Every Settings sub-page's key handler: Tab cycles them all (Settings, then one per
-// contributed screen), from that sub-page's own top level; a drilled-in sub-mode
-// (pconfig, ...) owns Tab itself, never this branch.
-export function handleSettingsKey(key) {
+/**
+ * Every Settings sub-page's key handler: Tab cycles them all (Settings, then one per
+ * contributed screen), from that sub-page's own top level; a drilled-in sub-mode
+ * (pconfig, ...) owns Tab itself, never this branch.
+ */
+export function handleSettingsKey(key: string): void {
   var sub = S.settingsSubPage || "settings";
 
   if (key === "tab" && S.mode === "list") {
@@ -1134,7 +1156,7 @@ export function handleSettingsKey(key) {
     if (key === "up" || key === "w") { S.configConfirm = null; stepCfgCursor(-1); }
     else if (key === "down" || key === "s") { S.configConfirm = null; stepCfgCursor(1); }
     else if (key === "escape" || key === "q" || key === "left") { S.configConfirm = null; S.cfgReveal = ""; S.mode = "list"; }
-    else if (key === "r" && citem && citem.type === "secret") { S.cfgReveal = S.cfgReveal === citem.key ? "" : citem.key; }
+    else if (key === "r" && citem && citem.kind !== "action" && citem.type === "secret") { S.cfgReveal = S.cfgReveal === citem.key ? "" : citem.key; }
     else if ((key === "enter" || key === "space") && citem) { activateConfigItem(citem, "pcfginput"); }
     return;
   }
@@ -1144,7 +1166,7 @@ export function handleSettingsKey(key) {
   if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
   if (!S.settingsEntries || !S.settingsEntries.length) refreshSettings();
 
-  function stepEntry(dir) {
+  function stepEntry(dir: number): void {
     var n = S.settingsEntries.length;
     var i = S.settingsCursor;
     for (var step = 0; step < n; step++) {
@@ -1176,14 +1198,14 @@ export function handleSettingsKey(key) {
 // A contributed screen's own top level: rows only ever have a depth (indent) and,
 // optionally, an actionId. Cursor movement skips straight past non-actionable rows,
 // mirroring Settings' own stepEntry (which skips headers the same way).
-function handleScreenKey(key, sub) {
+function handleScreenKey(key: string, sub: string): void {
   if (key === "q" || key === "escape") { cleanup(); process.exit(1); return; }
   var page = settingsSubPages().find(function (p) { return p.id === sub; });
   var entry = page && page.entry;
   if (!entry) { S.settingsSubPage = "settings"; refreshSettings(); return; }
   var rows = S.screenRows || [];
 
-  function stepRow(dir) {
+  function stepRow(dir: number): void {
     var n = rows.length;
     var i = S.screenCursor;
     for (var step = 0; step < n; step++) {
@@ -1214,7 +1236,7 @@ function handleScreenKey(key, sub) {
 // S.busy is armed before the call, but released only inside the callback's finally: a throw
 // from within the callback body still releases it, a synchronous throw out of runScreenAction
 // itself does not, and leaves the gate armed.
-function runContributedScreenAction(entry, row) {
+function runContributedScreenAction(entry: ScreenEntry, row: ScreenRow): void {
   S.busy = true;
   runScreenAction(entry, row, function (answer) {
     try {
@@ -1226,7 +1248,8 @@ function runContributedScreenAction(entry, row) {
   });
 }
 
-export function handleMcpKey(key) {
+/** The MCP page's keys, across its Installed and Marketplace sub-tabs. */
+export function handleMcpKey(key: string): void {
   if (S.mcpMode === "catalog") {
     if (key === "tab") {
       S.inputBuf = "";
@@ -1328,8 +1351,8 @@ export function handleMcpKey(key) {
   }
 }
 
-// Read-only: no per-row action menu, just cursor movement and a manual refresh.
-export function handleActivityKey(key) {
+/** Read-only: no per-row action menu, just cursor movement and a manual refresh. */
+export function handleActivityKey(key: string): void {
   if (key === "up" || key === "w") { S.activityCursor = Math.max(0, S.activityCursor - 1); }
   else if (key === "down" || key === "s") {
     S.activityCursor = Math.min(Math.max(0, (S.activityRecords || []).length - 1), S.activityCursor + 1);
@@ -1351,7 +1374,8 @@ export function handleActivityKey(key) {
   else if (key === "q" || key === "escape") { cleanup(); process.exit(1); }
 }
 
-export function handleSearchData(buf) {
+/** Raw text for the search box, which filters whichever list is showing. */
+export function handleSearchData(buf: Buffer): void {
   if (buf[0] === 27) { S.mode = "list"; return; }
   if (buf[0] === 3) { cleanup(); process.exit(1); }
   if (buf[0] === 13 || buf[0] === 10) { S.mode = "list"; return; }
@@ -1388,8 +1412,9 @@ function refreshConfigItems() {
     if (!declaration || !S.configTarget || S.configTarget.plugin !== pluginId) return;
     // A contributed section shows only the controls it claimed, so re-resolve it rather than
     // replacing its rows with the plugin's whole flat list.
-    if (S.configTarget.sectionId) {
-      var mine = splitBySections(declaration).filter(function (s) { return s.sectionId === S.configTarget.sectionId; })[0];
+    var target = S.configTarget;
+    if (target.sectionId) {
+      var mine = splitBySections(declaration).filter(function (s) { return s.sectionId === target.sectionId; })[0];
       S.configItems = mine ? mine.items : declaration.items;
     } else {
       S.configItems = declaration.items;
@@ -1403,8 +1428,8 @@ function refreshConfigItems() {
   });
 }
 
-// Free-text entry for a non-boolean config value; Enter saves via `config set`.
-export function handleConfigInputData(buf) {
+/** Free-text entry for a non-boolean config value; Enter saves via `config set`. */
+export function handleConfigInputData(buf: Buffer): void {
   if (buf[0] === 27) { S.inputBuf = ""; S.cfgReveal = ""; S.mode = "pconfig"; return; }   // esc cancels
   if (buf[0] === 13 || buf[0] === 10) {
     var val = S.inputBuf;
@@ -1413,10 +1438,11 @@ export function handleConfigInputData(buf) {
     S.cfgReveal = "";
     S.mode = "pconfig";
     if (S.configTarget && key) {
-      var serr = S.configTarget.global ? setGlobalSetting(key, val) : setPluginConfig(S.configTarget.bundle, key, val);
+      var serr = S.configTarget.global ? setGlobalSetting(key, val) : setPluginConfig(S.configTarget.bundle || "", key, val);
       if (serr) flash(key + ": " + serr);
       else {
-        markRowSaved((S.configItems || []).find(function (row) { return row.key === key; }), val);
+        var saved = (S.configItems || []).find(function (row) { return row.key === key; });
+        if (saved && saved.kind !== "action") markRowSaved(saved, val);
         refreshConfigItems();
         flash(key + " saved (restart to apply).");
       }
@@ -1427,7 +1453,8 @@ export function handleConfigInputData(buf) {
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }
 
-export function handlePluginInputData(buf) {
+/** Raw text for the add-plugin prompt on the Plugins page. */
+export function handlePluginInputData(buf: Buffer): void {
   if (buf[0] === 27) { S.inputBuf = ""; S.mode = "list"; return; }
   if (buf[0] === 13 || buf[0] === 10) {
     var url = S.inputBuf.trim().replace(/\.git$/, "");
@@ -1449,12 +1476,14 @@ export function handlePluginInputData(buf) {
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }
 
-// Text entry for the two universal marketplace "add" actions (S.mode === "mkinput",
-// S.mkAddAction picks which). "add_plugin_url" installs via the SAME path every other
-// marketplace install uses (installMarketplacePlugin, through the resolved manager), so
-// it works identically to the CLI's `plugins install <url>`. "add_marketplace" is
-// generic, it just calls the app-registered S.capabilities.addMarketplace(input).
-export function handleMarketplaceAddInputData(buf) {
+/**
+ * Text entry for the two universal marketplace "add" actions (S.mode === "mkinput",
+ * S.mkAddAction picks which). "add_plugin_url" installs via the SAME path every other
+ * marketplace install uses (installMarketplacePlugin, through the resolved manager), so
+ * it works identically to the CLI's `plugins install <url>`. "add_marketplace" is
+ * generic, it just calls the app-registered S.capabilities.addMarketplace(input).
+ */
+export function handleMarketplaceAddInputData(buf: Buffer): void {
   if (buf[0] === 27) { S.inputBuf = ""; S.mkAddAction = null; S.mode = "list"; return; }
   if (buf[0] === 3) { cleanup(); process.exit(1); }
   if (buf[0] === 13 || buf[0] === 10) {
@@ -1469,7 +1498,7 @@ export function handleMarketplaceAddInputData(buf) {
       S.busy = true;
       setBusyMessage("Installing plugin...");
       render();
-      installMarketplacePlugin({ url: url }, function(err) {
+      installMarketplacePlugin({ name: url.split("/").pop() || url, url: url }, function(err: string | null) {
         S.busy = false;
         if (err) flash(err);
         else { flash("Installed! Restart " + APP_NAME + " to activate."); S.pluginItems = buildCombinedPluginList(); }
@@ -1480,8 +1509,8 @@ export function handleMarketplaceAddInputData(buf) {
     } else if (action === "add_marketplace") {
       var addFn = S.capabilities && S.capabilities.addMarketplace;
       if (typeof addFn !== "function") { flash("Not supported."); return; }
-      var res = {};
-      try { res = addFn(val) || {}; } catch (e) { res = { ok: false, error: (e && e.message) || String(e) }; }
+      var res: CapabilityResult = { ok: false };
+      try { res = addFn(val) || { ok: false }; } catch (e) { res = { ok: false, error: String(e instanceof Error ? e.message : e) }; }
       flash(res.ok ? "Added marketplace" : ("Failed: " + (res.error || "")));
     }
     return;
@@ -1490,12 +1519,14 @@ export function handleMarketplaceAddInputData(buf) {
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }
 
-// Multi-step "＋ Add MCP server" flow (S.mode === "mcpaddinput"): step 0 collects
-// a free-text name, step 1 toggles transport (http|stdio) via arrow keys (never
-// typed), and step 2 collects the target (a URL for http, a command for stdio).
-// Escape at any step cancels the whole flow (mirrors handleMarketplaceAddInputData).
-// On completion, calls the app-registered S.capabilities.addMcpServer(draft).
-export function handleMcpAddInputData(buf) {
+/**
+ * Multi-step "＋ Add MCP server" flow (S.mode === "mcpaddinput"): step 0 collects
+ * a free-text name, step 1 toggles transport (http|stdio) via arrow keys (never
+ * typed), and step 2 collects the target (a URL for http, a command for stdio).
+ * Escape at any step cancels the whole flow (mirrors handleMarketplaceAddInputData).
+ * On completion, calls the app-registered S.capabilities.addMcpServer(draft).
+ */
+export function handleMcpAddInputData(buf: Buffer): void {
   if (buf[0] === 3) { cleanup(); process.exit(1); }
   if (buf[0] === 27) {
     if (buf.length === 1) {
@@ -1503,12 +1534,13 @@ export function handleMcpAddInputData(buf) {
       return;
     }
     // arrow keys during the transport step toggle the selection; ignored elsewhere
-    if (S.mcpAddStep === 1 && buf[1] === 91 && (buf[2] === 65 || buf[2] === 66 || buf[2] === 67 || buf[2] === 68)) {
+    if (S.mcpAddStep === 1 && S.mcpAddDraft && buf[1] === 91 && (buf[2] === 65 || buf[2] === 66 || buf[2] === 67 || buf[2] === 68)) {
       S.mcpAddDraft.transport = S.mcpAddDraft.transport === "http" ? "stdio" : "http";
     }
     return;
   }
   if (buf[0] === 13 || buf[0] === 10) {
+    if (!S.mcpAddDraft) return;
     if (S.mcpAddStep === 0) {
       var name = S.inputBuf.trim();
       if (!name) return;
@@ -1532,8 +1564,8 @@ export function handleMcpAddInputData(buf) {
     S.inputBuf = "";
     var addFn = S.capabilities && S.capabilities.addMcpServer;
     if (typeof addFn !== "function") { flash("Not supported."); return; }
-    var res = {};
-    try { res = addFn(draft) || {}; } catch (e) { res = { ok: false, error: (e && e.message) || String(e) }; }
+    var res: CapabilityResult = { ok: false };
+    try { res = addFn(draft) || { ok: false }; } catch (e) { res = { ok: false, error: String(e instanceof Error ? e.message : e) }; }
     flash(res.ok ? "Added MCP server" : ("Failed: " + (res.error || "")));
     return;
   }
@@ -1542,9 +1574,11 @@ export function handleMcpAddInputData(buf) {
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }
 
-// raw text input routed to the active custom tab when it sets S.mode="tabinput"
-// (the parseKey whitelist can't deliver free text); the tab toggles back to "list"
-export function handleTabInputData(buf) {
+/**
+ * raw text input routed to the active custom tab when it sets S.mode="tabinput"
+ * (the parseKey whitelist can't deliver free text); the tab toggles back to "list"
+ */
+export function handleTabInputData(buf: Buffer): void {
   var activeTab = S.customTabs.find(function(t) { return t.id === S.pluginSubPage; });
   if (!activeTab || !activeTab.handleKey) { S.mode = "list"; return; }
   var key = null;

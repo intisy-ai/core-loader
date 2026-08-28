@@ -73,7 +73,7 @@ describe("mcp: scanPluginEmbeddedMcps walks every registered home", () => {
   it("finds a server planted under the second registered app's clones directory", async () => {
     const { scanPluginEmbeddedMcps } = await import("../dist/mcp.js");
     const embedded = scanPluginEmbeddedMcps();
-    assert.ok(embedded["plugin:widget-plugin:myserver"]);
-    assert.equal(embedded["plugin:widget-plugin:myserver"].command, "node");
+    assert.ok(embedded.servers["plugin:widget-plugin:myserver"]);
+    assert.equal(embedded.servers["plugin:widget-plugin:myserver"].command, "node");
   });
 });

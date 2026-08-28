@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Activity page rendering: a read-only feed sourced entirely from the injected
 // `S.capabilities.activity` reader (see tui.ts registerCapabilities). Renders
 // whatever the host loader provides; core-loader has no app-specific logic here.
@@ -6,8 +5,10 @@
 import { RST, BOLD, DIM, GRAY, WHITE, YELLOW, GREEN, RED, BG_SEL, pad, trunc, timeAgo, ACCENT, rule } from "../format.js";
 import { S } from "../state.js";
 import { hints, messageLine } from "./common.js";
+import type { PushBody, PushFoot, PushSticky } from "./common.js";
+import type { ActivityRecord } from "@intisy-ai/core";
 
-function impactGlyph(impact) {
+function impactGlyph(impact: string | undefined): string {
   if (impact === "error") return RED + "x" + RST;
   if (impact === "warning") return YELLOW + "!" + RST;
   if (impact === "notice") return GREEN + "❯" + RST;
@@ -15,7 +16,8 @@ function impactGlyph(impact) {
   return DIM + "-" + RST;   // info (default)
 }
 
-export function buildActivity(pushBody, pushFoot, cols, barW, pushSticky) {
+/** Draws the Activity page. */
+export function buildActivity(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number, pushSticky: PushSticky): void {
   var readFn = S.capabilities && S.capabilities.activity && S.capabilities.activity.read;
   var impacts = S.activityImpacts || [];
   var filterNote = impacts.length ? GRAY + " [" + impacts.join(",") + "]" + RST : "";
@@ -48,7 +50,7 @@ export function buildActivity(pushBody, pushFoot, cols, barW, pushSticky) {
   var whyW = wide ? 8 : 0;
   var textW = Math.max(10, cols - 20 - tsW - srcW - (whereW ? whereW + 1 : 0) - (whyW ? whyW + 1 : 0));
   for (var i = 0; i < records.length; i++) {
-    var rec = records[i] || {};
+    var rec = records[i] || ({} as ActivityRecord);
     var sel = i === S.activityCursor;
     var arrow = sel ? (ACCENT + " ❯ " + RST) : "   ";
     var bg = sel ? BG_SEL : "";

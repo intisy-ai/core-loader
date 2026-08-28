@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Settings tab: the global + plugin settings list, plus one sub-page per contributed
 // screen. Plugin declarations are read in the BACKGROUND (async) with a spinner, so
 // entering the tab never blocks; plugin rows show "loading…" until their declaration lands.
@@ -10,14 +9,18 @@ import { buildGlobalSection, buildSettingsEntries, firstSelectableIndex, splitBy
 import { declarationFor, readDeclaration, settingsPluginIds } from "../plugins.js";
 import { hints, messageLine, spinnerFrame, scheduleRender } from "./common.js";
 import { collectScreens, subPages, buildContributedScreen } from "./screens.js";
+import type { PushBody, PushFoot, PushSticky } from "./common.js";
+import type { SettingsRow } from "../settings-model.js";
 
 // An action row carries a human label; a setting row is addressed by its key.
-function rowLabel(row) {
+function rowLabel(row: SettingsRow): string {
   return row.kind === "action" ? row.label : row.key;
 }
 
-// Every sub-page of the Settings tab, in tab-bar/Tab-cycle order: Settings, then one per
-// contributed screen.
+/**
+ * Every sub-page of the Settings tab, in tab-bar/Tab-cycle order: Settings, then one per
+ * contributed screen.
+ */
 export function settingsSubPages() {
   return subPages(collectScreens());
 }
@@ -63,12 +66,14 @@ function readSettingsDeclarations() {
   }
 }
 
+/** Rebuilds the Settings page's sections and rows from what has been read so far. */
 export function refreshSettings(): void {
   buildSectionsFromCache();
   readSettingsDeclarations();
 }
 
-export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
+/** Draws the Settings page, or whichever contributed screen is showing. */
+export function buildSettings(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number, pushSticky: PushSticky): void {
   var sub = S.settingsSubPage || "settings";
   var pages = settingsSubPages();
 
@@ -129,7 +134,7 @@ export function buildSettings(pushBody, pushFoot, cols, barW, pushSticky) {
     pushBody("", false);
     if (S.message) pushFoot(messageLine(cols));
     pushFoot("  " + rule(barW));
-    var hasSecret = S.configItems.some(function (row) { return row.type === "secret"; });
+    var hasSecret = S.configItems.some(function (row: SettingsRow) { return row.kind !== "action" && row.type === "secret"; });
     if (S.mode === "pcfgargs") {
       var pending = S.configActionArgs;
       var last = !pending || pending.at >= pending.specs.length - 1;

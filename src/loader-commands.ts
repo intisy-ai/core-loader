@@ -1,29 +1,82 @@
 import { CONFIG_SUBDIR } from "./env.js";
-// @ts-nocheck
 // Shared slash-command engine for BOTH loaders. Each loader deploys ONLY to its
 // own app's command dir (not cross-app), so its /plugins + /accounts don't collide
-// with the other loader's. Kept core-free, the caller injects runConfigCli (from
-// its own core bundle) plus the app-specific bits.
-//
-//   makeLoaderCommands({ plugin, commandDir, loaderEntry, runConfigCli, authHint, busDrain })
-//     plugin       - package name (also the /<plugin>-config command name)
-//     commandDir   - app command subdir, supplied by the caller from its own
-//                    descriptor's commandsSubdir
-//     loaderEntry  - (configDir) => absolute path to the loader's runtime plugin.js
-//     runConfigCli - core's runConfigCli, bound to the caller's bundle
-//     authHint     - trailing sentence for the /accounts body when none are signed in
-//     busDrain     - optional; drains the event bus and surfaces each message through
-//                    the app's own notification channel (wired only by loaders whose
-//                    app supports it)
+// with the other loader's. Kept core-free: every core function it needs is injected
+// by the caller from the caller's own bundle, so this module links no core.
 
 import { join } from "path";
 import { readJson } from "./json.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 
-export function makeLoaderCommands(opts) {
+/** What one loader supplies so the shared engine can speak as that loader's app. */
+export interface LoaderCommandsOptions {
+  /** The loader's package name, which is also the `/<plugin>-config` command name. */
+  plugin: string;
+  /** The app's command subdirectory, taken from the caller's own descriptor. */
+  commandDir: string;
+  /** Resolves the absolute path of the loader's runtime `plugin.js` for one home. */
+  loaderEntry: (configDir: string) => string;
+  /** Core's `runConfigCli`, bound to the caller's bundle. */
+  runConfigCli: (pluginName: string, argv: string[]) => void;
+  /** Core's `runAllConfigCli`. Absent means this loader serves no cross-plugin settings command. */
+  runAllConfigCli?: (argv: string[], opts: { plugins: string[] }) => void;
+  /** The config names this home declares, read fresh because the CLI runs in its own process. */
+  configTargets?: (configDir: string) => string[];
+  /** The trailing sentence `/accounts` prints when no account is signed in. */
+  authHint: string;
+  /**
+   * Drains the event bus through the app's own notification channel.
+   *
+   * @remarks
+   * Wired only by a loader whose app has such a channel, which is why it is optional rather than
+   * a no-op every caller must supply.
+   */
+  busDrain?: () => void;
+}
+
+/** The little `/accounts` needs of one account to list it. */
+interface AccountLike {
+  /** The address it was signed in with. */
+  email?: string;
+  /** Its id, shown when there is no address. */
+  id?: string;
+  /** Whether it is in use. Only an explicit `false` disables it. */
+  enabled?: boolean;
+}
+
+/**
+ * The account store, by provider.
+ *
+ * @remarks
+ * Two shapes are read because the store has carried both: a bare array per provider, and an object
+ * holding one. A reader that assumed either would list nothing for half the homes in existence.
+ */
+type AccountStore = Record<string, AccountLike[] | { accounts?: AccountLike[] }>;
+
+/** One slash command, before it is rendered to the markdown file the app reads. */
+interface CommandDef {
+  /** The command's name, and the basename of the file it is written to. */
+  name: string;
+  /** The one-line summary the app lists. */
+  description: string;
+  /** The argument syntax shown beside the description. */
+  argumentHint?: string;
+  /** The shell line the app runs before handing the output to the model. */
+  shell?: string;
+  /** What the model is told to do with that output. */
+  body?: string;
+}
+
+/**
+ * Builds one loader's slash commands: the deploy step and the CLI that answers them.
+ *
+ * @param opts the app-specific bits the shared engine cannot know.
+ * @returns the two entry points a loader wires into its plugin hook.
+ */
+export function makeLoaderCommands(opts: LoaderCommandsOptions) {
   const { plugin, commandDir, loaderEntry, runConfigCli, runAllConfigCli, configTargets, authHint, busDrain } = opts;
 
-  function commandDefs(entry) {
+  function commandDefs(entry: string): CommandDef[] {
     const node = `node "${entry}"`;
     return [
       {
@@ -55,7 +108,7 @@ export function makeLoaderCommands(opts) {
     ];
   }
 
-  function render(def) {
+  function render(def: CommandDef) {
     const fm = ["---", `description: ${def.description}`];
     if (def.argumentHint) fm.push(`argument-hint: ${def.argumentHint}`);
     fm.push("---", "");
@@ -65,7 +118,7 @@ export function makeLoaderCommands(opts) {
     return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
   }
 
-  function deployLoaderCommands(configDir) {
+  function deployLoaderCommands(configDir: string) {
     try {
       const dir = join(configDir, commandDir);
       mkdirSync(dir, { recursive: true });
@@ -77,7 +130,7 @@ export function makeLoaderCommands(opts) {
     }
   }
 
-  function listPlugins(configDir) {
+  function listPlugins(configDir: string) {
     for (const p of [join(configDir, CONFIG_SUBDIR, "plugins.json"), join(configDir, "plugins.json")]) {
       const arr = readJson(p);
       if (arr === null) continue;
@@ -88,13 +141,14 @@ export function makeLoaderCommands(opts) {
     console.log("No plugins.json found.");
   }
 
-  function listAccounts(configDir) {
+  function listAccounts(configDir: string) {
     for (const p of [join(configDir, CONFIG_SUBDIR, "accounts.json"), join(configDir, "accounts.json"), join(configDir, CONFIG_SUBDIR, "core-auth-accounts.json"), join(configDir, "core-auth-accounts.json")]) {
-      const store = readJson(p);
+      const store = readJson<AccountStore>(p);
       if (store === null || typeof store !== "object") continue;
-      const lines = [];
+      const lines: string[] = [];
       for (const provider of Object.keys(store)) {
-        const accts = Array.isArray(store[provider]) ? store[provider] : (store[provider]?.accounts || []);
+        const held = store[provider];
+        const accts = Array.isArray(held) ? held : (held?.accounts || []);
         for (const a of accts) lines.push(`- [${provider}] ${a.email || a.id}${a.enabled === false ? " (disabled)" : ""}`);
       }
       return console.log(lines.length ? lines.join("\n") : "No accounts signed in.");
@@ -102,7 +156,7 @@ export function makeLoaderCommands(opts) {
     console.log("No accounts store found.");
   }
 
-  async function maybeRunCli(configDir) {
+  async function maybeRunCli(configDir: string) {
     const argv = process.argv.slice(2);
     if (argv[0] === "config") {
       runConfigCli(plugin, argv.slice(1));
@@ -134,5 +188,10 @@ export function makeLoaderCommands(opts) {
     return false;
   }
 
-  return { deployLoaderCommands, maybeRunCli };
+  return {
+    /** Writes this loader's command files into the app's command directory. */
+    deployLoaderCommands,
+    /** Answers one of those commands, saying whether it was one of them. */
+    maybeRunCli,
+  };
 }
