@@ -7,20 +7,21 @@
 // no-op, so the TUI works with Activity absent. The read side stays on
 // S.capabilities.activity.read, where the views need it.
 
-/** Why something happened, carried down a scope so every record inside it inherits the same reason. */
-export type LoaderCause = {
-  /** What set the work in motion. */
-  kind: string;
-  /** Where it was set in motion, for a cause a person triggered. */
-  surface?: string;
-  /** Anything more the cause is worth qualifying by. */
-  detail?: string;
-};
+import type { ActivitySpec, Cause } from "@intisy-ai/core";
+
+/**
+ * Why something happened, carried down a scope so every record inside it inherits the same reason.
+ *
+ * @remarks
+ * Core's own `Cause`, not a copy of it: the host that installs the seam records through core, so a
+ * looser shape here would only be caught at the boundary, by whichever loader typed itself first.
+ */
+export type LoaderCause = Cause;
 
 /** The write side of Activity, as the host injects it. Every member absent means Activity is simply off. */
 export type LoaderActivitySeam = {
   /** Records one activity. */
-  emit?: (spec: Record<string, unknown>) => void;
+  emit?: (spec: ActivitySpec) => void;
   /**
    * Runs something inside a cause, so every record it makes inherits that reason.
    *
@@ -41,7 +42,7 @@ export function setActivitySeam(seam: LoaderActivitySeam | null | undefined): vo
 }
 
 /** Records one activity, and never throws: Activity is not worth breaking an action for. */
-export function emitLoaderActivity(spec: Record<string, unknown>): void {
+export function emitLoaderActivity(spec: ActivitySpec): void {
   try { SEAM.emit?.(spec); } catch { /* activity is never worth breaking an action for */ }
 }
 
