@@ -57,9 +57,11 @@ export function getBinDir() {
   return join(homedir(), ".local", "bin");
 }
 
-// Resolve the plugin that manages plugins in THIS home, then import it. Disk only: this runs inside
-// an app's plugin activation under a hook timeout, where reading a marketplace over the network is
-// the wrong thing to do.
+/**
+ * Resolve the plugin that manages plugins in THIS home, then import it. Disk only: this runs inside
+ * an app's plugin activation under a hook timeout, where reading a marketplace over the network is
+ * the wrong thing to do.
+ */
 export async function loadUpdater(configDir: string): Promise<PluginManagerModule> {
   const paths = homePaths(configDir);
   const ref = resolveFromHome(paths);
@@ -75,8 +77,10 @@ export async function loadUpdater(configDir: string): Promise<PluginManagerModul
   throw new Error(ref.id + " declares " + PLUGIN_MANAGEMENT_CAPABILITY + " but no module of it could be imported" + (failures.length ? " (" + failures.join("; ") + ")" : ""));
 }
 
-// Run the plugin manager's earlyLaunch on activation. `log(message)` is the caller's
-// per-plugin logger; skipped when we're already inside a plugin manager run.
+/**
+ * Run the plugin manager's earlyLaunch on activation. `log(message)` is the caller's
+ * per-plugin logger; skipped when we're already inside a plugin manager run.
+ */
 export async function runEarlyLaunchHooks(configDir: string, log: (message: string) => void) {
   if (process.env.INTISY_PLUGIN_ACTIVATION === "1" || process.env.PLUGIN_UPDATER_ACTIVATION === "1") {
     log("Updates driven by the plugin manager (activation context), skipping earlyLaunch");
@@ -97,10 +101,12 @@ export async function runEarlyLaunchHooks(configDir: string, log: (message: stri
   }
 }
 
-// Provider handlers deployed under <configDir>/repos: each plugin declares them in its
-// package.json via its PROVIDER_MANIFEST_KEY (or a top-level `authProviders`), plus the lanes a
-// plugin materializes into this home (see homeDynamicProviders). One scan shared by the loader
-// CLI's provider/doctor views and the CC proxy's request router.
+/**
+ * Provider handlers deployed under <configDir>/repos: each plugin declares them in its
+ * package.json via its PROVIDER_MANIFEST_KEY (or a top-level `authProviders`), plus the lanes a
+ * plugin materializes into this home (see homeDynamicProviders). One scan shared by the loader
+ * CLI's provider/doctor views and the CC proxy's request router.
+ */
 export function readDeployedProviders(reposDir: string, configDir: string = dirname(reposDir)): DeployedProvider[] {
   const out: DeployedProvider[] = [];
   let repos: string[] = [];

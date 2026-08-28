@@ -22,9 +22,11 @@ export type ProxyServerLike = {
 // typed here (no import from core) so core-loader stays dependency-free; the
 // host loader injects an emitActivity backed by core's real emitEvent.
 
-// TProfile is left generic (not imported from core-proxy) so this module never
-// depends on an app-proxy's RoutingProfile type; callers pass their own profile
-// value and its shape is opaque here.
+/**
+ * TProfile is left generic (not imported from core-proxy) so this module never
+ * depends on an app-proxy's RoutingProfile type; callers pass their own profile
+ * value and its shape is opaque here.
+ */
 export type StartLoaderProxyOptions<TProfile = unknown> = {
   createProxyServer: (opts: {
     configDir: string;
@@ -89,11 +91,13 @@ function stampStartMarker(configDir: string) {
   } catch {}
 }
 
-// Starts an app's loader-proxy daemon: builds the dynamic provider resolver off
-// core-loader's own readDeployedProviders, spins up the injected proxy server,
-// and stamps the start-marker once listening. Each app's src/proxy.ts becomes a
-// thin entry point that just supplies createProxyServer/makeDynamicResolver
-// (from its own app-proxy) + profile + port.
+/**
+ * Starts an app's loader-proxy daemon: builds the dynamic provider resolver off
+ * core-loader's own readDeployedProviders, spins up the injected proxy server,
+ * and stamps the start-marker once listening. Each app's src/proxy.ts becomes a
+ * thin entry point that just supplies createProxyServer/makeDynamicResolver
+ * (from its own app-proxy) + profile + port.
+ */
 export function startLoaderProxy<TProfile = unknown>(
   options: StartLoaderProxyOptions<TProfile>,
 ): Promise<StartedLoaderProxy> {

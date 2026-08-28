@@ -14,8 +14,10 @@ export function readJson<T = unknown>(file: string, fallback: T | null = null): 
   }
 }
 
-// Some app configs carry // comments, which JSON.parse rejects. Stripping
-// whole-line comments only, so a // inside a string value survives.
+/**
+ * Some app configs carry // comments, which JSON.parse rejects. Stripping
+ * whole-line comments only, so a // inside a string value survives.
+ */
 export function readJsonc<T = unknown>(file: string, fallback: T | null = null): T | null {
   try {
     const parsed = JSON.parse(readFileSync(file, "utf8").replace(/^\s*\/\/[^\n]*/gm, ""));

@@ -140,7 +140,7 @@ export function queryProjects(): ProjectRecord[] {
   } catch (e) { return []; }
 }
 
-// Sessions for a project dir come from the active app's capability (absent -> none).
+/** Sessions for a project dir come from the active app's capability (absent -> none). */
 export function listSessions(dir: string): SessionEntry[] {
   var fn = S.capabilities && S.capabilities.listSessions;
   try { return typeof fn === "function" ? (fn(dir) || []) : []; } catch (e) { return []; }
@@ -223,15 +223,19 @@ export function openProject(item: ProjectItem): void {
   process.exit(0);
 }
 
-// Exact cc-wrapper payload: dir alone (new session) or dir + LF + sessionId (resume).
-// Pure so the cross-repo contract with the cc wrapper is unit-testable.
+/**
+ * Exact cc-wrapper payload: dir alone (new session) or dir + LF + sessionId (resume).
+ * Pure so the cross-repo contract with the cc wrapper is unit-testable.
+ */
 export function sessionPayload(dir: string, sessionId?: string): string {
   return sessionId ? (dir + "\n" + sessionId) : dir;
 }
 
-// Emit the launch payload for the cc wrapper: line 1 = dir, optional line 2 =
-// sessionId. A null/empty id writes the dir alone (identical to openProject, so
-// the wrapper starts a fresh session). Uses the same CC_OUTPUT channel.
+/**
+ * Emit the launch payload for the cc wrapper: line 1 = dir, optional line 2 =
+ * sessionId. A null/empty id writes the dir alone (identical to openProject, so
+ * the wrapper starts a fresh session). Uses the same CC_OUTPUT channel.
+ */
 export function openProjectSession(dir: string, sessionId?: string): void {
   cleanup();
   outputDir(sessionPayload(dir, sessionId));
@@ -282,8 +286,10 @@ export function getProjectId(dir: string): string | null {
   } catch (e) { return null; }
 }
 
-// Records the new project id in the marker file the active app declares inside a project's own
-// .git directory. An app that declares none (markerFile absent) writes nothing.
+/**
+ * Records the new project id in the marker file the active app declares inside a project's own
+ * .git directory. An app that declares none (markerFile absent) writes nothing.
+ */
 export function writeProjectMarker(projectDir: string, markerFile: string | undefined, projectId: string): void {
   if (!markerFile) return;
   try {

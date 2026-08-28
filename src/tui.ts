@@ -137,8 +137,10 @@ function checkForUpdates() {
 if (autoUpdateCheck()) setTimeout(checkForUpdates, updateCheckDelayMs());
 
 
-// Registry Pattern: plugins extend the TUI by exporting a function from tui-extension.js
-// The function receives a tuiApi object with registerTab() to add custom tabs
+/**
+ * Registry Pattern: plugins extend the TUI by exporting a function from tui-extension.js
+ * The function receives a tuiApi object with registerTab() to add custom tabs
+ */
 export var tuiApi = {
   registerTab: function(tab: CustomTab) {
     if (tab && tab.id && tab.label && !S.customTabs.some(function(t) { return t.id === tab.id; })) {

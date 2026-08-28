@@ -14,9 +14,11 @@ interface AppSettings {
   hooks?: Record<string, unknown[]>;
 }
 
-// Registers the drain hooks pointing at `node "<loaderEntry>" bus-drain`, and clears
-// out the retired read-truncate queue artifacts. Idempotent. loaderEntry is the
-// absolute path to the loader's runtime plugin.js (which handles the bus-drain CLI).
+/**
+ * Registers the drain hooks pointing at `node "<loaderEntry>" bus-drain`, and clears
+ * out the retired read-truncate queue artifacts. Idempotent. loaderEntry is the
+ * absolute path to the loader's runtime plugin.js (which handles the bus-drain CLI).
+ */
 export function ensureNotifyDrainHook(configDir: string, loaderEntry: string): void {
   try {
     const settingsPath = join(configDir, "settings.json");

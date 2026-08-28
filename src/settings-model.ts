@@ -78,9 +78,11 @@ export type ConfigTarget = {
   sectionId?: string;
 };
 
-// The host loader injects core's own declaration of the shared settings (defaults plus
-// field types), so a key core adds shows up here with no change. The local constant is
-// only the fallback for a host that injects nothing.
+/**
+ * The host loader injects core's own declaration of the shared settings (defaults plus
+ * field types), so a key core adds shows up here with no change. The local constant is
+ * only the fallback for a host that injects nothing.
+ */
 export function buildGlobalSection(): SettingsSection {
   const injected = S.capabilities.globalSettings || null;
   const defaults = (injected && injected.defaults) || GLOBAL_SETTINGS_DEFAULTS;
@@ -89,9 +91,11 @@ export function buildGlobalSection(): SettingsSection {
   return { label: "Global", kind: "global", file: "settings.json", bundle: null, items };
 }
 
-// The config file a declaration edits. This is read back as a real path (the editor header names it,
-// and any surface reading a plugin's config must name the same file), so it follows the config name
-// the plugin reports for ITSELF, never the id surfaces route by. One helper, so a second caller cannot drift.
+/**
+ * The config file a declaration edits. This is read back as a real path (the editor header names it,
+ * and any surface reading a plugin's config must name the same file), so it follows the config name
+ * the plugin reports for ITSELF, never the id surfaces route by. One helper, so a second caller cannot drift.
+ */
 export function configFileFor(cfg: PluginDeclaration | null | undefined): string {
   return ((cfg && cfg.configName) || (cfg && cfg.name)) + ".json";
 }
@@ -107,10 +111,12 @@ function actionRow(action: ActionSpec): SettingsAction {
   return row;
 }
 
-// The claim rule, applied to this surface's flat rows: a setting or action NAMED by a
-// contributed section belongs to that section, and whatever no section claimed stays the
-// plugin's own group. A section that claims nothing resolvable is dropped rather than
-// listed empty.
+/**
+ * The claim rule, applied to this surface's flat rows: a setting or action NAMED by a
+ * contributed section belongs to that section, and whatever no section claimed stays the
+ * plugin's own group. A section that claims nothing resolvable is dropped rather than
+ * listed empty.
+ */
 export function splitBySections(cfg: PluginDeclaration): SettingsSection[] {
   const name = cfg.name;
   const file = configFileFor(cfg);
@@ -145,8 +151,10 @@ export function splitBySections(cfg: PluginDeclaration): SettingsSection[] {
   return sections;
 }
 
-// Only declarations already read: this runs on a render path, so it never starts a capability call
-// or a child process of its own.
+/**
+ * Only declarations already read: this runs on a render path, so it never starts a capability call
+ * or a child process of its own.
+ */
 export function buildPluginSections(): SettingsSection[] {
   const out: SettingsSection[] = [];
   for (const pluginId of settingsPluginIds()) {
@@ -162,8 +170,10 @@ export type SettingsEntry =
   | { type: "group"; section: SettingsSection }
   | { type: "loading"; label: string };   // a plugin whose declaration has not landed yet
 
-// `sections` holds only resolved groups (Global + plugins with settings); `loading` holds the
-// ids of plugins whose declaration is still being read in the background (rendered with a spinner).
+/**
+ * `sections` holds only resolved groups (Global + plugins with settings); `loading` holds the
+ * ids of plugins whose declaration is still being read in the background (rendered with a spinner).
+ */
 export function buildSettingsEntries(sections: SettingsSection[], loading: string[] = []): SettingsEntry[] {
   const entries: SettingsEntry[] = [];
   const globals = sections.filter((s) => s.kind === "global");
@@ -184,7 +194,7 @@ export function buildSettingsEntries(sections: SettingsSection[], loading: strin
   return entries;
 }
 
-// Only "group" rows are selectable, nav skips headers AND loading placeholders.
+/** Only "group" rows are selectable, nav skips headers AND loading placeholders. */
 export function firstSelectableIndex(entries: SettingsEntry[]): number {
   for (let i = 0; i < entries.length; i++) if (entries[i].type === "group") return i;
   return 0;

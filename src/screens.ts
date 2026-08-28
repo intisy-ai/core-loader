@@ -48,9 +48,11 @@ function cells(entry: Record<string, unknown>, keys: string[]): string {
 // than degrade.
 const UNAVAILABLE_TUI_KINDS = new Set(["form", "fields", "actions", "meter"]);
 
-// One row per collection entry, because a terminal list is the only shape this surface has.
-// A block whose source is empty contributes its declared empty text instead of nothing, so a
-// reader can tell "no snapshots yet" from "this block failed to load".
+/**
+ * One row per collection entry, because a terminal list is the only shape this surface has.
+ * A block whose source is empty contributes its declared empty text instead of nothing, so a
+ * reader can tell "no snapshots yet" from "this block failed to load".
+ */
 export function screenRows(spec: ScreenSpec, sources: Record<string, unknown>): ScreenRow[] {
   const out: ScreenRow[] = [];
   for (const row of flattenScreen(screenLayoutFor(spec, "tui"))) {

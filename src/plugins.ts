@@ -159,13 +159,15 @@ export function gitText(args: string[], cwd: string): string {
   } catch { return ""; }
 }
 
-// Reads the update-status cache the plugin manager WRITES (`<configDir>/cache/
-// plugin-updates.json`, configDir = dirname(REPOS_DIR)), the single source of
-// truth for real remote-vs-local update state. The plugin manager computes this
-// during earlyLaunch (git fetch + npm registry checks); the TUI just reads it so
-// the Installed list reflects reality on load, not only after a manual "F".
-// Best-effort like every other cache read in this codebase: any failure (no
-// file yet, bad JSON) returns null and callers fall back to current behavior.
+/**
+ * Reads the update-status cache the plugin manager WRITES (`<configDir>/cache/
+ * plugin-updates.json`, configDir = dirname(REPOS_DIR)), the single source of
+ * truth for real remote-vs-local update state. The plugin manager computes this
+ * during earlyLaunch (git fetch + npm registry checks); the TUI just reads it so
+ * the Installed list reflects reality on load, not only after a manual "F".
+ * Best-effort like every other cache read in this codebase: any failure (no
+ * file yet, bad JSON) returns null and callers fall back to current behavior.
+ */
 export function readUpdateCache() {
   try {
     var cachePath = join(dirname(REPOS_DIR), "cache", "plugin-updates.json");
@@ -248,9 +250,11 @@ function gitTextAsync(args: string[], cwd: string, cb: (out: string) => void): v
   });
 }
 
-// Fetch each git plugin's remote HEAD OFF the main thread (parallel), then invoke
-// done() once all complete. `git fetch` hits the network (up to 15s each); running
-// it synchronously would freeze the UI, so async keeps the loop free and the spinner animating.
+/**
+ * Fetch each git plugin's remote HEAD OFF the main thread (parallel), then invoke
+ * done() once all complete. `git fetch` hits the network (up to 15s each); running
+ * it synchronously would freeze the UI, so async keeps the loop free and the spinner animating.
+ */
 export function fetchPluginRemotes(pluginItems: PluginRow[], done?: () => void): void {
   var targets = pluginItems.filter(function(p: PluginRow) { return p.type !== "npm" && !p.foreign && p.installed && p.enabled !== false; });
   var remaining = targets.length;
@@ -320,11 +324,13 @@ export function buildCombinedPluginList(): PluginRow[] {
   return git.concat(npm).concat(buildForeignPluginList());
 }
 
-// The host app's OWN plugins, exposed via S.capabilities.foreignPlugins() ->
-// [{name, source, enabled, version}]. Absent capability -> []. Tagged `foreign: true`
-// (+ `key` = "name@source", the CLI's own identifier) so callers can guard them out
-// of every updater-only action (update/commits/configure operate on a git clone that
-// simply doesn't exist for these rows).
+/**
+ * The host app's OWN plugins, exposed via S.capabilities.foreignPlugins() ->
+ * [{name, source, enabled, version}]. Absent capability -> []. Tagged `foreign: true`
+ * (+ `key` = "name@source", the CLI's own identifier) so callers can guard them out
+ * of every updater-only action (update/commits/configure operate on a git clone that
+ * simply doesn't exist for these rows).
+ */
 export function buildForeignPluginList(): PluginRow[] {
   var fpFn = S.capabilities && S.capabilities.foreignPlugins;
   if (typeof fpFn !== "function") return [];
@@ -432,18 +438,22 @@ export function getPluginActions(pitem: PluginRow): ActionRow[] {
   return a;
 }
 
-// The id the plugin host knows a list item by. The host derives a plugin's id from its DEPLOYED
-// sidecar/bundle basename, which is not always the plugins.json name: an entry may name its own
-// pluginFile, and every bundle path in this repo is built from the same expression.
+/**
+ * The id the plugin host knows a list item by. The host derives a plugin's id from its DEPLOYED
+ * sidecar/bundle basename, which is not always the plugins.json name: an entry may name its own
+ * pluginFile, and every bundle path in this repo is built from the same expression.
+ */
 export function hostPluginId(pitem: PluginRow | null | undefined): string {
   if (!pitem) return "";
   return basename(pitem.pluginFile || (pitem.name + ".js"), ".js");
 }
 
-// Values only: a plugin's declared defaults and what is actually on disk. The declaration itself
-// (fields, actions, sections) comes from the settings capability; this channel exists because a
-// resolved config cannot say which keys are set and which are merely defaulted, and the editor's
-// "(default)" marker is exactly that distinction.
+/**
+ * Values only: a plugin's declared defaults and what is actually on disk. The declaration itself
+ * (fields, actions, sections) comes from the settings capability; this channel exists because a
+ * resolved config cannot say which keys are set and which are merely defaulted, and the editor's
+ * "(default)" marker is exactly that distinction.
+ */
 export function probeConfigValuesAsync(bundle: string | null): Promise<ConfigValues | null> {
   return new Promise<ConfigValues | null>(function (resolve) {
     if (!bundle || !existsSync(bundle)) { resolve(null); return; }
@@ -458,10 +468,12 @@ export function probeConfigValuesAsync(bundle: string | null): Promise<ConfigVal
   });
 }
 
-// A plugin's whole settings declaration as the Settings tab and the config editor consume it. A
-// plugin offering neither settings nor actions has nothing to configure, which is what yields null.
-// `name` is the id every surface routes by; `configName` is what the plugin itself calls its config
-// file, which is the only thing that may be used as a path.
+/**
+ * A plugin's whole settings declaration as the Settings tab and the config editor consume it. A
+ * plugin offering neither settings nor actions has nothing to configure, which is what yields null.
+ * `name` is the id every surface routes by; `configName` is what the plugin itself calls its config
+ * file, which is the only thing that may be used as a path.
+ */
 export function declarationOf(pluginId: string, bundle: string | null, schema: CapabilitySchema | null, values: ConfigValues | null): PluginDeclaration | null {
   var items = buildConfigItems({
     defaults: (values && values.defaults) || {},
@@ -503,14 +515,16 @@ export function invalidateDeclaration(pluginId: string): void {
   DECLARATIONS.delete(pluginId);
 }
 
-// Every plugin that provides the settings capability in this home.
+/** Every plugin that provides the settings capability in this home. */
 export function settingsPluginIds() {
   return providerIds(SETTINGS);
 }
 
-// Read every settings declaration once at startup, so a menu opened later is not waiting on a
-// child process to decide whether it has a Configure entry. Concurrently, because each read costs a
-// spawn bounded at 8s: serially, one unresponsive bundle would hold up the first frame by itself.
+/**
+ * Read every settings declaration once at startup, so a menu opened later is not waiting on a
+ * child process to decide whether it has a Configure entry. Concurrently, because each read costs a
+ * spawn bounded at 8s: serially, one unresponsive bundle would hold up the first frame by itself.
+ */
 export async function primeDeclarations() {
   const pending = settingsPluginIds().filter(function (pluginId) { return declarationFor(pluginId) === undefined; });
   await Promise.all(pending.map(function (pluginId) { return readDeclaration(pluginId); }));
@@ -535,8 +549,10 @@ function configRow(key: string, value: unknown, def: unknown, isSet: boolean, fi
   return item;
 }
 
-// Flatten a schema into editable rows: every key (declared default or on-disk),
-// its effective value, whether it is explicitly set, and its inferred type.
+/**
+ * Flatten a schema into editable rows: every key (declared default or on-disk),
+ * its effective value, whether it is explicitly set, and its inferred type.
+ */
 export function buildConfigItems(schema: ConfigSchemaInput | null | undefined): SettingsItem[] {
   var defaults = (schema && schema.defaults) || {};
   var current = (schema && schema.current) || {};
@@ -573,8 +589,10 @@ export function buildConfigItems(schema: ConfigSchemaInput | null | undefined): 
   return rows;
 }
 
-// Persist one setting by shelling back into the plugin's own config CLI: `config set`
-// is the only thing that writes a file, so a config appears only once actually changed.
+/**
+ * Persist one setting by shelling back into the plugin's own config CLI: `config set`
+ * is the only thing that writes a file, so a config appears only once actually changed.
+ */
 export function setPluginConfig(bundle: string, key: string, valueStr: unknown): string {
   try {
     execSync('node "' + bundle + '" config set ' + JSON.stringify(key) + ' ' + JSON.stringify(String(valueStr)), { timeout: 8000, stdio: ["ignore", "ignore", "ignore"], env: spawnEnv() });

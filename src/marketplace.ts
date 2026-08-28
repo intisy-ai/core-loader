@@ -179,8 +179,10 @@ function saveSeedCache() {
   } catch {}
 }
 
-// A fetched marketplace.json's `plugins` array -> the drill-in shape used by
-// buildMarketplacePluginsList. [] on anything malformed (never throws).
+/**
+ * A fetched marketplace.json's `plugins` array -> the drill-in shape used by
+ * buildMarketplacePluginsList. [] on anything malformed (never throws).
+ */
 export function parseSeedPlugins(json: { plugins?: unknown } | null | undefined, seedName: string): MarketplaceRow[] {
   var plugins = json && json.plugins;
   if (!Array.isArray(plugins)) return [];
@@ -189,12 +191,14 @@ export function parseSeedPlugins(json: { plugins?: unknown } | null | undefined,
   });
 }
 
-// Async, non-blocking, cache-respecting: called (guarded by S.seedFetched) every
-// time Level 1 is built, same shape as fetchCatalogsAsync. On a fresh cache hit
-// this does nothing further; otherwise it fetches each seed once, trying HEAD
-// then main then master, and degrades a seed to count 0 / empty drill-in on
-// total failure (offline, renamed default branch, missing file, bad JSON);
-// it never throws and never blocks rendering.
+/**
+ * Async, non-blocking, cache-respecting: called (guarded by S.seedFetched) every
+ * time Level 1 is built, same shape as fetchCatalogsAsync. On a fresh cache hit
+ * this does nothing further; otherwise it fetches each seed once, trying HEAD
+ * then main then master, and degrades a seed to count 0 / empty drill-in on
+ * total failure (offline, renamed default branch, missing file, bad JSON);
+ * it never throws and never blocks rendering.
+ */
 export function fetchSeedMarketplacesAsync() {
   if (S.seedFetched) return;
   S.seedFetched = true;
@@ -717,11 +721,13 @@ function seedMarketplaceRows(seenNames: Record<string, boolean>, seenRepos: Reco
   return rows;
 }
 
-// Level 1: the marketplace-of-marketplaces list. Unified Add rows up top, then every source this
-// home declares, then the loader's own built-in catalog and curated list, then every marketplace
-// the active app's extension registers via capabilities.marketplaces(), deduped by name (an
-// earlier entry always wins a name collision), then the seeded defaults not already covered by a
-// real entry.
+/**
+ * Level 1: the marketplace-of-marketplaces list. Unified Add rows up top, then every source this
+ * home declares, then the loader's own built-in catalog and curated list, then every marketplace
+ * the active app's extension registers via capabilities.marketplaces(), deduped by name (an
+ * earlier entry always wins a name collision), then the seeded defaults not already covered by a
+ * real entry.
+ */
 export function buildMarketplaceMarketsList(): MarketplaceRow[] {
   fetchCatalogsAsync();
   fetchSeedMarketplacesAsync();
@@ -758,14 +764,16 @@ export function buildMarketplaceMarketsList(): MarketplaceRow[] {
   return rows;
 }
 
-// Level 2: a single marketplace's plugins, routed by kind. A declared source's entries come from its
-// own manifests (S.sourceCatalog), grouped by the category each entry's capabilities imply. The
-// built-in community catalog is served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG,
-// which already carries a "Community"/"Curated" category on some entries). The curated Featured list
-// is served from the static FEATURED_PLUGINS list (env.ts). A seed is served from S.seedMarketplaces.
-// Anything else is assumed to be an app-registered capability marketplace, served through
-// capabilities.marketplacePlugins(name), which returns [] if the capability is absent or the
-// marketplace is unknown, so this degrades to an empty list rather than throwing.
+/**
+ * Level 2: a single marketplace's plugins, routed by kind. A declared source's entries come from its
+ * own manifests (S.sourceCatalog), grouped by the category each entry's capabilities imply. The
+ * built-in community catalog is served from the loader's own fetched catalog (S.MARKETPLACE_CATALOG,
+ * which already carries a "Community"/"Curated" category on some entries). The curated Featured list
+ * is served from the static FEATURED_PLUGINS list (env.ts). A seed is served from S.seedMarketplaces.
+ * Anything else is assumed to be an app-registered capability marketplace, served through
+ * capabilities.marketplacePlugins(name), which returns [] if the capability is absent or the
+ * marketplace is unknown, so this degrades to an empty list rather than throwing.
+ */
 export function buildMarketplacePluginsList(marketName: string, marketKind?: string | null, sourceId?: string | null): MarketplaceRow[] {
   fetchCatalogsAsync();
   // Route by the KIND captured off the Level-1 row (builtin "community"/"featured" tag, "source",
@@ -899,17 +907,21 @@ export function buildMarketplacePluginsList(marketName: string, marketKind?: str
   return res2;
 }
 
-// Single entry point every caller uses (unchanged name/signature on purpose:
-// input.ts/views/plugins.ts never need to know which level is active). Dispatches
-// on S.mkLevel so re-running it after e.g. a catalog fetch always rebuilds
-// whichever level the user is currently looking at.
+/**
+ * Single entry point every caller uses (unchanged name/signature on purpose:
+ * input.ts/views/plugins.ts never need to know which level is active). Dispatches
+ * on S.mkLevel so re-running it after e.g. a catalog fetch always rebuilds
+ * whichever level the user is currently looking at.
+ */
 export function buildMarketplaceList(): MarketplaceRow[] {
   if (S.mkLevel === "plugins" && S.mkMarket) return buildMarketplacePluginsList(S.mkMarket, S.mkMarketKind, S.mkMarketSourceId);
   return buildMarketplaceMarketsList();
 }
 
-// The action-menu entries for a marketplace item. Built once and shared by the renderer and the input
-// handler so their cursor indices always line up.
+/**
+ * The action-menu entries for a marketplace item. Built once and shared by the renderer and the input
+ * handler so their cursor indices always line up.
+ */
 export function getMarketplaceActions(item: MarketplaceRow, hasUpdater: boolean): ActionRow[] {
   var acts: ActionRow[] = [];
   if (item.seed) {
@@ -945,11 +957,13 @@ export function getMarketplaceActions(item: MarketplaceRow, hasUpdater: boolean)
   return acts;
 }
 
-// A git install registers the plugin in plugins.json and then hands it to the resolved manager in a
-// CHILD PROCESS, so the clone + npm install + build (all execSync inside the manager) block that
-// child and the TUI keeps rendering. npx is deliberately not used: it would fetch the published
-// package instead of running the manager this home actually installed. `done(err)` gets null on
-// success or an error string.
+/**
+ * A git install registers the plugin in plugins.json and then hands it to the resolved manager in a
+ * CHILD PROCESS, so the clone + npm install + build (all execSync inside the manager) block that
+ * child and the TUI keeps rendering. npx is deliberately not used: it would fetch the published
+ * package instead of running the manager this home actually installed. `done(err)` gets null on
+ * success or an error string.
+ */
 export function installMarketplacePlugin(entry: MarketplaceRow, done: (error: string | null) => void): void {
   var url = entry.url;
   var name = entry.repoName || entry.name || String(url || "").replace(/\.git$/, "").split("/").pop();

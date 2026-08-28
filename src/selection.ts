@@ -13,17 +13,21 @@ export interface SelectableEntry {
   repoName?: string;
 }
 
-// stable identity for a catalog entry, so a selection survives search filtering
-// and list refreshes (which reorder/rebuild S.marketplaceItems)
+/**
+ * stable identity for a catalog entry, so a selection survives search filtering
+ * and list refreshes (which reorder/rebuild S.marketplaceItems)
+ */
 export function selectionKey(item: SelectableEntry): string {
   if (item.full_name) return item.full_name;
   if (item.author && item.repoName) return item.author + "/" + item.repoName;
   return item.name;
 }
 
-// catalog entries the user selected that are NOT already installed. installedNames
-// is the list of installed plugin names; an entry counts as installed if its name
-// or repoName matches (mirrors buildMarketplaceList's installed check).
+/**
+ * catalog entries the user selected that are NOT already installed. installedNames
+ * is the list of installed plugin names; an entry counts as installed if its name
+ * or repoName matches (mirrors buildMarketplaceList's installed check).
+ */
 export function selectedInstallables<T extends SelectableEntry>(catalog: T[], installedNames: string[], selectedMap: Record<string, boolean>): T[] {
   var res = [];
   for (var i = 0; i < catalog.length; i++) {

@@ -50,9 +50,11 @@ export function marketplaceQuery(): (capabilityId: string) => Promise<CatalogEnt
   return (capabilityId) => queryCapability(capabilityId, sources, paths, windowMs, { log: tuiLog });
 }
 
-// The manager is an ESM bundle with top-level await, so require() throws ERR_REQUIRE_ASYNC_MODULE
-// under Node and it MUST be import()'d. Resolved and imported once at TUI startup; getUpdater()
-// then answers the sync callers from the cache.
+/**
+ * The manager is an ESM bundle with top-level await, so require() throws ERR_REQUIRE_ASYNC_MODULE
+ * under Node and it MUST be import()'d. Resolved and imported once at TUI startup; getUpdater()
+ * then answers the sync callers from the cache.
+ */
 export async function preloadUpdater(deps: PreloadDeps = {}) {
   if (S.UPDATER_MODULE !== undefined) return S.UPDATER_MODULE;
   const paths = homePaths(CONFIG_DIR);
@@ -97,8 +99,10 @@ export function getUpdater() {
   return S.UPDATER_MODULE || null;
 }
 
-// The manager's package directory, cached by preloadUpdater(). setupPlugin passes it to a
-// child process (via S.UPDATER_ENTRY) so updatePluginPublic runs off the main thread.
+/**
+ * The manager's package directory, cached by preloadUpdater(). setupPlugin passes it to a
+ * child process (via S.UPDATER_ENTRY) so updatePluginPublic runs off the main thread.
+ */
 export function getUpdaterPath() {
   return S.UPDATER_PATH;
 }
@@ -110,9 +114,11 @@ export function getUpdaterVersion() {
   } catch { return ""; }
 }
 
-// Run the updater's updatePluginPublic (git + build + deploy + activate) in a
-// child node process so the git/build execSync inside the manager blocks that
-// child, not our main event loop, so the TUI keeps rendering and animating.
+/**
+ * Run the updater's updatePluginPublic (git + build + deploy + activate) in a
+ * child node process so the git/build execSync inside the manager blocks that
+ * child, not our main event loop, so the TUI keeps rendering and animating.
+ */
 export function setupPlugin(repo: PluginEntry & { branch?: string }, done: (error: string) => void): void {
   var updater = getUpdater();
   // The ENTRY is what the child imports, so it is what readiness means: a home with a deployed
@@ -197,8 +203,10 @@ export function loadNpmPlugins(): NpmPluginRow[] {
   } catch { return []; }
 }
 
-// Force getUpdater() to re-resolve on next call (after installing the engine, so the
-// gate lifts without an app restart).
+/**
+ * Force getUpdater() to re-resolve on next call (after installing the engine, so the
+ * gate lifts without an app restart).
+ */
 export function clearUpdaterCache() {
   S.UPDATER_MODULE = undefined;
   S.UPDATER_PATH = undefined;

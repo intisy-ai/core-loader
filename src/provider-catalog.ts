@@ -69,8 +69,10 @@ export function readModelCatalog(configDir: string): Record<string, ProviderCata
   return {};
 }
 
-// Every provider deployed here, deduplicated: a plugin can declare several (one per upstream
-// lane) and can add more at runtime through its dynamic manifest.
+/**
+ * Every provider deployed here, deduplicated: a plugin can declare several (one per upstream
+ * lane) and can add more at runtime through its dynamic manifest.
+ */
 export function deployedProviders(reposDir: string): DeployedProvider[] {
   const out: DeployedProvider[] = [];
   const seen = new Set<string>();
@@ -82,8 +84,10 @@ export function deployedProviders(reposDir: string): DeployedProvider[] {
   return out;
 }
 
-// One row per model, across every provider. A provider's live catalog wins; a provider that
-// ships a static list and fetches nothing falls back to that.
+/**
+ * One row per model, across every provider. A provider's live catalog wins; a provider that
+ * ships a static list and fetches nothing falls back to that.
+ */
 export function modelEntries(reposDir: string, configDir: string): ModelEntry[] {
   const catalog = readModelCatalog(configDir);
   const out: ModelEntry[] = [];
@@ -114,12 +118,14 @@ export function modelEntries(reposDir: string, configDir: string): ModelEntry[] 
   return out;
 }
 
-// Every provider a loader should list, with the models it serves. A provider with none is
-// still listed and still selectable: antigravity has no catalog until someone logs in, and
-// hiding it would leave no way to log in.
-//
-// A provider with a cached catalog but nothing deployed is listed too, with no handler, so a
-// leftover shows rather than silently disappearing along with the plugin that served it.
+/**
+ * Every provider a loader should list, with the models it serves. A provider with none is
+ * still listed and still selectable: antigravity has no catalog until someone logs in, and
+ * hiding it would leave no way to log in.
+ *
+ * A provider with a cached catalog but nothing deployed is listed too, with no handler, so a
+ * leftover shows rather than silently disappearing along with the plugin that served it.
+ */
 export function providerRows(reposDir: string, configDir: string): ProviderRow[] {
   const rows: ProviderRow[] = [];
   const index = new Map<string, ProviderRow>();

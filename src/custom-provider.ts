@@ -84,8 +84,10 @@ export function customProviderLabel(state: CustomProviderState | null | undefine
   return state.kind === "add" ? "Add a custom provider" : "Install custom providers";
 }
 
-// The chained prompts the TUI shows, as menu input-actions. Each step returns the next, so the
-// whole thing is one action from the caller's point of view.
+/**
+ * The chained prompts the TUI shows, as menu input-actions. Each step returns the next, so the
+ * whole thing is one action from the caller's point of view.
+ */
 export function addCustomProviderAction(engine: CustomProviderEngine, deps: CustomProviderActionDeps): MenuAction {
   const draft: CustomEndpointDraft = { format: deps.defaultFormat || "openai" };
   const fail = (message: string): MenuAction => ({ refresh: true, flash: message });

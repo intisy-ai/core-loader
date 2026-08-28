@@ -1,18 +1,31 @@
 // Terminal formatting: ANSI codes and width-aware string helpers (CJK counts 2).
 import { appAccent } from "./app-descriptor.js";
 
+/** The escape sequence every code below is built on. */
 export const E = "\x1b[";
+/** Resets every attribute. */
 export const RST = E + "0m";
+/** Bold. */
 export const BOLD = E + "1m";
+/** Dim, which is what an ordinary unselected row is drawn in. */
 export const DIM = E + "2m";
+/** Gray, for secondary text. */
 export const GRAY = E + "90m";
+/** White, which with bold marks the selected row. */
 export const WHITE = E + "37m";
+/** Yellow, for a caution. */
 export const YELLOW = E + "33m";
+/** Green. */
 export const GREEN = E + "32m";
+/** Cyan. */
 export const CYAN = E + "36m";
+/** Red, for a failure. */
 export const RED = E + "31m";
+/** Magenta. */
 export const MAGENTA = E + "35m";
+/** The selected row's background. */
 export const BG_SEL = E + "48;5;236m";
+/** Clears to the end of the line. */
 export const CLR = E + "K";
 
 /**
@@ -40,18 +53,38 @@ export function ansi256FromHex(hex: string): string {
 
 // The app's own accent, so the loader takes the colour of whatever it is loading. An app that
 // declares none gets the neutral secondary tone rather than another app's colour.
+/** The active app's own accent colour, falling back to a neutral blue when it declares none. */
 export const ACCENT = ansi256FromHex(appAccent()) || (E + "38;5;110m");
 
 // Muted status tones that harmonize with the accent (softer than raw ANSI 31/32/33).
-export const OK = E + "38;5;108m";       // sage green, positive (auto, enabled, true, git/active)
-export const BAD = E + "38;5;174m";      // dusty rose, problem (disabled, missing)
-export const INFO = E + "38;5;110m";     // soft blue, generic secondary/info tone (handed to custom-tab renderers)
+/** Sage green, for a positive state: enabled, automatic, true, active. */
+export const OK = E + "38;5;108m";
+/** Dusty rose, for a problem: disabled, or missing. */
+export const BAD = E + "38;5;174m";
+/** Soft blue, the generic secondary tone, handed to a contributed tab so its rows match. */
+export const INFO = E + "38;5;110m";
 
 // Solid box-drawing divider, dim gray. Used for every full-width rule.
+/**
+ * A full-width divider.
+ *
+ * @param width how many characters wide.
+ * @returns the line, already dimmed.
+ */
 export function rule(width: number): string {
   return GRAY + "─".repeat(width) + RST;
 }
 
+/**
+ * How many terminal columns a string occupies.
+ *
+ * @remarks
+ * ANSI codes are stripped first and a CJK codepoint counts as two, so a row of East Asian text
+ * lines up with a row of Latin text instead of overrunning its column by its own length again.
+ *
+ * @param str the text to measure.
+ * @returns its width in columns.
+ */
 export function stringWidth(str: string): number {
   var w = 0;
   str = String(str || "").replace(/\x1b\[[0-9;]*m/g, "");
@@ -66,6 +99,13 @@ export function stringWidth(str: string): number {
   return w;
 }
 
+/**
+ * Pads text to a column width, measured in terminal columns rather than characters.
+ *
+ * @param s the text.
+ * @param len the column width.
+ * @returns the text with trailing spaces.
+ */
 export function pad(s: string, len: number): string {
   s = String(s || "");
   var w = stringWidth(s);
@@ -74,6 +114,13 @@ export function pad(s: string, len: number): string {
   return s + padStr;
 }
 
+/**
+ * Truncates text to a column width, measured in terminal columns rather than characters.
+ *
+ * @param s the text.
+ * @param len the column width.
+ * @returns the text, shortened if it did not fit.
+ */
 export function trunc(s: string, len: number): string {
   s = String(s || "");
   if (stringWidth(s) <= len) return s;
@@ -118,6 +165,12 @@ export function isBooleanRowOn(value: unknown): boolean {
   return value === true || value === "true";
 }
 
+/**
+ * How long ago a timestamp was, in the shortest form that still says it.
+ *
+ * @param ts the moment, in epoch milliseconds.
+ * @returns a phrase such as "now" or "3d ago", or "--" when there is no timestamp.
+ */
 export function timeAgo(ts: number | undefined): string {
   if (!ts) return "--";
   var d = Date.now() - ts;

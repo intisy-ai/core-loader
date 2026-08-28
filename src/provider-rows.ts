@@ -47,8 +47,10 @@ export interface ExtraProviderRow {
   run: (tuiApi: unknown) => void;
 }
 
-// Rows the view appends after the discovered providers. Each carries a `run(tuiApi)` the view
-// calls on Enter; an empty list means there is nothing actionable to show.
+/**
+ * Rows the view appends after the discovered providers. Each carries a `run(tuiApi)` the view
+ * calls on Enter; an empty list means there is nothing actionable to show.
+ */
 export function extraProviderRows(ctx: ExtraProviderRowsContext): ExtraProviderRow[] {
   const engine = ctx.pluginByCapability(CUSTOM_ENDPOINTS.id);
   const state = customProviderState(engine, ctx.reposDir, { exists: ctx.exists, hasManager: ctx.hasManager });

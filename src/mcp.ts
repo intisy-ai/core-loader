@@ -248,11 +248,13 @@ export function uninstallMcpServer(name: string): void {
   saveMcpConfig(config);
 }
 
-// The active loader extension's mcpServers() capability, normalized to the same
-// row shape the "installed" view renders: {name, transport, detail}. Returns
-// null when the capability isn't registered (caller falls back to the legacy
-// on-disk list); returns [] on a capability call error so a broken host doesn't
-// crash the TUI.
+/**
+ * The active loader extension's mcpServers() capability, normalized to the same
+ * row shape the "installed" view renders: {name, transport, detail}. Returns
+ * null when the capability isn't registered (caller falls back to the legacy
+ * on-disk list); returns [] on a capability call error so a broken host doesn't
+ * crash the TUI.
+ */
 export function getCapabilityMcpList(): McpRow[] | null {
   var fn = S.capabilities && S.capabilities.mcpServers;
   if (typeof fn !== "function") return null;
@@ -264,11 +266,13 @@ export function getCapabilityMcpList(): McpRow[] | null {
   } catch (e) { return []; }
 }
 
-// Rows for the "Installed" MCP sub-tab. Prefers S.capabilities.mcpServers() over
-// the legacy MCP_CONFIG_PATH file when registered (the host app may not actually
-// read that file), and prepends a synthetic "＋ Add MCP server" action row when
-// addMcpServer is registered, the SAME isAction-row approach buildMarketplaceList()
-// uses, so S.mcpCursor keeps indexing straight into one flat array.
+/**
+ * Rows for the "Installed" MCP sub-tab. Prefers S.capabilities.mcpServers() over
+ * the legacy MCP_CONFIG_PATH file when registered (the host app may not actually
+ * read that file), and prepends a synthetic "＋ Add MCP server" action row when
+ * addMcpServer is registered, the SAME isAction-row approach buildMarketplaceList()
+ * uses, so S.mcpCursor keeps indexing straight into one flat array.
+ */
 export function buildInstalledMcpRows(): McpRow[] {
   var capList = getCapabilityMcpList();
   var rows = (capList !== null ? capList : getInstalledMcpList()).slice();

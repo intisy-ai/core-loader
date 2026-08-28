@@ -28,12 +28,14 @@ export interface ScreenSubPage {
   entry?: ScreenEntry;
 }
 
-// Read once into S.screenSpecs: screens() may be async and the sub-page list is walked on every
-// render frame. A row's action metadata comes from the same plugin's settings declaration, which is
-// where api keeps ActionSpec. Plugins are read concurrently (each one's two reads stay ordered,
-// since the second is skipped when the first declared no screen) because this runs at boot, where a
-// plugin that answers slowly must not delay the ones that answer at once. Promise.all preserves
-// order, so the sub-page order is still the order the host activated the plugins in.
+/**
+ * Read once into S.screenSpecs: screens() may be async and the sub-page list is walked on every
+ * render frame. A row's action metadata comes from the same plugin's settings declaration, which is
+ * where api keeps ActionSpec. Plugins are read concurrently (each one's two reads stay ordered,
+ * since the second is skipped when the first declared no screen) because this runs at boot, where a
+ * plugin that answers slowly must not delay the ones that answer at once. Promise.all preserves
+ * order, so the sub-page order is still the order the host activated the plugins in.
+ */
 export async function refreshScreenSpecs() {
   const perPlugin = await Promise.all(providerIds(SCREENS).map(async function (pluginId) {
     const specs = await readScreenSpecs(pluginId);
@@ -50,17 +52,21 @@ export function collectScreens(specs?: ScreenEntry[] | null): ScreenEntry[] {
   return entries.map((entry: ScreenEntry) => ({ plugin: entry.plugin, spec: entry.spec, actions: entry.actions || [] }));
 }
 
-// Declared metadata (label/confirm/danger) for a screen row's action id, the terminal's analogue of
-// what the dashboard's Actions.svelte resolves. An id the plugin never declared (a screen-only
-// action) still has to run, just without that metadata.
+/**
+ * Declared metadata (label/confirm/danger) for a screen row's action id, the terminal's analogue of
+ * what the dashboard's Actions.svelte resolves. An id the plugin never declared (a screen-only
+ * action) still has to run, just without that metadata.
+ */
 export function resolveScreenAction(entry: ScreenEntry | null | undefined, actionId: string): ActionSpec {
   const actions = (entry && entry.actions) || [];
   return actions.find((a: ActionSpec) => a && a.id === actionId) || { id: actionId, label: actionId };
 }
 
-// The sub-page id a screen renders under, shared by subPages (which assigns it) and refreshScreen's
-// staleness guard (which must agree on the same id to detect "the user tabbed away before this
-// response landed").
+/**
+ * The sub-page id a screen renders under, shared by subPages (which assigns it) and refreshScreen's
+ * staleness guard (which must agree on the same id to detect "the user tabbed away before this
+ * response landed").
+ */
 export function entryId(entry: ScreenEntry | null | undefined): string | null {
   return entry && entry.spec ? entry.plugin + ":" + entry.spec.id : null;
 }
@@ -96,9 +102,11 @@ export function refreshScreen(entry: ScreenEntry | null | undefined): Promise<vo
   });
 }
 
-// done always receives an ActionResult shape, exactly once, on every path including a throw: a
-// caller owns whatever it armed before the call (the busy gate) and releases it in there, so
-// skipping the call would leave the loader gated on an action nothing will ever report.
+/**
+ * done always receives an ActionResult shape, exactly once, on every path including a throw: a
+ * caller owns whatever it armed before the call (the busy gate) and releases it in there, so
+ * skipping the call would leave the loader gated on an action nothing will ever report.
+ */
 export function runScreenAction(entry: ScreenEntry | null | undefined, row: ScreenRow | null | undefined, done?: (answer: ActionResult) => void): Promise<void> | undefined {
   const finish = typeof done === "function" ? done : function () {};
   var reported = false;
@@ -119,8 +127,10 @@ export function runScreenAction(entry: ScreenEntry | null | undefined, row: Scre
   });
 }
 
-// One row per flattened screen node, indented by its depth; a row carrying an actionId is the only
-// kind that can be selected/run (S.screenCursor only ever rests on one).
+/**
+ * One row per flattened screen node, indented by its depth; a row carrying an actionId is the only
+ * kind that can be selected/run (S.screenCursor only ever rests on one).
+ */
 export function buildContributedScreen(pushBody: PushBody, pushFoot: PushFoot, cols: number, barW: number, pushSticky: PushSticky, entry?: ScreenEntry): void {
   var label = (entry && entry.spec && entry.spec.label) || "Screen";
   pushSticky("  " + BOLD + WHITE + label + RST);

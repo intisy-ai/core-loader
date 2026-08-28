@@ -62,7 +62,7 @@ export interface FeaturedPluginEntry {
   featured?: boolean;
 }
 
-// MCP Server Catalog (curated, verified packages)
+/** MCP Server Catalog (curated, verified packages) */
 export const MCP_CATALOG: McpCatalogEntry[] = [
   // Search & Research
   { name: "brave-search", desc: "Web search via Brave API", command: "npx", args: ["-y", "@modelcontextprotocol/server-brave-search"], env: { BRAVE_API_KEY: "" }, category: "Search" },
@@ -127,11 +127,13 @@ export const CURATED_MCP_REPOS: Record<string, string> = {
 // runtime carry no curated flag, which is correct.
 MCP_CATALOG.forEach(function (e) { e.curated = true; if (CURATED_MCP_REPOS[e.name]) e.full_name = CURATED_MCP_REPOS[e.name]; });
 
-// Popular marketplaces seeded into Level 1 for every user, even before they've
-// added them to the host app. name -> github "owner/repo"; marketplace.ts fetches
-// each repo's .claude-plugin/marketplace.json (HEAD, falling back to main/master)
-// to derive a plugin count + drill-in list, cached on disk (see fetchSeedMarketplacesAsync).
-// Verified list, do NOT add unverified repos here.
+/**
+ * Popular marketplaces seeded into Level 1 for every user, even before they've
+ * added them to the host app. name -> github "owner/repo"; marketplace.ts fetches
+ * each repo's .claude-plugin/marketplace.json (HEAD, falling back to main/master)
+ * to derive a plugin count + drill-in list, cached on disk (see fetchSeedMarketplacesAsync).
+ * Verified list, do NOT add unverified repos here.
+ */
 export const DEFAULT_MARKETPLACES: SeedMarketplaceEntry[] = [
   { name: "claude-plugins-official", repo: "anthropics/claude-plugins-official" },
   { name: "claude-plugins-community", repo: "anthropics/claude-plugins-community" },
@@ -150,12 +152,14 @@ export const DEFAULT_MARKETPLACES: SeedMarketplaceEntry[] = [
   { name: "claude-skills-marketplace", repo: "mhattingpete/claude-skills-marketplace" },
 ];
 
-// Standalone individual plugin repos (not marketplaces) curated for a built-in
-// "Featured" catalog shown in Level 1 alongside "community" and any declared
-// marketplace source (see marketplace.ts loaderOwnMarketplaces). Each installs
-// like any other catalog plugin, git clone via the updater, using the derived
-// .url below; there is no marketplace.json to fetch, so these never go through
-// the seed fetch machinery. Verified list, do NOT add unverified repos here.
+/**
+ * Standalone individual plugin repos (not marketplaces) curated for a built-in
+ * "Featured" catalog shown in Level 1 alongside "community" and any declared
+ * marketplace source (see marketplace.ts loaderOwnMarketplaces). Each installs
+ * like any other catalog plugin, git clone via the updater, using the derived
+ * .url below; there is no marketplace.json to fetch, so these never go through
+ * the seed fetch machinery. Verified list, do NOT add unverified repos here.
+ */
 export const FEATURED_PLUGINS: FeaturedPluginEntry[] = [
   { name: "claude-mem", repo: "thedotmack/claude-mem", description: "Persistent cross-session memory (capture/compress/reinject)", category: "memory" },
   { name: "hindsight", repo: "vectorize-io/hindsight", description: "Agent memory that learns (+ hindsight-skills)", category: "memory" },
@@ -188,10 +192,14 @@ FEATURED_PLUGINS.forEach(function(e) {
   e.category = e.category.charAt(0).toUpperCase() + e.category.slice(1);
 });
 
-// The de-facto marketplace manifest path every seeded marketplace repo publishes. A third party's
-// file format, read identically whatever app is running.
+/**
+ * The de-facto marketplace manifest path every seeded marketplace repo publishes. A third party's
+ * file format, read identically whatever app is running.
+ */
 export const MARKETPLACE_MANIFEST_PATH = ".claude-plugin/marketplace.json";
 
-// The manifest key several provider repositories publish in their own package.json to declare the
-// auth providers they carry. Renaming it is a cross-repo change, so this library reads it as given.
+/**
+ * The manifest key several provider repositories publish in their own package.json to declare the
+ * auth providers they carry. Renaming it is a cross-repo change, so this library reads it as given.
+ */
 export const PROVIDER_MANIFEST_KEY = "claudeHub";

@@ -76,9 +76,11 @@ function runConfigAction(actionId: string, label: string, input: Record<string, 
   });
 }
 
-// Free-text entry for one of an action's declared args. Enter takes the value and moves to the next;
-// the last one runs the action with everything collected. Esc abandons the whole action rather than
-// one arg, since a half-collected action is not one the plugin declared.
+/**
+ * Free-text entry for one of an action's declared args. Enter takes the value and moves to the next;
+ * the last one runs the action with everything collected. Esc abandons the whole action rather than
+ * one arg, since a half-collected action is not one the plugin declared.
+ */
 export function handleConfigActionArgsData(buf: Buffer): void {
   var pending = S.configActionArgs;
   if (!pending) { S.mode = "pconfig"; return; }
@@ -251,9 +253,11 @@ function runUpdateSequence(toUpdate: PluginRow[], onDone?: (errors: string[]) =>
   for (var i = 0; i < Math.min(UPDATE_POOL_SIZE, toUpdate.length); i++) startNext();
 }
 
-// Cycle the plugins sub-tab (Installed -> Marketplace -> custom tabs -> Installed).
-// Exported so the "updater missing" gate handler in tui.ts can move the user off
-// the gated Installed tab onto the Marketplace with the same mechanics as Tab here.
+/**
+ * Cycle the plugins sub-tab (Installed -> Marketplace -> custom tabs -> Installed).
+ * Exported so the "updater missing" gate handler in tui.ts can move the user off
+ * the gated Installed tab onto the Marketplace with the same mechanics as Tab here.
+ */
 export function switchPluginSubPage() {
   S.inputBuf = "";
   if (S.pluginSubPage === "installed") {
@@ -1118,9 +1122,11 @@ export function handleConfirmKey(key: string): void {
   }
 }
 
-// Every Settings sub-page's key handler: Tab cycles them all (Settings, then one per
-// contributed screen), from that sub-page's own top level; a drilled-in sub-mode
-// (pconfig, ...) owns Tab itself, never this branch.
+/**
+ * Every Settings sub-page's key handler: Tab cycles them all (Settings, then one per
+ * contributed screen), from that sub-page's own top level; a drilled-in sub-mode
+ * (pconfig, ...) owns Tab itself, never this branch.
+ */
 export function handleSettingsKey(key: string): void {
   var sub = S.settingsSubPage || "settings";
 
@@ -1338,7 +1344,7 @@ export function handleMcpKey(key: string): void {
   }
 }
 
-// Read-only: no per-row action menu, just cursor movement and a manual refresh.
+/** Read-only: no per-row action menu, just cursor movement and a manual refresh. */
 export function handleActivityKey(key: string): void {
   if (key === "up" || key === "w") { S.activityCursor = Math.max(0, S.activityCursor - 1); }
   else if (key === "down" || key === "s") {
@@ -1414,7 +1420,7 @@ function refreshConfigItems() {
   });
 }
 
-// Free-text entry for a non-boolean config value; Enter saves via `config set`.
+/** Free-text entry for a non-boolean config value; Enter saves via `config set`. */
 export function handleConfigInputData(buf: Buffer): void {
   if (buf[0] === 27) { S.inputBuf = ""; S.cfgReveal = ""; S.mode = "pconfig"; return; }   // esc cancels
   if (buf[0] === 13 || buf[0] === 10) {
@@ -1461,11 +1467,13 @@ export function handlePluginInputData(buf: Buffer): void {
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }
 
-// Text entry for the two universal marketplace "add" actions (S.mode === "mkinput",
-// S.mkAddAction picks which). "add_plugin_url" installs via the SAME path every other
-// marketplace install uses (installMarketplacePlugin, through the resolved manager), so
-// it works identically to the CLI's `plugins install <url>`. "add_marketplace" is
-// generic, it just calls the app-registered S.capabilities.addMarketplace(input).
+/**
+ * Text entry for the two universal marketplace "add" actions (S.mode === "mkinput",
+ * S.mkAddAction picks which). "add_plugin_url" installs via the SAME path every other
+ * marketplace install uses (installMarketplacePlugin, through the resolved manager), so
+ * it works identically to the CLI's `plugins install <url>`. "add_marketplace" is
+ * generic, it just calls the app-registered S.capabilities.addMarketplace(input).
+ */
 export function handleMarketplaceAddInputData(buf: Buffer): void {
   if (buf[0] === 27) { S.inputBuf = ""; S.mkAddAction = null; S.mode = "list"; return; }
   if (buf[0] === 3) { cleanup(); process.exit(1); }
@@ -1502,11 +1510,13 @@ export function handleMarketplaceAddInputData(buf: Buffer): void {
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }
 
-// Multi-step "＋ Add MCP server" flow (S.mode === "mcpaddinput"): step 0 collects
-// a free-text name, step 1 toggles transport (http|stdio) via arrow keys (never
-// typed), and step 2 collects the target (a URL for http, a command for stdio).
-// Escape at any step cancels the whole flow (mirrors handleMarketplaceAddInputData).
-// On completion, calls the app-registered S.capabilities.addMcpServer(draft).
+/**
+ * Multi-step "＋ Add MCP server" flow (S.mode === "mcpaddinput"): step 0 collects
+ * a free-text name, step 1 toggles transport (http|stdio) via arrow keys (never
+ * typed), and step 2 collects the target (a URL for http, a command for stdio).
+ * Escape at any step cancels the whole flow (mirrors handleMarketplaceAddInputData).
+ * On completion, calls the app-registered S.capabilities.addMcpServer(draft).
+ */
 export function handleMcpAddInputData(buf: Buffer): void {
   if (buf[0] === 3) { cleanup(); process.exit(1); }
   if (buf[0] === 27) {
@@ -1555,8 +1565,10 @@ export function handleMcpAddInputData(buf: Buffer): void {
   if (buf[0] >= 32 && buf[0] <= 126) S.inputBuf += String.fromCharCode(buf[0]);
 }
 
-// raw text input routed to the active custom tab when it sets S.mode="tabinput"
-// (the parseKey whitelist can't deliver free text); the tab toggles back to "list"
+/**
+ * raw text input routed to the active custom tab when it sets S.mode="tabinput"
+ * (the parseKey whitelist can't deliver free text); the tab toggles back to "list"
+ */
 export function handleTabInputData(buf: Buffer): void {
   var activeTab = S.customTabs.find(function(t) { return t.id === S.pluginSubPage; });
   if (!activeTab || !activeTab.handleKey) { S.mode = "list"; return; }

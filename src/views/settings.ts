@@ -17,8 +17,10 @@ function rowLabel(row: SettingsRow): string {
   return row.kind === "action" ? row.label : row.key;
 }
 
-// Every sub-page of the Settings tab, in tab-bar/Tab-cycle order: Settings, then one per
-// contributed screen.
+/**
+ * Every sub-page of the Settings tab, in tab-bar/Tab-cycle order: Settings, then one per
+ * contributed screen.
+ */
 export function settingsSubPages() {
   return subPages(collectScreens());
 }
