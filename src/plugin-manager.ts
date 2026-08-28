@@ -31,6 +31,43 @@ export interface PluginManagerRef {
   source: "deployed" | "clone" | "cache" | "catalog";
 }
 
+/**
+ * What the plugin manager's module exposes, as far as this loader ever asks.
+ *
+ * @remarks
+ * Every member is optional because the manager is resolved by CAPABILITY, not by name: whichever
+ * plugin a home carries may be older or newer than this loader, and a missing function must degrade
+ * to a message rather than to a crash. Every call site therefore tests for the function first.
+ */
+export interface PluginManagerModule {
+  /** The git-backed plugins this home holds. */
+  getPlugins?: (configDir: string) => unknown[];
+  /** The npm plugins the app's own list holds. */
+  getNpmPlugins?: (configDir: string) => unknown[];
+  /** The update pass a loader runs on activation. */
+  earlyLaunch?: (configDir: string, plugins: unknown[]) => Promise<void>;
+  /** Clones, builds, deploys and activates one plugin. */
+  updatePluginPublic?: (name: string, url?: string, branch?: string) => Promise<void>;
+  /** Updates one plugin. */
+  updateOne?: (configDir: string, name: string) => Promise<void>;
+  /** Updates every plugin. */
+  updateAll?: (configDir: string) => Promise<void>;
+  /** Updates one npm plugin, answering with an error message or an empty string. */
+  updateNpmPlugin?: (name: string, configDir: string, retries: number) => string;
+  /** Removes one npm plugin, answering with an error message or an empty string. */
+  uninstallNpmPlugin?: (name: string, configDir: string) => string;
+  /** Turns one plugin off without removing it. */
+  disable?: (plugin: unknown) => void;
+  /** Removes one plugin. */
+  uninstall?: (plugin: unknown) => void;
+  /** Moves one clone back to an earlier commit, answering with an error message or an empty string. */
+  downgrade?: (plugin: unknown, commit: string) => string;
+  /** Whether one clone follows the prerelease channel, and whether that channel has something newer. */
+  pluginChannelState?: (configDir: string, name: string) => { onExperimental: boolean; experimentalAvailable: boolean | null };
+  /** The shared libraries this home installed, and which clones use each. */
+  homeLibraries?: (configDir: string) => unknown[];
+}
+
 /** One importable module of the manager, and the package directory its version is read from. */
 export interface ManagerEntry {
   /** The module a host imports. */

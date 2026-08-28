@@ -1,4 +1,3 @@
-// @ts-nocheck
 // The plugin manager this home resolved, and the npm-plugin / repo helpers that wrap it.
 
 import { existsSync, readFileSync } from "fs";
@@ -16,6 +15,19 @@ import { queryCapability } from "./capability-catalog.js";
 import type { CatalogEntry } from "./capability-catalog.js";
 import { bootstrapCommand, managerEntries, resolvePluginManager, PLUGIN_MANAGEMENT_CAPABILITY } from "./plugin-manager.js";
 import { catalogCacheHours } from "./config.js";
+import type { PluginEntry } from "./config.js";
+
+/** One npm plugin the app's own list holds, as the Plugins tab needs it. */
+export interface NpmPluginRow {
+  /** The package name, with any version suffix stripped. */
+  name: string;
+  /** The version resolved from a package cache, or an empty string when none was found. */
+  version: string;
+  /** Whether a version was found at all. */
+  installed: boolean;
+  /** The entry exactly as the app's list holds it. */
+  raw: unknown;
+}
 
 /** What resolution may reach the network through. */
 export interface PreloadDeps {
@@ -94,14 +106,14 @@ export function getUpdaterPath() {
 export function getUpdaterVersion() {
   try {
     if (!getUpdater() || !S.UPDATER_PATH) return "";
-    return (readJson(join(S.UPDATER_PATH, "package.json")) || {}).version || "";
+    return readJson<{ version?: string }>(join(S.UPDATER_PATH, "package.json"))?.version || "";
   } catch { return ""; }
 }
 
 // Run the updater's updatePluginPublic (git + build + deploy + activate) in a
 // child node process so the git/build execSync inside the manager blocks that
 // child, not our main event loop, so the TUI keeps rendering and animating.
-export function setupPlugin(repo, done) {
+export function setupPlugin(repo: PluginEntry & { branch?: string }, done: (error: string) => void): void {
   var updater = getUpdater();
   // The ENTRY is what the child imports, so it is what readiness means: a home with a deployed
   // bundle and no clone directory has no package dir to report and still updates perfectly well.
@@ -124,9 +136,9 @@ export function setupPlugin(repo, done) {
   });
   var child = require("child_process").spawn(process.execPath, ["-e", script], { stdio: ["ignore", "ignore", "pipe"], env: childEnv });
   var errBuf = "";
-  child.stderr.on("data", function(d) { errBuf += d.toString(); });
-  child.on("error", function(e) { done(String((e && e.message) || e)); });
-  child.on("exit", function(code) { done(code === 0 ? "" : (errBuf.trim() || "update failed")); });
+  child.stderr.on("data", function(d: Buffer) { errBuf += d.toString(); });
+  child.on("error", function(e: Error) { done(String((e && e.message) || e)); });
+  child.on("exit", function(code: number | null) { done(code === 0 ? "" : (errBuf.trim() || "update failed")); });
 }
 
 export function getNpmGlobalRoot() {
@@ -136,14 +148,14 @@ export function getNpmGlobalRoot() {
   return S.NPM_GLOBAL_ROOT;
 }
 
-export function loadNpmPlugins() {
+export function loadNpmPlugins(): NpmPluginRow[] {
   var updater = getUpdater();
   if (updater && typeof updater.getNpmPlugins === "function") {
     try {
-      return updater.getNpmPlugins(CONFIG_DIR);
+      return updater.getNpmPlugins(CONFIG_DIR) as NpmPluginRow[];
     } catch(e) {}
   }
-  var declared = appNpmPlugins();
+  const declared = appNpmPlugins();
   if (!declared) return [];
   var candidates = declared.configFiles.map(function (file) { return expandPath(file, CONFIG_DIR); });
   var appConfigPath = candidates.find(function (candidate) { return existsSync(candidate); });
@@ -152,10 +164,10 @@ export function loadNpmPlugins() {
     var raw = readFileSync(appConfigPath, "utf-8");
     var stripped = raw.replace(/^\s*\/\/[^\n]*/gm, "");
     var appConfig = JSON.parse(stripped);
-    var plugins = appConfig[declared.pluginsKey] || [];
+    var plugins: unknown[] = appConfig[declared.pluginsKey] || [];
     return plugins
-      .filter(function(p) { return typeof p === "string"; })
-      .map(function(p) {
+      .filter(function(p): p is string { return typeof p === "string"; })
+      .map(function(p: string): NpmPluginRow {
         var name = p.replace(/@[^@\/]+$/, "") || p;
         var version = "";
         try {
@@ -166,7 +178,7 @@ export function loadNpmPlugins() {
             for (var entry of cacheEntries) {
               if (entry !== name && entry.indexOf(name + "@") !== 0) continue;
               var cachedPkg = join(pkgCache, entry, "node_modules", name, "package.json");
-              version = (readJson(cachedPkg) || {}).version || "";
+              version = readJson<{ version?: string }>(cachedPkg)?.version || "";
               if (version) break;
             }
           }
@@ -175,7 +187,7 @@ export function loadNpmPlugins() {
             for (var root of roots) {
               if (!root) continue;
               var pkgPath = join(root, name, "package.json");
-              version = (readJson(pkgPath) || {}).version || "";
+              version = readJson<{ version?: string }>(pkgPath)?.version || "";
               if (version) break;
             }
           }
@@ -195,7 +207,7 @@ export function clearUpdaterCache() {
   S.pluginManager = undefined;
 }
 
-export function getFolderName(plugin) {
+export function getFolderName(plugin: PluginEntry): string {
   var match = (plugin.url || "").match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
   if (match) {
     var nested = match[1] + "/" + plugin.name;

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // One answer to "which providers are here, and what models does each serve".
 //
 // Both loaders used to work this out for themselves, from different sources: one counted the
@@ -14,15 +13,55 @@ import { existsSync, readFileSync } from "fs";
 import { readJson } from "./json.js";
 import { join } from "path";
 import { readDeployedProviders } from "./loader-runtime.js";
+import type { DeployedProvider } from "./loader-runtime.js";
+
+/** One provider's cached catalog, as the account library writes it. */
+export interface ProviderCatalogEntry {
+  /** The models it serves, by id. */
+  models?: Record<string, { name?: string }>;
+  /** A score per model, when whoever wrote the catalog had one. */
+  scores?: Record<string, number>;
+  /** Where those scores came from. */
+  scoreSource?: string;
+}
+
+/** One model row, across every provider. */
+export interface ModelEntry {
+  /** The provider serving it. */
+  provider: string;
+  /** The model id, as that provider names it. */
+  model: string;
+  /** What it is shown as. */
+  name: string;
+  /** Its ecosystem-wide id, `provider/model`. */
+  id: string;
+  /** Its score, when the catalog carried one. */
+  score?: number;
+  /** Where that score came from. */
+  scoreSource?: string;
+}
+
+/** One provider row, with how many models it serves. */
+export interface ProviderRow {
+  /** The provider's name. */
+  id: string;
+  /** Its handler file, or `null` for a provider only a leftover catalog still names. */
+  handler: string | null;
+  /** How many models it serves. */
+  count: number;
+}
+
+/** A model as a provider's own manifest declares it, which may be a bare id. */
+type DeclaredModel = string | { id: string; name?: string };
 
 // The pre-rename file is still read so a home that has not refreshed since keeps its catalog.
 const CATALOG_FILES = ["models.json", "core-auth-models.json"];
 
-export function readModelCatalog(configDir) {
+export function readModelCatalog(configDir: string): Record<string, ProviderCatalogEntry> {
   for (const file of CATALOG_FILES) {
     const at = join(configDir, "config", file);
     if (!existsSync(at)) continue;
-    const parsed = readJson(at);
+    const parsed = readJson<Record<string, ProviderCatalogEntry>>(at);
     // Anything that is not a map of providers is as useless as no catalog, and returning it
     // would have every caller guess at the shape instead.
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
@@ -32,9 +71,9 @@ export function readModelCatalog(configDir) {
 
 // Every provider deployed here, deduplicated: a plugin can declare several (one per upstream
 // lane) and can add more at runtime through its dynamic manifest.
-export function deployedProviders(reposDir) {
-  const out = [];
-  const seen = new Set();
+export function deployedProviders(reposDir: string): DeployedProvider[] {
+  const out: DeployedProvider[] = [];
+  const seen = new Set<string>();
   for (const entry of readDeployedProviders(reposDir)) {
     if (seen.has(entry.provider)) continue;
     seen.add(entry.provider);
@@ -45,9 +84,9 @@ export function deployedProviders(reposDir) {
 
 // One row per model, across every provider. A provider's live catalog wins; a provider that
 // ships a static list and fetches nothing falls back to that.
-export function modelEntries(reposDir, configDir) {
+export function modelEntries(reposDir: string, configDir: string): ModelEntry[] {
   const catalog = readModelCatalog(configDir);
-  const out = [];
+  const out: ModelEntry[] = [];
   for (const entry of deployedProviders(reposDir)) {
     const provider = entry.provider;
     const cached = catalog[provider] && catalog[provider].models;
@@ -66,7 +105,7 @@ export function modelEntries(reposDir, configDir) {
       }
       continue;
     }
-    for (const declared of entry.models || []) {
+    for (const declared of (entry.models || []) as DeclaredModel[]) {
       const model = typeof declared === "string" ? declared : declared.id;
       const name = typeof declared === "string" ? declared : (declared.name || declared.id);
       out.push({ provider, model, name, id: provider + "/" + model });
@@ -81,9 +120,9 @@ export function modelEntries(reposDir, configDir) {
 //
 // A provider with a cached catalog but nothing deployed is listed too, with no handler, so a
 // leftover shows rather than silently disappearing along with the plugin that served it.
-export function providerRows(reposDir, configDir) {
-  const rows = [];
-  const index = new Map();
+export function providerRows(reposDir: string, configDir: string): ProviderRow[] {
+  const rows: ProviderRow[] = [];
+  const index = new Map<string, ProviderRow>();
   for (const entry of deployedProviders(reposDir)) {
     const row = { id: entry.provider, handler: entry.handlerPath, count: 0 };
     index.set(entry.provider, row);

@@ -6,7 +6,7 @@ import type { FieldSpec } from "./capability-shapes.js";
 import type { LoaderCapabilities, McpServerDraft } from "./app-capabilities.js";
 import type { CustomTab } from "./custom-tab.js";
 import type { CatalogEntry } from "./capability-catalog.js";
-import type { PluginManagerRef } from "./plugin-manager.js";
+import type { PluginManagerModule, PluginManagerRef } from "./plugin-manager.js";
 import type { ProjectItem } from "./projects.js";
 import type { CommitRow, PluginRow } from "./plugins.js";
 import type { MarketplaceRow } from "./marketplace.js";
@@ -59,9 +59,11 @@ export interface LoaderState {
   /** A gate that swallows keys until it is cleared, named by what it is gating. */
   globalKeyHandler: string | null;
   /** The resolved plugin-manager module, `null` once resolution ran and found none. */
-  UPDATER_MODULE: Record<string, unknown> | null | undefined;
+  UPDATER_MODULE: PluginManagerModule | null | undefined;
   /** The resolved manager's package directory, which is where its version is read from. */
   UPDATER_PATH: string | undefined;
+  /** The manager's entry module, which is what a child process imports to run an update off-thread. */
+  UPDATER_ENTRY: string | undefined;
   /** The global npm root, `null` until it has been asked for and `""` when npm could not answer. */
   NPM_GLOBAL_ROOT: string | null;
 
@@ -285,6 +287,7 @@ export const S: LoaderState = {
   globalKeyHandler: null,
   UPDATER_MODULE: undefined,
   UPDATER_PATH: "",
+  UPDATER_ENTRY: undefined,
   NPM_GLOBAL_ROOT: null,
 
   customTabs: [],

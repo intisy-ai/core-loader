@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Non-interactive loader CLI (`cc|oc <plugins|providers|proxy|doctor>`); runs under
 // node so the wrapper can dispatch here without bun. Mutations run through the
 // plugin manager this home resolved, never npx.
@@ -20,6 +19,29 @@ import { appWrapperCommand } from "./app-descriptor.js";
 import { readDeployedProviders } from "./loader-runtime.js";
 import { getUpdater, managerBootstrapCommand, preloadUpdater, resolvedManager, setupPlugin } from "./updater.js";
 import { loaderConfigName, registerPlugin } from "./config.js";
+import type { PluginEntry } from "./config.js";
+
+/** One account of one provider, as the doctor and provider views list it. */
+interface AccountSummary {
+  /** What identifies it to a reader: its id, or the address it was signed in with. */
+  id: string;
+  /** Whether it is in use. */
+  enabled: boolean;
+  /** Whether it is waiting out a rate limit. */
+  coolingDown: boolean;
+}
+
+/** The account store, as far as this CLI reads it. */
+interface AccountStoreFile {
+  /** Each provider's accounts, by provider name. */
+  providers?: Record<string, { accounts?: Array<{ id?: string; email?: string; enabled?: boolean; coolingDownUntil?: number }> }>;
+}
+
+/** The part of the loader's own config this CLI reads: which provider serves each tier. */
+interface LoaderRoutingConfig {
+  /** Each tier's chosen provider, by tier name. */
+  modelMap?: Record<string, { provider?: string }>;
+}
 
 const PROXY_PORT = parseInt(process.env.HUB_PROXY_PORT || "34567", 10);
 const PROXY_URL = "http://127.0.0.1:" + PROXY_PORT;
@@ -33,7 +55,7 @@ const WRAPPER_CMD = appWrapperCommand() || CLI_CMD;
 const OK = "✓";
 const BAD = "✗";
 
-function pad(str, width) {
+function pad(str: string | number, width: number): string {
   str = String(str);
   return str.length >= width ? str : str + " ".repeat(width - str.length);
 }
@@ -41,7 +63,7 @@ function pad(str, width) {
 // ---- plugins -------------------------------------------------------------
 
 function loadPluginEntries() {
-  const entries = readJson(PLUGINS_JSON);
+  const entries = readJson<PluginEntry[]>(PLUGINS_JSON);
   return Array.isArray(entries) ? entries : [];
 }
 
@@ -78,34 +100,41 @@ async function withManager() {
   process.exit(1);
 }
 
-async function pluginsInstall(url) {
+async function pluginsInstall(url: string): Promise<void> {
   if (!url) { console.error("usage: plugins install <git-url>"); process.exit(1); }
   await withManager();
   const name = String(url).replace(/\.git$/, "").split("/").pop() || url;
   registerPlugin(name, url);
   console.log("Installing " + name + " ...");
-  const failure = await new Promise((resolve) => setupPlugin({ name: name, url: url }, resolve));
+  const failure = await new Promise<string>((resolve) => setupPlugin({ name: name, url: url }, resolve));
   if (failure) { console.error(name + ": " + failure); process.exit(1); }
   console.log(name + " installed.");
 }
 
-async function pluginsUpdate(name) {
+async function pluginsUpdate(name: string): Promise<void> {
   const manager = await withManager();
-  const verb = name ? "updateOne" : "updateAll";
-  if (typeof manager[verb] !== "function") {
-    console.error("the installed plugin manager offers no " + verb);
-    process.exit(1);
+  if (name) {
+    if (typeof manager.updateOne !== "function") {
+      console.error("the installed plugin manager offers no updateOne");
+      process.exit(1);
+    }
+    await manager.updateOne(CONFIG_DIR, name);
+  } else {
+    if (typeof manager.updateAll !== "function") {
+      console.error("the installed plugin manager offers no updateAll");
+      process.exit(1);
+    }
+    await manager.updateAll(CONFIG_DIR);
   }
-  await (name ? manager.updateOne(CONFIG_DIR, name) : manager.updateAll(CONFIG_DIR));
   console.log(name ? (name + " updated.") : "All plugins updated.");
 }
 
 // ---- providers -----------------------------------------------------------
 
 function accountsByProvider() {
-  const store = readJson(ACCOUNTS_JSON);
+  const store = readJson<AccountStoreFile>(ACCOUNTS_JSON);
   const providers = (store && store.providers) || {};
-  const out = {};
+  const out: Record<string, AccountSummary[]> = {};
   for (const name of Object.keys(providers)) {
     const accounts = (providers[name] && providers[name].accounts) || [];
     out[name] = accounts.map((a) => ({
@@ -126,9 +155,9 @@ function deployedHandlers() {
 }
 
 function tiersByProvider() {
-  const cfg = readJson(LOADER_CONFIG);
+  const cfg = readJson<LoaderRoutingConfig>(LOADER_CONFIG);
   const map = (cfg && cfg.modelMap) || {};
-  const out = {};
+  const out: Record<string, string[]> = {};
   for (const tier of Object.keys(map)) {
     const provider = map[tier] && map[tier].provider;
     if (!provider) continue;
@@ -165,7 +194,7 @@ function providers() {
 
 // ---- proxy ---------------------------------------------------------------
 
-async function probeProxy(timeoutMs) {
+async function probeProxy(timeoutMs?: number): Promise<boolean> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs || 1500);
   try {

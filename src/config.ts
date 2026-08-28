@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Read/write for loader config, the plugins list, and the MCP server config.
 // All three prefer the config/ subdir and fall back to legacy top-level files.
 
@@ -50,7 +49,7 @@ export interface McpConfig {
 // The same file the loader's plugin.ts registers via defineConfig; the TUI reads it for the
 // runtime knobs below. Returns {} when no file exists, so every getter falls back to the default
 // that reproduces current behavior.
-var LOADER_CONFIG = null;
+var LOADER_CONFIG: Record<string, unknown> | null = null;
 
 /**
  * The id of the loader whose config this home holds.
@@ -64,7 +63,7 @@ export function loaderConfigName() {
   return loaderIdOfHome();
 }
 
-export function loadLoaderConfig() {
+export function loadLoaderConfig(): Record<string, unknown> {
   if (LOADER_CONFIG !== null) return LOADER_CONFIG;
   var name = loaderConfigName();
   LOADER_CONFIG = name && CONFIG_DIR ? coreLoadConfig(name, CONFIG_DIR) : {};
@@ -72,7 +71,7 @@ export function loadLoaderConfig() {
 }
 
 // Getters with defaults that reproduce CURRENT behavior exactly when unset.
-function num(v, fallback) {
+function num(v: unknown, fallback: number): number {
   var n = Number(v);
   return (v != null && !isNaN(n)) ? n : fallback;
 }
@@ -95,16 +94,16 @@ export function defaultTab() {
   return (t === "projects" || t === "plugins" || t === "mcp" || t === "settings") ? t : "projects";
 }
 
-export function loadConfig() {
+export function loadConfig(): LoaderConfig {
   if (!CONFIG_DIR) return { pinned: [], hidden: [] };
-  var current = readJson(CONFIG_PATH);
+  var current = readJson<LoaderConfig>(CONFIG_PATH);
   if (current) return current;
-  var legacy = readJson(join(CONFIG_DIR, "oc-config.json"));
+  var legacy = readJson<LoaderConfig>(join(CONFIG_DIR, "oc-config.json"));
   if (legacy) return legacy;
   return { pinned: [], hidden: [] };
 }
 
-export function saveConfig(cfg) {
+export function saveConfig(cfg: LoaderConfig): void {
   if (!CONFIG_DIR) return;
   try {
     if (!existsSync(CONFIG_FOLDER)) mkdirSync(CONFIG_FOLDER, { recursive: true });
@@ -123,17 +122,17 @@ export var GLOBAL_SETTINGS_DEFAULTS = { logConsole: false, logColor: true };
 
 // Cached parsed settings so a navigation render (buildSettings reads these every
 // frame) never re-reads settings.json from disk. Invalidated when setGlobalSetting writes.
-var GLOBAL_SETTINGS_CACHE = null;
+var GLOBAL_SETTINGS_CACHE: Record<string, unknown> | null = null;
 
-export function loadGlobalSettings() {
+export function loadGlobalSettings(): Record<string, unknown> {
   if (GLOBAL_SETTINGS_CACHE !== null) return GLOBAL_SETTINGS_CACHE;
-  var out = readJson(GLOBAL_SETTINGS_FILE, {});
+  var out = readJson<Record<string, unknown>>(GLOBAL_SETTINGS_FILE, {}) ?? {};
   GLOBAL_SETTINGS_CACHE = out;
   return out;
 }
 
 // parse a CLI/edit string into the obvious type (mirrors core's coerce)
-function coerceGlobal(v) {
+function coerceGlobal(v: string): unknown {
   if (v === "true") return true;
   if (v === "false") return false;
   if (v === "null") return null;
@@ -142,7 +141,7 @@ function coerceGlobal(v) {
   return v;
 }
 
-export function setGlobalSetting(key, valueStr) {
+export function setGlobalSetting(key: string, valueStr: string): string {
   if (!GLOBAL_SETTINGS_FILE) return "no app home";
   try {
     var cur = loadGlobalSettings();
@@ -151,7 +150,7 @@ export function setGlobalSetting(key, valueStr) {
     writeFileSync(GLOBAL_SETTINGS_FILE, JSON.stringify(cur, null, 2));
     GLOBAL_SETTINGS_CACHE = null;   // next read reflects the write
     return "";
-  } catch (e) { return (e && e.message) || "set failed"; }
+  } catch (e) { return (e instanceof Error && e.message) || "set failed"; }
 }
 
 export function migrateConfigs() {
@@ -199,7 +198,7 @@ export function loadPlugins() {
   return [];
 }
 
-export function savePlugins(plugins) {
+export function savePlugins(plugins: PluginEntry[]): void {
   if (!CONFIG_DIR) return;
   if (!existsSync(CONFIG_FOLDER)) try { mkdirSync(CONFIG_FOLDER, { recursive: true }); } catch {}
   // config/ is always preferred; the top-level file only when config/ cannot exist
@@ -214,12 +213,12 @@ export function savePlugins(plugins) {
  * Reads the file directly rather than through `loadPlugins`, which hides the other app's loader:
  * writing that filtered list back would delete an entry the user never touched.
  */
-export function registerPlugin(name, url) {
+export function registerPlugin(name: string, url: string): boolean {
   if (!CONFIG_DIR) return false;
   var file = existsSync(PLUGINS_JSON) ? PLUGINS_JSON : join(CONFIG_DIR, "plugins.json");
-  var listed = readJson(file, []);
+  var listed = readJson<PluginEntry[]>(file, []) ?? [];
   if (!Array.isArray(listed)) listed = [];
-  if (listed.some(function (entry) { return entry && entry.name === name; })) return false;
+  if (listed.some(function (entry: PluginEntry) { return entry && entry.name === name; })) return false;
   listed.push({ name: name, url: url, enabled: true, autoUpdate: true });
   savePlugins(listed);
   return true;
@@ -227,16 +226,16 @@ export function registerPlugin(name, url) {
 
 // Cached parsed MCP config so the MCP views (which read it every render) never hit
 // disk during navigation. Invalidated when saveMcpConfig writes.
-var MCP_CONFIG_CACHE = null;
+var MCP_CONFIG_CACHE: McpConfig | null = null;
 
-export function loadMcpConfig() {
+export function loadMcpConfig(): McpConfig {
   if (MCP_CONFIG_CACHE !== null) return MCP_CONFIG_CACHE;
-  var out = readJson(MCP_CONFIG_PATH, { mcpServers: {} });
+  var out = readJson<McpConfig>(MCP_CONFIG_PATH, { mcpServers: {} }) ?? { mcpServers: {} };
   MCP_CONFIG_CACHE = out;
   return out;
 }
 
-export function saveMcpConfig(config) {
+export function saveMcpConfig(config: McpConfig): void {
   if (!MCP_CONFIG_PATH) return;
   try {
     if (!existsSync(dirname(MCP_CONFIG_PATH))) mkdirSync(dirname(MCP_CONFIG_PATH), { recursive: true });
